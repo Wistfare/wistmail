@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+.turbo/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+*.lcov
+
+# Go
+packages/mail-engine/bin/
+packages/dns-manager/bin/
+
+# Docker
+docker/data/
+
+# MinIO data
+minio-data/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/
