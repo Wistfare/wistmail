@@ -1,0 +1,54 @@
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { logger } from 'hono/logger'
+import { prettyJSON } from 'hono/pretty-json'
+import { errorHandler } from './middleware/error-handler.js'
+import { emailRoutes } from './routes/emails.js'
+import { domainRoutes } from './routes/domains.js'
+import { apiKeyRoutes } from './routes/api-keys.js'
+import { webhookRoutes } from './routes/webhooks.js'
+import { templateRoutes } from './routes/templates.js'
+import { audienceRoutes } from './routes/audiences.js'
+import { analyticsRoutes } from './routes/analytics.js'
+
+export type AppEnv = {
+  Variables: {
+    userId: string
+    apiKeyId: string | null
+    scopes: string[]
+  }
+}
+
+export const app = new Hono<AppEnv>()
+
+// Global middleware
+app.use('*', logger())
+app.use('*', cors())
+app.use('*', prettyJSON())
+app.onError(errorHandler)
+
+// Health check
+app.get('/', (c) => {
+  return c.json({
+    name: 'WistMail API',
+    version: '0.1.0',
+    status: 'healthy',
+  })
+})
+
+app.get('/health', (c) => {
+  return c.json({ status: 'ok' })
+})
+
+// API v1 routes
+const v1 = new Hono<AppEnv>()
+
+v1.route('/emails', emailRoutes)
+v1.route('/domains', domainRoutes)
+v1.route('/api-keys', apiKeyRoutes)
+v1.route('/webhooks', webhookRoutes)
+v1.route('/templates', templateRoutes)
+v1.route('/audiences', audienceRoutes)
+v1.route('/analytics', analyticsRoutes)
+
+app.route('/api/v1', v1)

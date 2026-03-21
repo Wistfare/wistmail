@@ -1,0 +1,33 @@
+{
+  "name": "@wistmail/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && tsc-alias",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.3",
+    "@hono/zod-openapi": "^0.19.6",
+    "hono": "^4.7.11",
+    "@wistmail/db": "workspace:*",
+    "@wistmail/shared": "workspace:*",
+    "zod": "^3.25.17",
+    "bullmq": "^5.52.2",
+    "ioredis": "^5.6.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4",
+    "tsc-alias": "^1.8.10",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.1",
+    "@types/node": "^22.15.0"
+  }
+}
