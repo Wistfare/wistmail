@@ -29,8 +29,6 @@ describe('EmailItem', () => {
 
   it('hides unread indicator when read', () => {
     const { container } = render(<EmailItem {...baseProps} isRead={true} />)
-    const dots = container.querySelectorAll('.bg-wm-accent')
-    // No unread dot (there might be other accent elements)
     const unreadDot = container.querySelector('.h-1\\.5.w-1\\.5.rounded-full.bg-wm-accent')
     expect(unreadDot).not.toBeInTheDocument()
   })
