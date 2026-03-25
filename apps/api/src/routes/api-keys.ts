@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { generateId, generateApiKey, NotFoundError, ValidationError } from '@wistmail/shared'
 import { apiKeyAuth } from '../middleware/auth.js'
-import { hashApiKey } from '../middleware/auth.js'
 import { createApiKeySchema } from '../lib/validation.js'
 import type { AppEnv } from '../app.js'
 
@@ -26,9 +25,8 @@ apiKeyRoutes.post('/', async (c) => {
   const { name, scopes, domainId, expiresAt } = parsed.data
   const { key, prefix } = generateApiKey()
   const keyId = generateId('key')
-  const keyHash = hashApiKey(key)
-
-  // TODO: Store in database
+  // TODO: Store in database — will need keyHash:
+  // const keyHash = hashApiKey(key)
   // The full key is only returned once — never stored in plain text
 
   return c.json(

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { generateId, NotFoundError, ValidationError, ConflictError } from '@wistmail/shared'
+import { generateId, NotFoundError, ValidationError } from '@wistmail/shared'
 import { apiKeyAuth, requireScope } from '../middleware/auth.js'
 import { createDomainSchema } from '../lib/validation.js'
 import type { AppEnv } from '../app.js'

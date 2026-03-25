@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { generateId, ValidationError, NotFoundError, toArray } from '@wistmail/shared'
+import { generateId, ValidationError, NotFoundError } from '@wistmail/shared'
 import { apiKeyAuth, requireScope } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
 import { sendEmailSchema, batchSendSchema } from '../lib/validation.js'
@@ -24,7 +24,8 @@ emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
     })
   }
 
-  const input = parsed.data
+  // TODO: Use input when queue worker is implemented
+  void parsed.data
   const emailId = generateId('eml')
 
   // Check idempotency
@@ -34,10 +35,10 @@ emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
     // If found, return the cached response
   }
 
-  // Normalize recipients
-  const to = toArray(input.to)
-  const cc = input.cc ? toArray(input.cc) : []
-  const bcc = input.bcc ? toArray(input.bcc) : []
+  // TODO: Normalize recipients when queue worker is implemented
+  // const to = toArray(input.to)
+  // const cc = input.cc ? toArray(input.cc) : []
+  // const bcc = input.bcc ? toArray(input.bcc) : []
 
   // TODO: Validate from address matches a verified domain
 
@@ -51,20 +52,18 @@ emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
   // 4. Update sending log
   // 5. Trigger webhooks
 
-  // For now, create a sending log entry
-  const sendingLog = {
-    id: generateId('slog'),
-    emailId,
-    status: input.scheduledAt ? 'scheduled' : 'queued',
-    from: input.from,
-    to,
-    cc,
-    bcc,
-    subject: input.subject || '',
-    createdAt: new Date().toISOString(),
-  }
-
-  // TODO: Store in database
+  // TODO: Store sending log in database
+  // const sendingLog = {
+  //   id: generateId('slog'),
+  //   emailId,
+  //   status: input.scheduledAt ? 'scheduled' : 'queued',
+  //   from: input.from,
+  //   to,
+  //   cc,
+  //   bcc,
+  //   subject: input.subject || '',
+  //   createdAt: new Date().toISOString(),
+  // }
 
   return c.json({ id: emailId }, 201)
 })
@@ -84,7 +83,7 @@ emailRoutes.post('/batch', requireScope('emails:send'), rateLimit(5), async (c) 
   }
 
   const ids: string[] = []
-  for (const email of parsed.data.emails) {
+  for (const _email of parsed.data.emails) {
     const emailId = generateId('eml')
     ids.push(emailId)
     // TODO: Queue each email for sending
