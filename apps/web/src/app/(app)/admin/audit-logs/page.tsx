@@ -1,12 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ScrollText, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api-client'
-import { formatRelativeTime } from '@/lib/utils'
 
 type AuditLog = {
   id: string
@@ -21,18 +19,45 @@ type AuditLog = {
   createdAt: string
 }
 
-const ACTION_COLORS: Record<string, 'accent' | 'info' | 'warning' | 'error' | 'default'> = {
-  'domain.created': 'accent',
-  'domain.verified': 'info',
-  'domain.deleted': 'error',
-  'mailbox.created': 'accent',
-  'mailbox.deleted': 'error',
-  'organization.created': 'accent',
-  'member.role_changed': 'warning',
-  'member.removed': 'error',
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
-export default function AuditLogsPage() {
+function formatDateLabel(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today.getTime() - 86400000)
+  const logDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+
+  if (logDate.getTime() === today.getTime()) return 'Today'
+  if (logDate.getTime() === yesterday.getTime()) return 'Yesterday'
+  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function describeAction(log: AuditLog): string {
+  const details = log.details as Record<string, string>
+  switch (log.action) {
+    case 'domain.created': return `created domain ${details.name || ''}`
+    case 'domain.verified': return `verified domain DNS records`
+    case 'mailbox.created': return `created mailbox ${details.address || ''}`
+    case 'organization.created': return `created organization "${details.name || ''}"`
+    case 'member.role_changed': return `changed role to ${details.newRole || ''}`
+    case 'member.removed': return `removed a team member`
+    default: return log.action.replace(/\./g, ' ')
+  }
+}
+
+const ACTION_COLORS: Record<string, string> = {
+  'domain.created': 'bg-wm-accent',
+  'domain.verified': 'bg-wm-info',
+  'mailbox.created': 'bg-wm-accent',
+  'organization.created': 'bg-wm-accent',
+  'member.role_changed': 'bg-wm-warning',
+  'member.removed': 'bg-wm-error',
+}
+
+export default function AdminAuditLogPage() {
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -46,57 +71,63 @@ export default function AuditLogsPage() {
     }
   }, [])
 
-  useEffect(() => {
-    fetchLogs()
-  }, [fetchLogs])
+  useEffect(() => { fetchLogs() }, [fetchLogs])
+
+  // Group logs by date
+  const grouped: Record<string, AuditLog[]> = {}
+  for (const log of logs) {
+    const label = formatDateLabel(log.createdAt)
+    if (!grouped[label]) grouped[label] = []
+    grouped[label].push(log)
+  }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <ScrollText className="h-6 w-6 text-wm-text-muted" />
-        <h1 className="text-2xl font-semibold text-wm-text-primary">Audit Logs</h1>
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-4 border-b border-wm-border bg-wm-surface px-8 py-4">
+        <h1 className="text-lg font-semibold text-wm-text-primary">Audit Log</h1>
         <div className="flex-1" />
         <Button variant="secondary" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={fetchLogs} loading={loading}>
           Refresh
         </Button>
       </div>
 
-      <div className="border border-wm-border">
-        <div className="flex bg-wm-surface-hover px-4 py-2.5 font-mono text-[10px] font-semibold text-wm-text-muted">
-          <span className="w-36">User</span>
-          <span className="w-40">Action</span>
-          <span className="flex-1">Details</span>
-          <span className="w-28 text-right">Time</span>
-        </div>
-        {logs.map((log) => (
-          <div key={log.id} className="flex items-center border-t border-wm-border px-4 py-3">
-            <div className="flex w-36 items-center gap-2">
-              <Avatar name={log.userName || 'System'} size="sm" />
-              <span className="truncate font-mono text-xs text-wm-text-secondary">
-                {log.userName || 'System'}
+      <div className="flex-1 overflow-y-auto">
+        {Object.entries(grouped).map(([dateLabel, dateLogs]) => (
+          <div key={dateLabel}>
+            <div className="sticky top-0 z-10 border-b border-wm-border bg-wm-bg px-8 py-2">
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
+                {dateLabel.toUpperCase()}
               </span>
             </div>
-            <div className="w-40">
-              <Badge variant={ACTION_COLORS[log.action] || 'default'} size="sm">
-                {log.action}
-              </Badge>
-            </div>
-            <div className="flex-1 truncate font-mono text-xs text-wm-text-muted">
-              {log.resource}
-              {log.resourceId && `: ${log.resourceId.slice(0, 20)}...`}
-              {log.details && Object.keys(log.details).length > 0 && (
-                <span className="ml-2 text-wm-text-muted">
-                  {JSON.stringify(log.details).slice(0, 60)}
-                </span>
-              )}
-            </div>
-            <span className="w-28 text-right font-mono text-xs text-wm-text-muted">
-              {formatRelativeTime(new Date(log.createdAt))}
-            </span>
+
+            {dateLogs.map((log) => {
+              const dotColor = ACTION_COLORS[log.action] || 'bg-wm-text-muted'
+              return (
+                <div
+                  key={log.id}
+                  className="flex items-center gap-4 border-b border-wm-border px-8 py-3 transition-colors hover:bg-wm-surface-hover"
+                >
+                  <div className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`} />
+                  <Avatar name={log.userName || 'System'} size="sm" />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium text-wm-text-primary">
+                      {log.userName?.split(' ')[0] || 'System'}
+                    </span>
+                    <span className="text-sm text-wm-text-muted">
+                      {' '}{describeAction(log)}
+                    </span>
+                  </div>
+                  <span className="shrink-0 font-mono text-xs text-wm-text-muted">
+                    {formatTime(new Date(log.createdAt))}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         ))}
+
         {logs.length === 0 && !loading && (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex items-center justify-center py-16">
             <p className="font-mono text-sm text-wm-text-muted">No audit logs yet.</p>
           </div>
         )}
