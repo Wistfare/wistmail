@@ -17,7 +17,7 @@ import {
   sendingLogs,
   audiences,
   audienceContacts,
-} from './schema/index.js'
+} from './schema/index'
 
 describe('Database Schema', () => {
   describe('users table', () => {

@@ -15,8 +15,8 @@ import {
   toRfc2822,
   computeHmac,
   verifyWebhookSignature,
-} from './utils.js'
-import { API_KEY_PREFIX } from './constants.js'
+} from './utils'
+import { API_KEY_PREFIX } from './constants'
 
 describe('isValidEmail', () => {
   it('accepts valid email addresses', () => {

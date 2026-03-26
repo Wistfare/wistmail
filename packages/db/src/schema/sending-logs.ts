@@ -1,6 +1,6 @@
 import { jsonb, pgTable, timestamp, varchar, index } from 'drizzle-orm/pg-core'
-import { emails } from './emails.js'
-import { apiKeys } from './api-keys.js'
+import { emails } from './emails'
+import { apiKeys } from './api-keys'
 
 export const sendingLogs = pgTable(
   'sending_logs',

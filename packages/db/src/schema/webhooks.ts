@@ -1,6 +1,6 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp, varchar, index } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
-import { domains } from './domains.js'
+import { users } from './users'
+import { domains } from './domains'
 
 export const webhooks = pgTable(
   'webhooks',

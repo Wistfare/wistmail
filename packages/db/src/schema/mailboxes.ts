@@ -1,6 +1,6 @@
 import { bigint, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
-import { domains } from './domains.js'
+import { users } from './users'
+import { domains } from './domains'
 
 export const mailboxes = pgTable('mailboxes', {
   id: varchar('id', { length: 64 }).primaryKey(),

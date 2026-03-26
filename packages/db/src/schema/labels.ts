@@ -1,6 +1,6 @@
 import { pgTable, primaryKey, varchar } from 'drizzle-orm/pg-core'
-import { mailboxes } from './mailboxes.js'
-import { emails } from './emails.js'
+import { mailboxes } from './mailboxes'
+import { emails } from './emails'
 
 export const labels = pgTable('labels', {
   id: varchar('id', { length: 64 }).primaryKey(),

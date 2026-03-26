@@ -1,5 +1,5 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp, varchar, index } from 'drizzle-orm/pg-core'
-import { mailboxes } from './mailboxes.js'
+import { mailboxes } from './mailboxes'
 
 export const threads = pgTable(
   'threads',

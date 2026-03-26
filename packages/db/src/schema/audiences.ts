@@ -1,6 +1,6 @@
 import { integer, jsonb, pgTable, timestamp, varchar, index, primaryKey } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
-import { contacts } from './contacts.js'
+import { users } from './users'
+import { contacts } from './contacts'
 
 export const audiences = pgTable(
   'audiences',

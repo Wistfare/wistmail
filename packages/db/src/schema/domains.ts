@@ -1,5 +1,5 @@
 import { boolean, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
+import { users } from './users'
 
 export const domains = pgTable('domains', {
   id: varchar('id', { length: 64 }).primaryKey(),

@@ -8,7 +8,7 @@ import {
   RateLimitError,
   ConflictError,
   ErrorCode,
-} from './errors.js'
+} from './errors'
 
 describe('WistMailError', () => {
   it('creates error with correct properties', () => {

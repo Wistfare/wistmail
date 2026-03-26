@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { User, Mail, Lock, EyeOff, Eye, ArrowRight } from 'lucide-react'
+import { api } from '@/lib/api-client'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
 
@@ -18,6 +20,7 @@ export default function RegisterPage() {
     password?: string
     form?: string
   }>({})
+  const router = useRouter()
 
   function validate() {
     const newErrors: typeof errors = {}
@@ -50,11 +53,11 @@ export default function RegisterPage() {
     setErrors({})
 
     try {
-      // TODO: Replace with actual auth API call
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      // router.push('/setup')
-    } catch {
-      setErrors({ form: 'An error occurred. Please try again.' })
+      await api.post('/api/v1/auth/register', { name, email, password })
+      router.push('/inbox')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'An error occurred. Please try again.'
+      setErrors({ form: message })
     } finally {
       setLoading(false)
     }
