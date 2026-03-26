@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Globe, Server, Mail, CheckCircle2, ArrowRight, ArrowLeft, Copy, Check, RefreshCw, Loader2 } from 'lucide-react'
+import { Globe, Server, Mail, CheckCircle2, ArrowRight, ArrowLeft, Copy, Check, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { api } from '@/lib/api-client'

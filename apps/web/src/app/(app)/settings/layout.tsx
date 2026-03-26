@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { User, Globe, Key, Webhook, PenLine, Filter, Sparkles, Plane, Building2, ScrollText, Users } from 'lucide-react'
+import { User, Globe, Key, PenLine, Sparkles, Building2, ScrollText, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const SETTINGS_NAV = [

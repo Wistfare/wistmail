@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Key, Plus, Copy, Check, Trash2, Shield } from 'lucide-react'
+import { Plus, Copy, Check, Trash2, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SettingsCard } from '@/components/ui/settings-card'

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 export interface BadgeProps {
   children: React.ReactNode
   variant?: 'default' | 'accent' | 'error' | 'warning' | 'info'
+  size?: 'sm' | 'md'
   className?: string
 }
 
@@ -14,11 +15,12 @@ const variantStyles = {
   info: 'bg-wm-info/15 text-wm-info',
 }
 
-export function Badge({ children, variant = 'default', className }: BadgeProps) {
+export function Badge({ children, variant = 'default', size = 'md', className }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2 py-0.5 font-mono text-[10px] font-semibold',
+        'inline-flex items-center font-mono font-semibold',
+        size === 'sm' ? 'px-1.5 py-px text-[9px]' : 'px-2 py-0.5 text-[10px]',
         variantStyles[variant],
         className,
       )}
