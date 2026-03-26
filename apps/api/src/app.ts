@@ -14,6 +14,7 @@ import { authRoutes } from './routes/auth.js'
 import { setupRoutes } from './routes/setup.js'
 import { adminRoutes } from './routes/admin.js'
 import { inboxRoutes } from './routes/inbox.js'
+import { userRoutes } from './routes/user.js'
 
 export type AppEnv = {
   Variables: {
@@ -64,5 +65,6 @@ v1.route('/analytics', analyticsRoutes)
 v1.route('/setup', setupRoutes)
 v1.route('/admin', adminRoutes)
 v1.route('/inbox', inboxRoutes)
+v1.route('/user', userRoutes)
 
 app.route('/api/v1', v1)
