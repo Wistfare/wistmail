@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Search, ArrowUpDown, SlidersHorizontal, Star, Archive, Trash2, Tag, Reply, ReplyAll, Forward, Sparkles } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -31,9 +32,11 @@ const FOLDER_TABS = [
 ]
 
 export default function InboxPage() {
+  const searchParams = useSearchParams()
+  const folderParam = searchParams.get('folder') || 'inbox'
   const [emails, setEmails] = useState<Email[]>([])
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
-  const [activeFolder, setActiveFolder] = useState('inbox')
+  const [activeFolder, setActiveFolder] = useState(folderParam)
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
 
