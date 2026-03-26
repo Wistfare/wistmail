@@ -63,7 +63,7 @@ export class AuthService {
     return {
       userId: user.id,
       session,
-      user: { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl },
+      user: { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl, setupComplete: user.setupComplete },
     }
   }
 
@@ -76,6 +76,7 @@ export class AuthService {
         userName: users.name,
         userEmail: users.email,
         userAvatar: users.avatarUrl,
+        setupComplete: users.setupComplete,
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
@@ -101,6 +102,7 @@ export class AuthService {
         name: session.userName,
         email: session.userEmail,
         avatarUrl: session.userAvatar,
+        setupComplete: session.setupComplete,
       },
     }
   }

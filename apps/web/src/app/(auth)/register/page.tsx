@@ -54,7 +54,8 @@ export default function RegisterPage() {
 
     try {
       await api.post('/api/v1/auth/register', { name, email, password })
-      router.push('/inbox')
+      // New accounts always need setup first
+      router.push('/setup')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An error occurred. Please try again.'
       setErrors({ form: message })

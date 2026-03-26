@@ -6,8 +6,9 @@ import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
   Plus, Users, Settings, Mail, Shield,
-  User, Globe, Key, PenLine, Sparkles, Building2, ScrollText, UserPlus,
-  Search, Calendar,
+  User, Globe, Key, Webhook, PenLine, Filter, Sparkles, Lock,
+  Building2, ScrollText, UserPlus, Search, Calendar,
+  LayoutTemplate, SendHorizontal,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
@@ -34,8 +35,6 @@ const MODULE_ICONS: Array<{ id: Module; icon: typeof Mail; label: string; href: 
   { id: 'settings', icon: Settings, label: 'Settings', href: ROUTES.SETTINGS },
 ]
 
-// ── Panel 2 nav configs per module ──────────────────────────────────────────
-
 const MAIL_NAV = [
   { icon: <Inbox className="h-4 w-4" />, label: 'Inbox', href: ROUTES.INBOX, countKey: 'inbox' },
   { icon: <Star className="h-4 w-4" />, label: 'Starred', href: ROUTES.STARRED },
@@ -51,8 +50,17 @@ const SETTINGS_NAV = [
   { icon: <User className="h-4 w-4" />, label: 'Account', href: '/settings/account' },
   { icon: <Globe className="h-4 w-4" />, label: 'Domains', href: '/settings/domains' },
   { icon: <Key className="h-4 w-4" />, label: 'API Keys', href: '/settings/api-keys' },
+  { icon: <Webhook className="h-4 w-4" />, label: 'Webhooks', href: '/settings/webhooks' },
   { icon: <PenLine className="h-4 w-4" />, label: 'Signatures', href: '/settings/signatures' },
+  { icon: <Filter className="h-4 w-4" />, label: 'Filters', href: '/settings/filters' },
   { icon: <Sparkles className="h-4 w-4" />, label: 'AI', href: '/settings/ai' },
+  { icon: <Lock className="h-4 w-4" />, label: 'Security', href: '/settings/security' },
+]
+
+const SETTINGS_ADMIN_NAV = [
+  { icon: <Users className="h-4 w-4" />, label: 'Users & Mailbox', href: '/settings/users' },
+  { icon: <SendHorizontal className="h-4 w-4" />, label: 'Sending Logs', href: '/settings/sending-logs' },
+  { icon: <LayoutTemplate className="h-4 w-4" />, label: 'Sending', href: '/settings/sending' },
 ]
 
 const ADMIN_NAV = [
@@ -82,14 +90,12 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
 
   return (
     <aside className={cn('flex h-full shrink-0', className)}>
-      {/* ── Panel 1: Icon rail (48px) ── */}
+      {/* ── Panel 1: Icon rail ── */}
       <div className="flex w-12 flex-col items-center border-r border-wm-border bg-wm-bg py-3 gap-1">
-        {/* Logo */}
         <Link href="/" className="mb-3 flex h-7 w-7 items-center justify-center bg-wm-accent">
           <span className="text-xs font-bold text-wm-text-on-accent">W</span>
         </Link>
 
-        {/* Module icons */}
         {MODULE_ICONS.map((mod) => {
           const Icon = mod.icon
           const isActive = activeModule === mod.id
@@ -113,16 +119,15 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
 
         <div className="flex-1" />
 
-        {/* User avatar */}
+        {/* Only avatar — no name/email */}
         <Avatar name={user.name} src={user.avatarUrl} size="sm" />
       </div>
 
       {/* ── Panel 2: Contextual navigation ── */}
       <div className="flex w-[180px] flex-col border-r border-wm-border bg-wm-surface">
-        {/* ── MAIL module ── */}
+        {/* ── MAIL ── */}
         {activeModule === 'mail' && (
           <>
-            {/* Compose button */}
             <div className="px-3 pt-3 pb-2">
               <Link
                 href="/compose"
@@ -131,6 +136,10 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
                 <Plus className="h-4 w-4" />
                 Compose
               </Link>
+            </div>
+
+            <div className="px-4 pb-1 pt-2">
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">MAIL</span>
             </div>
 
             <nav className="flex flex-col">
@@ -146,45 +155,27 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
               ))}
             </nav>
 
-            {/* Labels */}
             {labels.length > 0 && (
               <>
                 <div className="flex items-center justify-between px-4 pb-1 pt-4">
-                  <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
-                    LABELS
-                  </span>
+                  <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">LABELS</span>
                   <Plus className="h-3 w-3 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
                 </div>
                 <div className="flex flex-col">
                   {labels.map((label) => (
-                    <button
-                      key={label.name}
-                      className="flex items-center gap-2 px-5 py-1.5 text-left hover:bg-wm-surface-hover"
-                    >
+                    <button key={label.name} className="flex items-center gap-2 px-5 py-1.5 text-left hover:bg-wm-surface-hover">
                       <LabelDot color={label.color} label={label.name} />
                     </button>
                   ))}
                 </div>
               </>
             )}
-
-            <div className="flex-1" />
-
-            {/* User info */}
-            <div className="flex items-center gap-2 border-t border-wm-border px-3 py-3">
-              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
-                <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
-              </div>
-            </div>
           </>
         )}
 
-        {/* ── ADMIN module ── */}
+        {/* ── ADMIN ── */}
         {activeModule === 'admin' && (
           <>
-            {/* Invite User button */}
             <div className="px-3 pt-3 pb-2">
               <button className="flex w-full cursor-pointer items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-xs font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover">
                 <UserPlus className="h-4 w-4" />
@@ -193,65 +184,40 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
             </div>
 
             <div className="px-4 pb-1 pt-2">
-              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
-                ADMIN
-              </span>
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">ADMIN</span>
             </div>
 
             <nav className="flex flex-col">
               {ADMIN_NAV.map((item) => (
-                <NavItem
-                  key={item.href}
-                  icon={item.icon}
-                  label={item.label}
-                  href={item.href}
-                  active={pathname === item.href}
-                />
+                <NavItem key={item.href} icon={item.icon} label={item.label} href={item.href} active={pathname === item.href} />
               ))}
             </nav>
-
-            <div className="flex-1" />
-
-            <div className="flex items-center gap-2 border-t border-wm-border px-3 py-3">
-              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
-                <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
-              </div>
-            </div>
           </>
         )}
 
-        {/* ── SETTINGS module ── */}
+        {/* ── SETTINGS ── */}
         {activeModule === 'settings' && (
           <>
-            <div className="px-4 pt-4 pb-2">
-              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
-                SETTINGS
-              </span>
+            <div className="px-4 pt-4 pb-1">
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">SETTINGS</span>
             </div>
 
             <nav className="flex flex-col">
               {SETTINGS_NAV.map((item) => (
-                <NavItem
-                  key={item.href}
-                  icon={item.icon}
-                  label={item.label}
-                  href={item.href}
-                  active={pathname === item.href}
-                />
+                <NavItem key={item.href} icon={item.icon} label={item.label} href={item.href} active={pathname === item.href} />
               ))}
             </nav>
 
-            <div className="flex-1" />
-
-            <div className="flex items-center gap-2 border-t border-wm-border px-3 py-3">
-              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
-                <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
-              </div>
+            {/* Admin sub-section */}
+            <div className="px-4 pb-1 pt-4">
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">ADMIN</span>
             </div>
+
+            <nav className="flex flex-col">
+              {SETTINGS_ADMIN_NAV.map((item) => (
+                <NavItem key={item.href} icon={item.icon} label={item.label} href={item.href} active={pathname === item.href} />
+              ))}
+            </nav>
           </>
         )}
 
@@ -265,13 +231,6 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
             </div>
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4">
               <p className="text-center font-mono text-[11px] text-wm-text-muted">Coming soon</p>
-            </div>
-            <div className="flex items-center gap-2 border-t border-wm-border px-3 py-3">
-              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
-                <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
-              </div>
             </div>
           </>
         )}

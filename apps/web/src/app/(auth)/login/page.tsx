@@ -40,8 +40,8 @@ export default function LoginPage() {
     setErrors({})
 
     try {
-      await api.post('/api/v1/auth/login', { email, password })
-      router.push('/inbox')
+      const res = await api.post<{ user: { setupComplete: boolean } }>('/api/v1/auth/login', { email, password })
+      router.push(res.user.setupComplete ? '/inbox' : '/setup')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Invalid email or password'
       setErrors({ form: message })

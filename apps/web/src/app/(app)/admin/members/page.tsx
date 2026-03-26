@@ -44,7 +44,7 @@ export default function MembersPage() {
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-semibold text-wm-text-primary">Members</h1>
         <div className="flex-1" />
