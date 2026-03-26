@@ -11,6 +11,8 @@ import { templateRoutes } from './routes/templates.js'
 import { audienceRoutes } from './routes/audiences.js'
 import { analyticsRoutes } from './routes/analytics.js'
 import { authRoutes } from './routes/auth.js'
+import { setupRoutes } from './routes/setup.js'
+import { adminRoutes } from './routes/admin.js'
 
 export type AppEnv = {
   Variables: {
@@ -58,5 +60,7 @@ v1.route('/webhooks', webhookRoutes)
 v1.route('/templates', templateRoutes)
 v1.route('/audiences', audienceRoutes)
 v1.route('/analytics', analyticsRoutes)
+v1.route('/setup', setupRoutes)
+v1.route('/admin', adminRoutes)
 
 app.route('/api/v1', v1)
