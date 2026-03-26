@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { API_KEY_LENGTH, API_KEY_PREFIX } from './constants.js'
+import { API_KEY_LENGTH, API_KEY_PREFIX } from './constants'
 
 // ─── ID Generation ──────────────────────────────────────────────────────────
 

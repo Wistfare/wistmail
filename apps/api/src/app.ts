@@ -10,6 +10,7 @@ import { webhookRoutes } from './routes/webhooks.js'
 import { templateRoutes } from './routes/templates.js'
 import { audienceRoutes } from './routes/audiences.js'
 import { analyticsRoutes } from './routes/analytics.js'
+import { authRoutes } from './routes/auth.js'
 
 export type AppEnv = {
   Variables: {
@@ -23,7 +24,13 @@ export const app = new Hono<AppEnv>()
 
 // Global middleware
 app.use('*', logger())
-app.use('*', cors())
+app.use(
+  '*',
+  cors({
+    origin: ['http://localhost:3000', 'http://localhost:3001'],
+    credentials: true,
+  }),
+)
 app.use('*', prettyJSON())
 app.onError(errorHandler)
 
@@ -43,6 +50,7 @@ app.get('/health', (c) => {
 // API v1 routes
 const v1 = new Hono<AppEnv>()
 
+v1.route('/auth', authRoutes)
 v1.route('/emails', emailRoutes)
 v1.route('/domains', domainRoutes)
 v1.route('/api-keys', apiKeyRoutes)

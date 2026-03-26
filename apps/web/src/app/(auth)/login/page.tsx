@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Mail, Lock, EyeOff, Eye, ArrowRight } from 'lucide-react'
+import { api } from '@/lib/api-client'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
 
@@ -12,6 +14,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({})
+  const router = useRouter()
 
   function validate() {
     const newErrors: typeof errors = {}
@@ -37,11 +40,11 @@ export default function LoginPage() {
     setErrors({})
 
     try {
-      // TODO: Replace with actual auth API call
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      // router.push('/inbox')
-    } catch {
-      setErrors({ form: 'Invalid email or password' })
+      await api.post('/api/v1/auth/login', { email, password })
+      router.push('/inbox')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Invalid email or password'
+      setErrors({ form: message })
     } finally {
       setLoading(false)
     }
