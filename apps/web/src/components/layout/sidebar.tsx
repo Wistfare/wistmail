@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
-  Plus, Users, BarChart2, LayoutTemplate, Settings, Mail,
-  User, Globe, Key, PenLine, Sparkles, Building2, ScrollText, Users as UsersIcon,
+  Plus, Users, Settings, Mail, Shield,
+  User, Globe, Key, PenLine, Sparkles, Building2, ScrollText, UserPlus,
+  Search, Calendar,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
@@ -22,15 +23,18 @@ export interface SidebarProps {
   className?: string
 }
 
-type Module = 'mail' | 'contacts' | 'analytics' | 'templates' | 'settings'
+type Module = 'mail' | 'contacts' | 'search' | 'calendar' | 'settings' | 'admin'
 
 const MODULE_ICONS: Array<{ id: Module; icon: typeof Mail; label: string; href: string }> = [
   { id: 'mail', icon: Mail, label: 'Mail', href: ROUTES.INBOX },
   { id: 'contacts', icon: Users, label: 'Contacts', href: ROUTES.CONTACTS },
-  { id: 'analytics', icon: BarChart2, label: 'Analytics', href: ROUTES.ANALYTICS },
-  { id: 'templates', icon: LayoutTemplate, label: 'Templates', href: ROUTES.TEMPLATES },
+  { id: 'search', icon: Search, label: 'Search', href: ROUTES.SEARCH },
+  { id: 'calendar', icon: Calendar, label: 'Calendar', href: '/calendar' },
+  { id: 'admin', icon: Shield, label: 'Admin', href: '/admin/users' },
   { id: 'settings', icon: Settings, label: 'Settings', href: ROUTES.SETTINGS },
 ]
+
+// ── Panel 2 nav configs per module ──────────────────────────────────────────
 
 const MAIL_NAV = [
   { icon: <Inbox className="h-4 w-4" />, label: 'Inbox', href: ROUTES.INBOX, countKey: 'inbox' },
@@ -49,16 +53,22 @@ const SETTINGS_NAV = [
   { icon: <Key className="h-4 w-4" />, label: 'API Keys', href: '/settings/api-keys' },
   { icon: <PenLine className="h-4 w-4" />, label: 'Signatures', href: '/settings/signatures' },
   { icon: <Sparkles className="h-4 w-4" />, label: 'AI', href: '/settings/ai' },
+]
+
+const ADMIN_NAV = [
+  { icon: <Users className="h-4 w-4" />, label: 'Users', href: '/admin/users' },
+  { icon: <Shield className="h-4 w-4" />, label: 'Roles', href: '/admin/roles' },
   { icon: <Building2 className="h-4 w-4" />, label: 'Organization', href: '/admin/organization' },
-  { icon: <UsersIcon className="h-4 w-4" />, label: 'Members', href: '/admin/members' },
-  { icon: <ScrollText className="h-4 w-4" />, label: 'Audit Logs', href: '/admin/audit-logs' },
+  { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
+  { icon: <ScrollText className="h-4 w-4" />, label: 'Audit Log', href: '/admin/audit-logs' },
 ]
 
 function detectModule(pathname: string): Module {
-  if (pathname.startsWith('/settings') || pathname.startsWith('/admin')) return 'settings'
+  if (pathname.startsWith('/admin')) return 'admin'
+  if (pathname.startsWith('/settings')) return 'settings'
   if (pathname.startsWith('/contacts')) return 'contacts'
-  if (pathname.startsWith('/analytics')) return 'analytics'
-  if (pathname.startsWith('/templates')) return 'templates'
+  if (pathname.startsWith('/search')) return 'search'
+  if (pathname.startsWith('/calendar')) return 'calendar'
   return 'mail'
 }
 
@@ -66,65 +76,63 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
   const pathname = usePathname()
   const [activeModule, setActiveModule] = useState<Module>(detectModule(pathname))
 
+  useEffect(() => {
+    setActiveModule(detectModule(pathname))
+  }, [pathname])
+
   return (
-    <aside className={cn('flex h-full', className)}>
-      {/* ── Panel 1: Module icon rail ── */}
-      <div className="flex w-14 shrink-0 flex-col items-center border-r border-wm-border bg-wm-bg py-4">
+    <aside className={cn('flex h-full shrink-0', className)}>
+      {/* ── Panel 1: Icon rail (48px) ── */}
+      <div className="flex w-12 flex-col items-center border-r border-wm-border bg-wm-bg py-3 gap-1">
         {/* Logo */}
-        <div className="mb-4 flex h-8 w-8 items-center justify-center bg-wm-accent">
-          <span className="text-sm font-bold text-wm-text-on-accent">W</span>
-        </div>
+        <Link href="/" className="mb-3 flex h-7 w-7 items-center justify-center bg-wm-accent">
+          <span className="text-xs font-bold text-wm-text-on-accent">W</span>
+        </Link>
 
         {/* Module icons */}
-        <div className="flex flex-col gap-1">
-          {MODULE_ICONS.map((mod) => {
-            const Icon = mod.icon
-            const isActive = activeModule === mod.id
-            return (
-              <Link
-                key={mod.id}
-                href={mod.href}
-                onClick={() => setActiveModule(mod.id)}
-                className={cn(
-                  'flex h-10 w-10 items-center justify-center transition-colors',
-                  isActive
-                    ? 'bg-wm-accent/15 text-wm-accent'
-                    : 'text-wm-text-muted hover:bg-wm-surface-hover hover:text-wm-text-secondary',
-                )}
-                title={mod.label}
-              >
-                <Icon className="h-5 w-5" />
-              </Link>
-            )
-          })}
-        </div>
+        {MODULE_ICONS.map((mod) => {
+          const Icon = mod.icon
+          const isActive = activeModule === mod.id
+          return (
+            <Link
+              key={mod.id}
+              href={mod.href}
+              onClick={() => setActiveModule(mod.id)}
+              className={cn(
+                'flex h-9 w-9 items-center justify-center transition-colors',
+                isActive
+                  ? 'bg-wm-accent/15 text-wm-accent'
+                  : 'text-wm-text-muted hover:bg-wm-surface-hover hover:text-wm-text-secondary',
+              )}
+              title={mod.label}
+            >
+              <Icon className="h-[18px] w-[18px]" />
+            </Link>
+          )
+        })}
 
         <div className="flex-1" />
 
-        {/* User avatar at bottom */}
+        {/* User avatar */}
         <Avatar name={user.name} src={user.avatarUrl} size="sm" />
       </div>
 
       {/* ── Panel 2: Contextual navigation ── */}
-      <div className="flex w-52 shrink-0 flex-col border-r border-wm-border bg-wm-surface">
-        {/* Module title + compose */}
-        <div className="px-4 pt-5 pb-3">
-          <span className="font-mono text-xs font-semibold tracking-[2px] text-wm-text-muted">
-            {activeModule === 'mail' ? 'MAIL' : activeModule.toUpperCase()}
-          </span>
-        </div>
-
+      <div className="flex w-[180px] flex-col border-r border-wm-border bg-wm-surface">
+        {/* ── MAIL module ── */}
         {activeModule === 'mail' && (
           <>
             {/* Compose button */}
-            <div className="px-3 pb-3">
-              <button className="flex w-full cursor-pointer items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-xs font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover">
+            <div className="px-3 pt-3 pb-2">
+              <Link
+                href="/compose"
+                className="flex w-full items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-xs font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
+              >
                 <Plus className="h-4 w-4" />
                 Compose
-              </button>
+              </Link>
             </div>
 
-            {/* Mail nav items */}
             <nav className="flex flex-col">
               {MAIL_NAV.map((item) => (
                 <NavItem
@@ -141,8 +149,8 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
             {/* Labels */}
             {labels.length > 0 && (
               <>
-                <div className="flex items-center justify-between px-4 pb-1 pt-5">
-                  <span className="font-mono text-[10px] font-semibold tracking-[2px] text-wm-text-muted">
+                <div className="flex items-center justify-between px-4 pb-1 pt-4">
+                  <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
                     LABELS
                   </span>
                   <Plus className="h-3 w-3 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
@@ -162,73 +170,111 @@ export function Sidebar({ user, unreadCounts = {}, labels = [], className }: Sid
 
             <div className="flex-1" />
 
-            {/* Chat section */}
-            <div className="flex items-center justify-between px-4 pb-1">
-              <span className="font-mono text-[10px] font-semibold tracking-[2px] text-wm-text-muted">
-                CHAT
-              </span>
-              <Plus className="h-3 w-3 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
-            </div>
-            <div className="flex flex-col gap-0.5 px-3 pb-3">
-              <div className="flex items-center gap-2 px-2 py-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-wm-accent" />
-                <span className="font-mono text-[11px] text-wm-text-secondary">Alex Johnson</span>
-                <span className="flex-1" />
-                <span className="font-mono text-[9px] text-wm-accent">Online</span>
-              </div>
-              <div className="flex items-center gap-2 px-2 py-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-wm-warning" />
-                <span className="font-mono text-[11px] text-wm-text-secondary">Sarah Chen</span>
-                <span className="flex-1" />
-                <span className="font-mono text-[9px] text-wm-warning">Away</span>
+            {/* User info */}
+            <div className="flex items-center gap-2 border-t border-wm-border px-3 py-3">
+              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
+                <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
               </div>
             </div>
           </>
         )}
 
+        {/* ── ADMIN module ── */}
+        {activeModule === 'admin' && (
+          <>
+            {/* Invite User button */}
+            <div className="px-3 pt-3 pb-2">
+              <button className="flex w-full cursor-pointer items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-xs font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover">
+                <UserPlus className="h-4 w-4" />
+                Invite User
+              </button>
+            </div>
+
+            <div className="px-4 pb-1 pt-2">
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
+                ADMIN
+              </span>
+            </div>
+
+            <nav className="flex flex-col">
+              {ADMIN_NAV.map((item) => (
+                <NavItem
+                  key={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  href={item.href}
+                  active={pathname === item.href}
+                />
+              ))}
+            </nav>
+
+            <div className="flex-1" />
+
+            <div className="flex items-center gap-2 border-t border-wm-border px-3 py-3">
+              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
+                <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── SETTINGS module ── */}
         {activeModule === 'settings' && (
-          <nav className="flex flex-col">
-            {SETTINGS_NAV.map((item) => (
-              <NavItem
-                key={item.href}
-                icon={item.icon}
-                label={item.label}
-                href={item.href}
-                active={pathname === item.href}
-              />
-            ))}
-          </nav>
+          <>
+            <div className="px-4 pt-4 pb-2">
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
+                SETTINGS
+              </span>
+            </div>
+
+            <nav className="flex flex-col">
+              {SETTINGS_NAV.map((item) => (
+                <NavItem
+                  key={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  href={item.href}
+                  active={pathname === item.href}
+                />
+              ))}
+            </nav>
+
+            <div className="flex-1" />
+
+            <div className="flex items-center gap-2 border-t border-wm-border px-3 py-3">
+              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
+                <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
+              </div>
+            </div>
+          </>
         )}
 
-        {activeModule === 'contacts' && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4">
-            <Users className="h-8 w-8 text-wm-text-muted" />
-            <p className="text-center font-mono text-xs text-wm-text-tertiary">Contacts coming soon</p>
-          </div>
+        {/* ── Placeholder modules ── */}
+        {(activeModule === 'contacts' || activeModule === 'search' || activeModule === 'calendar') && (
+          <>
+            <div className="px-4 pt-4 pb-2">
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
+                {activeModule.toUpperCase()}
+              </span>
+            </div>
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4">
+              <p className="text-center font-mono text-[11px] text-wm-text-muted">Coming soon</p>
+            </div>
+            <div className="flex items-center gap-2 border-t border-wm-border px-3 py-3">
+              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
+                <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
+              </div>
+            </div>
+          </>
         )}
-
-        {activeModule === 'analytics' && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4">
-            <BarChart2 className="h-8 w-8 text-wm-text-muted" />
-            <p className="text-center font-mono text-xs text-wm-text-tertiary">Analytics coming soon</p>
-          </div>
-        )}
-
-        {activeModule === 'templates' && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4">
-            <LayoutTemplate className="h-8 w-8 text-wm-text-muted" />
-            <p className="text-center font-mono text-xs text-wm-text-tertiary">Templates coming soon</p>
-          </div>
-        )}
-
-        {/* User info at bottom */}
-        <div className="flex items-center gap-2.5 border-t border-wm-border px-3 py-3">
-          <Avatar name={user.name} src={user.avatarUrl} size="sm" />
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-xs font-semibold text-wm-text-primary">{user.name}</span>
-            <span className="truncate font-mono text-[10px] text-wm-text-tertiary">{user.email}</span>
-          </div>
-        </div>
       </div>
     </aside>
   )
