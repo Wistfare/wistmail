@@ -1,20 +1,41 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { Sidebar } from '@/components/layout/sidebar'
+import { api } from '@/lib/api-client'
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<{
+    name: string
+    email: string
+    avatarUrl?: string
+  } | null>(null)
+
+  useEffect(() => {
+    api
+      .get<{ user: { name: string; email: string; avatarUrl: string | null } | null }>(
+        '/api/v1/auth/session',
+      )
+      .then((res) => {
+        if (res.user) {
+          setUser({
+            name: res.user.name,
+            email: res.user.email,
+            avatarUrl: res.user.avatarUrl ?? undefined,
+          })
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar placeholder — will be built in PR #2 */}
-      <aside className="hidden lg:flex w-60 flex-col border-r border-wm-border bg-wm-surface">
-        <div className="flex items-center gap-2.5 px-4 py-6">
-          <div className="flex h-7 w-7 items-center justify-center bg-wm-accent">
-            <span className="text-wm-text-on-accent text-base font-bold">W</span>
-          </div>
-          <span className="font-mono text-sm font-semibold tracking-[3px] text-wm-text-primary">
-            WISTMAIL
-          </span>
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <main className="flex-1 overflow-hidden">{children}</main>
+      <Sidebar
+        user={user || { name: '', email: '' }}
+        activeRoute="/inbox"
+        unreadCounts={{ inbox: 0 }}
+      />
+      <main className="flex-1 overflow-y-auto">{children}</main>
     </div>
   )
 }
