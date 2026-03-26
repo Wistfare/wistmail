@@ -1,3 +1,12 @@
+import { Shield, Sparkles, Code, Zap } from 'lucide-react'
+
+const features = [
+  { icon: Shield, text: 'Self-hosted SMTP & IMAP — own your data' },
+  { icon: Sparkles, text: 'AI-powered inbox with smart categorization' },
+  { icon: Code, text: 'Transactional API with SDKs for 8+ languages' },
+  { icon: Zap, text: 'Deploy in 5 minutes with Docker' },
+]
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
@@ -19,17 +28,15 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </p>
 
         <div className="flex flex-col gap-4 max-w-sm">
-          {[
-            { icon: 'shield', text: 'Self-hosted SMTP & IMAP — own your data' },
-            { icon: 'sparkles', text: 'AI-powered inbox with smart categorization' },
-            { icon: 'code', text: 'Transactional API with SDKs for 8+ languages' },
-            { icon: 'zap', text: 'Deploy in 5 minutes with Docker' },
-          ].map((feature) => (
-            <div key={feature.icon} className="flex items-center gap-3">
-              <div className="h-5 w-5 text-wm-accent" />
-              <span className="font-mono text-xs text-wm-text-tertiary">{feature.text}</span>
-            </div>
-          ))}
+          {features.map((feature) => {
+            const Icon = feature.icon
+            return (
+              <div key={feature.text} className="flex items-center gap-3">
+                <Icon className="h-5 w-5 shrink-0 text-wm-accent" />
+                <span className="font-mono text-xs text-wm-text-tertiary">{feature.text}</span>
+              </div>
+            )
+          })}
         </div>
       </div>
 
