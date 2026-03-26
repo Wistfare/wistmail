@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { eq } from 'drizzle-orm'
 import { ValidationError } from '@wistmail/shared'
+import { users } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { DomainService } from '../services/domain.js'
 import { MailboxService } from '../services/mailbox.js'
@@ -129,4 +131,39 @@ setupRoutes.get('/mailboxes', async (c) => {
   const mailboxService = new MailboxService(db)
   const result = await mailboxService.list(c.get('userId'))
   return c.json({ data: result })
+})
+
+const stepSchema = z.object({
+  step: z.enum(['domain', 'dns', 'mailbox', 'done']),
+})
+
+/**
+ * PATCH /api/v1/setup/step
+ * Update the user's current setup step (for resume on re-visit).
+ */
+setupRoutes.patch('/step', async (c) => {
+  const body = await c.req.json()
+  const parsed = stepSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new ValidationError('Invalid step')
+  }
+
+  const db = getDb()
+  await db.update(users).set({ setupStep: parsed.data.step }).where(eq(users.id, c.get('userId')))
+
+  return c.json({ step: parsed.data.step })
+})
+
+/**
+ * POST /api/v1/setup/complete
+ * Mark setup as complete — user can now access the app.
+ */
+setupRoutes.post('/complete', async (c) => {
+  const db = getDb()
+  await db
+    .update(users)
+    .set({ setupComplete: true, setupStep: 'done' })
+    .where(eq(users.id, c.get('userId')))
+
+  return c.json({ setupComplete: true })
 })

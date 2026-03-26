@@ -399,6 +399,19 @@ function StepMailbox({
 // ── Step 4: Done ────────────────────────────────────────────────────────────
 
 function StepDone({ router }: { router: ReturnType<typeof useRouter> }) {
+  const [completing, setCompleting] = useState(false)
+
+  async function handleComplete() {
+    setCompleting(true)
+    try {
+      await api.post('/api/v1/setup/complete')
+      router.push('/inbox')
+    } catch {
+      // Still redirect — the user completed all steps
+      router.push('/inbox')
+    }
+  }
+
   return (
     <div className="flex flex-col items-center gap-8 text-center">
       <div className="flex h-16 w-16 items-center justify-center bg-wm-accent">
@@ -413,7 +426,8 @@ function StepDone({ router }: { router: ReturnType<typeof useRouter> }) {
       <Button
         type="button"
         variant="primary"
-        onClick={() => router.push('/inbox')}
+        onClick={handleComplete}
+        loading={completing}
         icon={<ArrowRight className="h-4 w-4" />}
         className="w-full"
       >
