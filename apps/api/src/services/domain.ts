@@ -57,6 +57,96 @@ export class DomainService {
     }
   }
 
+  async createWithoutUser(name: string) {
+    const domainName = name.trim().toLowerCase()
+
+    if (!isValidDomain(domainName)) {
+      throw new ValidationError('Invalid domain name')
+    }
+
+    const existing = await this.db
+      .select()
+      .from(domains)
+      .where(eq(domains.name, domainName))
+      .limit(1)
+    if (existing.length > 0) {
+      throw new ConflictError('Domain already registered')
+    }
+
+    const { privateKey, publicKeyDns } = await generateDkimKeyPair()
+    const domainId = generateId('dom')
+    const now = new Date()
+
+    await this.db.insert(domains).values({
+      id: domainId,
+      name: domainName,
+      userId: null,
+      status: 'pending',
+      dkimSelector: DKIM_SELECTOR,
+      dkimPrivateKey: privateKey,
+      dkimPublicKey: publicKeyDns,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    return {
+      id: domainId,
+      name: domainName,
+      status: 'pending' as const,
+      records: this.getDnsRecords(domainName, publicKeyDns),
+    }
+  }
+
+  async verifyById(domainId: string) {
+    const result = await this.db.select().from(domains).where(eq(domains.id, domainId)).limit(1)
+    if (result.length === 0) {
+      throw new NotFoundError('Domain', domainId)
+    }
+
+    const domain = result[0]
+    const checks = {
+      mx: await this.checkMx(domain.name),
+      spf: await this.checkSpf(domain.name),
+      dkim: await this.checkDkim(domain.name, domain.dkimSelector),
+      dmarc: await this.checkDmarc(domain.name),
+    }
+
+    const allVerified = checks.mx && checks.spf && checks.dkim && checks.dmarc
+    const newStatus = allVerified ? 'active' : 'verifying'
+
+    await this.db
+      .update(domains)
+      .set({
+        mxVerified: checks.mx,
+        spfVerified: checks.spf,
+        dkimVerified: checks.dkim,
+        dmarcVerified: checks.dmarc,
+        verified: allVerified,
+        status: newStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(domains.id, domainId))
+
+    return { ...checks, verified: allVerified, status: newStatus }
+  }
+
+  async getRecordsById(domainId: string) {
+    const result = await this.db.select().from(domains).where(eq(domains.id, domainId)).limit(1)
+    if (result.length === 0) {
+      throw new NotFoundError('Domain', domainId)
+    }
+    const domain = result[0]
+    return {
+      id: domain.id,
+      name: domain.name,
+      records: this.getDnsRecords(domain.name, domain.dkimPublicKey || ''),
+      mx: domain.mxVerified,
+      spf: domain.spfVerified,
+      dkim: domain.dkimVerified,
+      dmarc: domain.dmarcVerified,
+    }
+  }
+
   async list(userId: string) {
     return this.db.select().from(domains).where(eq(domains.userId, userId))
   }
