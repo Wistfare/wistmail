@@ -1,5 +1,5 @@
 import { eq, and, desc, sql, like, or } from 'drizzle-orm'
-import { emails, threads, attachments, mailboxes, labels, emailLabels } from '@wistmail/db'
+import { emails, attachments, mailboxes } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 
@@ -208,7 +208,7 @@ export class EmailService {
     return result
   }
 
-  async createDraft(userId: string, data: {
+  async createDraft(_userId: string, data: {
     fromAddress: string
     toAddresses: string[]
     cc?: string[]
