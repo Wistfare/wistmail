@@ -5,17 +5,6 @@ import { ValidationError } from '@wistmail/shared'
 import { AuthService } from '../services/auth.js'
 import { getDb } from '../lib/db.js'
 
-const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(255),
-  email: z.string().email('Invalid email address'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .regex(/[A-Z]/, 'Must include an uppercase letter')
-    .regex(/[a-z]/, 'Must include a lowercase letter')
-    .regex(/\d/, 'Must include a number'),
-})
-
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
@@ -27,35 +16,8 @@ const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 // 30 days in seconds
 export const authRoutes = new Hono()
 
 /**
- * POST /api/v1/auth/register
- */
-authRoutes.post('/register', async (c) => {
-  const body = await c.req.json()
-  const parsed = registerSchema.safeParse(body)
-
-  if (!parsed.success) {
-    throw new ValidationError('Invalid input', {
-      errors: parsed.error.flatten().fieldErrors,
-    })
-  }
-
-  const db = getDb()
-  const auth = new AuthService(db)
-  const { userId, session } = await auth.register(parsed.data)
-
-  setCookie(c, COOKIE_NAME, session.token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: COOKIE_MAX_AGE,
-  })
-
-  return c.json({ id: userId }, 201)
-})
-
-/**
  * POST /api/v1/auth/login
+ * User logs in with their mailbox email (e.g., vedadom@wistfare.com)
  */
 authRoutes.post('/login', async (c) => {
   const body = await c.req.json()
@@ -84,6 +46,7 @@ authRoutes.post('/login', async (c) => {
 
 /**
  * GET /api/v1/auth/session
+ * Validate session and return current user.
  */
 authRoutes.get('/session', async (c) => {
   const token = getCookie(c, COOKIE_NAME)

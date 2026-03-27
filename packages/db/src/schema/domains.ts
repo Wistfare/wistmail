@@ -4,9 +4,7 @@ import { users } from './users'
 export const domains = pgTable('domains', {
   id: varchar('id', { length: 64 }).primaryKey(),
   name: varchar('name', { length: 255 }).notNull().unique(),
-  userId: varchar('user_id', { length: 64 })
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 64 }).references(() => users.id, { onDelete: 'cascade' }),
   verified: boolean('verified').notNull().default(false),
   status: varchar('status', { length: 20 }).notNull().default('pending'),
   dkimPublicKey: text('dkim_public_key'),

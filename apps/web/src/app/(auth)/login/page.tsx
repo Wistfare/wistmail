@@ -126,9 +126,9 @@ export default function LoginPage() {
         </Button>
 
         <p className="text-center font-mono text-xs text-wm-text-muted">
-          New to WistMail?{' '}
-          <Link href="/register" className="font-medium text-wm-accent hover:underline">
-            Create an account
+          First time?{' '}
+          <Link href="/setup" className="font-medium text-wm-accent hover:underline">
+            Set up your domain
           </Link>
         </p>
       </div>
