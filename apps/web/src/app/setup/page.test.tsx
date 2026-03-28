@@ -118,9 +118,9 @@ describe('SetupPage', () => {
     })
   })
 
-  it('renders WISTMAIL branding', () => {
+  it('renders WISTFARE MAIL branding', () => {
     render(<SetupPage />)
-    expect(screen.getByText('WISTMAIL')).toBeInTheDocument()
+    expect(screen.getByText('WISTFARE MAIL')).toBeInTheDocument()
     expect(screen.getByText('W')).toBeInTheDocument()
   })
 

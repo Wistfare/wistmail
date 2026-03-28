@@ -20,7 +20,7 @@ function createRateLimitedApp(maxRequests: number, windowMs: number = 1000) {
   return testApp
 }
 
-const authHeaders = { Authorization: 'Bearer wm_ratelimit_test_key_unique' }
+const authHeaders = { 'X-API-Key': 'wm_ratelimit_test_key_unique' }
 
 describe('Rate Limit Middleware', () => {
   it('allows requests under the limit and sets rate limit headers', async () => {
@@ -35,7 +35,7 @@ describe('Rate Limit Middleware', () => {
 
   it('decrements remaining count with each request', async () => {
     const testApp = createRateLimitedApp(5)
-    const headers = { Authorization: 'Bearer wm_decrement_test_key_abc' }
+    const headers = { 'X-API-Key': 'wm_decrement_test_key_abc' }
 
     const res1 = await testApp.request('/test', { headers })
     expect(res1.headers.get('X-RateLimit-Remaining')).toBe('4')
@@ -49,7 +49,7 @@ describe('Rate Limit Middleware', () => {
 
   it('returns 429 when limit is exceeded', async () => {
     const testApp = createRateLimitedApp(2)
-    const headers = { Authorization: 'Bearer wm_exceed_test_key_xyz' }
+    const headers = { 'X-API-Key': 'wm_exceed_test_key_xyz' }
 
     // First two requests should pass
     const res1 = await testApp.request('/test', { headers })
@@ -67,7 +67,7 @@ describe('Rate Limit Middleware', () => {
 
   it('includes Retry-After header when rate limited', async () => {
     const testApp = createRateLimitedApp(1)
-    const headers = { Authorization: 'Bearer wm_retry_after_test_key' }
+    const headers = { 'X-API-Key': 'wm_retry_after_test_key' }
 
     await testApp.request('/test', { headers })
     const res = await testApp.request('/test', { headers })
@@ -80,7 +80,7 @@ describe('Rate Limit Middleware', () => {
 
   it('sets remaining to 0 when rate limited', async () => {
     const testApp = createRateLimitedApp(1)
-    const headers = { Authorization: 'Bearer wm_remaining_zero_test' }
+    const headers = { 'X-API-Key': 'wm_remaining_zero_test' }
 
     await testApp.request('/test', { headers })
     const res = await testApp.request('/test', { headers })
@@ -91,8 +91,8 @@ describe('Rate Limit Middleware', () => {
 
   it('tracks different API keys independently', async () => {
     const testApp = createRateLimitedApp(1)
-    const headersA = { Authorization: 'Bearer wm_independent_key_aaa' }
-    const headersB = { Authorization: 'Bearer wm_independent_key_bbb' }
+    const headersA = { 'X-API-Key': 'wm_independent_key_aaa' }
+    const headersB = { 'X-API-Key': 'wm_independent_key_bbb' }
 
     // Key A: first request passes
     const resA1 = await testApp.request('/test', { headers: headersA })
@@ -112,7 +112,7 @@ describe('Rate Limit Middleware', () => {
     try {
       const windowMs = 500
       const testApp = createRateLimitedApp(1, windowMs)
-      const headers = { Authorization: 'Bearer wm_window_reset_test' }
+      const headers = { 'X-API-Key': 'wm_window_reset_test' }
 
       const res1 = await testApp.request('/test', { headers })
       expect(res1.status).toBe(200)
@@ -134,7 +134,7 @@ describe('Rate Limit Middleware', () => {
 
   it('returns correct X-RateLimit-Limit value matching configured max', async () => {
     const testApp = createRateLimitedApp(42)
-    const headers = { Authorization: 'Bearer wm_limit_value_test' }
+    const headers = { 'X-API-Key': 'wm_limit_value_test' }
 
     const res = await testApp.request('/test', { headers })
     expect(res.headers.get('X-RateLimit-Limit')).toBe('42')

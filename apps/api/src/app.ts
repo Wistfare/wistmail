@@ -41,7 +41,7 @@ app.onError(errorHandler)
 // Health check
 app.get('/', (c) => {
   return c.json({
-    name: 'WistMail API',
+    name: 'Wistfare Mail API',
     version: '0.1.0',
     status: 'healthy',
   })

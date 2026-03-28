@@ -1,23 +1,11 @@
 ---
 title: Quickstart
-description: Send your first email with WistMail in under 5 minutes.
+description: Send your first email with Wistfare Mail in under 5 minutes.
 ---
 
 ## 1. Get Your API Key
 
-After setting up WistMail, create an API key from **Settings > API Keys** in the web dashboard, or use the API:
-
-```bash title="Create an API key"
-curl -X POST https://your-wistmail.com/api/v1/api-keys \
-  -H "Cookie: wm_session=your_session_token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "My App",
-    "scopes": ["emails:send", "emails:read"]
-  }'
-```
-
-Your API key will look like: `wm_a1b2c3d4e5f6...`
+Log in to the Wistfare Mail dashboard, go to **Settings > API Keys**, and create a new key with the `emails:send` scope. Your key will look like `wm_a1b2c3d4e5f6...` — copy it, you will only see it once.
 
 ## 2. Install the SDK
 
@@ -33,7 +21,7 @@ pip install wistmail
 ```
 </Tab>
 <Tab value="cURL">
-No installation needed. Use any HTTP client.
+No installation needed — use any HTTP client.
 </Tab>
 </Tabs>
 
@@ -46,13 +34,13 @@ import { WistMail } from 'wistmail'
 
 const wm = new WistMail({
   apiKey: 'wm_your_api_key',
-  baseUrl: 'https://your-wistmail.com',
+  baseUrl: 'https://your-wistfare.com',
 })
 
 const { id } = await wm.emails.send({
   from: 'hello@yourdomain.com',
   to: 'recipient@example.com',
-  subject: 'Hello from WistMail!',
+  subject: 'Hello from Wistfare Mail!',
   html: '<h1>It works!</h1><p>Your email infrastructure is live.</p>',
 })
 
@@ -65,13 +53,13 @@ from wistmail import WistMail
 
 wm = WistMail(
     api_key="wm_your_api_key",
-    base_url="https://your-wistmail.com",
+    base_url="https://your-wistfare.com",
 )
 
 result = wm.emails.send(
     from_address="hello@yourdomain.com",
     to="recipient@example.com",
-    subject="Hello from WistMail!",
+    subject="Hello from Wistfare Mail!",
     html="<h1>It works!</h1><p>Your email infrastructure is live.</p>",
 )
 
@@ -80,47 +68,84 @@ print("Email sent:", result["id"])  # eml_abc123...
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://your-wistmail.com/api/v1/emails \
-  -H "Authorization: Bearer wm_your_api_key" \
+curl -X POST https://your-wistfare.com/api/v1/emails \
+  -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "from": "hello@yourdomain.com",
     "to": "recipient@example.com",
-    "subject": "Hello from WistMail!",
+    "subject": "Hello from Wistfare Mail!",
     "html": "<h1>It works!</h1><p>Your email infrastructure is live.</p>"
   }'
 ```
 </Tab>
 </Tabs>
 
-## 4. Check Email Status
+## 4. Check Delivery Status
 
 <Tabs items={["Node.js", "Python", "cURL"]}>
 <Tab value="Node.js">
 ```typescript
 const status = await wm.emails.get('eml_abc123')
-console.log(status.status) // 'delivered'
+console.log(status.status)      // 'delivered'
 console.log(status.deliveredAt) // '2026-03-28T12:00:00Z'
 ```
 </Tab>
 <Tab value="Python">
 ```python
 status = wm.emails.get("eml_abc123")
-print(status["status"])  # 'delivered'
+print(status["status"])       # 'delivered'
 print(status["deliveredAt"])  # '2026-03-28T12:00:00Z'
 ```
 </Tab>
 <Tab value="cURL">
 ```bash
-curl https://your-wistmail.com/api/v1/emails/eml_abc123 \
-  -H "Authorization: Bearer wm_your_api_key"
+curl https://your-wistfare.com/api/v1/emails/eml_abc123 \
+  -H "X-API-Key: wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+## 5. Set Up Webhooks (Optional)
+
+Receive real-time delivery events by creating a webhook endpoint:
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const webhook = await wm.webhooks.create({
+  url: 'https://yourapp.com/webhooks/email',
+  events: ['email.delivered', 'email.bounced', 'email.opened'],
+})
+
+console.log(webhook.secret) // whsec_... — use this to verify signatures
+```
+</Tab>
+<Tab value="Python">
+```python
+webhook = wm.webhooks.create(
+    url="https://yourapp.com/webhooks/email",
+    events=["email.delivered", "email.bounced", "email.opened"],
+)
+
+print(webhook["secret"])  # whsec_... — use this to verify signatures
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistfare.com/api/v1/webhooks \
+  -H "X-API-Key: wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://yourapp.com/webhooks/email",
+    "events": ["email.delivered", "email.bounced", "email.opened"]
+  }'
 ```
 </Tab>
 </Tabs>
 
 ## Next Steps
 
-- [Authentication](/docs/authentication) — API key scopes and security
-- [Sending Emails](/docs/api/sending) — Full sending API reference
-- [Domains](/docs/api/domains) — Add and verify your domains
-- [Webhooks](/docs/api/webhooks) — Track delivery events in real-time
+- [Sending Emails](/docs/api/sending) — full sending API reference with batch support
+- [Webhooks](/docs/api/webhooks) — all webhook events and signature verification
+- [Audiences](/docs/api/audiences) — manage contact lists and subscriptions

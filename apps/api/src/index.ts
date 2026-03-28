@@ -8,4 +8,4 @@ serve({
   port,
 })
 
-console.log(`WistMail API running on http://localhost:${port}`)
+console.log(`Wistfare Mail API running on http://localhost:${port}`)

@@ -61,67 +61,6 @@ export interface EmailStatusResponse {
   bouncedAt: string | null
 }
 
-// ─── Domains ───────────────────────────────────────────────────────────────
-
-export type DomainStatus = 'pending' | 'verifying' | 'active' | 'failed' | 'suspended'
-
-export interface DnsRecord {
-  type: 'MX' | 'TXT' | 'CNAME'
-  name: string
-  value: string
-  priority?: number
-  verified: boolean
-}
-
-export interface Domain {
-  id: string
-  name: string
-  status: DomainStatus
-  records: DnsRecord[]
-  createdAt: string
-}
-
-export interface DomainVerification {
-  mx: boolean
-  spf: boolean
-  dkim: boolean
-  dmarc: boolean
-  verified: boolean
-  status: DomainStatus
-}
-
-// ─── Templates ─────────────────────────────────────────────────────────────
-
-export interface TemplateVariable {
-  name: string
-  defaultValue?: string | null
-  required?: boolean
-}
-
-export interface Template {
-  id: string
-  name: string
-  subject: string
-  html: string
-  variables: TemplateVariable[]
-  createdAt: string
-  updatedAt: string
-}
-
-export interface CreateTemplateParams {
-  name: string
-  subject: string
-  html: string
-  variables?: TemplateVariable[]
-}
-
-export interface UpdateTemplateParams {
-  name?: string
-  subject?: string
-  html?: string
-  variables?: TemplateVariable[]
-}
-
 // ─── Webhooks ──────────────────────────────────────────────────────────────
 
 export type WebhookEvent =
@@ -184,22 +123,6 @@ export interface UpdateContactParams {
   name?: string
   metadata?: Record<string, unknown>
   topics?: string[]
-}
-
-// ─── Analytics ─────────────────────────────────────────────────────────────
-
-export interface AnalyticsOverview {
-  sent: number
-  delivered: number
-  opened: number
-  clicked: number
-  bounced: number
-  complained: number
-  deliveryRate: number
-  openRate: number
-  clickRate: number
-  bounceRate: number
-  period: { from: string; to: string }
 }
 
 // ─── Pagination ────────────────────────────────────────────────────────────

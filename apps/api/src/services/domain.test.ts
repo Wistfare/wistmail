@@ -60,7 +60,7 @@ describe('DKIM_SELECTOR constant', () => {
 })
 
 describe('Domain Routes - DNS Record Generation', () => {
-  const authHeaders = { Authorization: 'Bearer wm_domain_test_key_abc123' }
+  const authHeaders = { 'X-API-Key': 'wm_domain_test_key_abc123' }
 
   it('POST /api/v1/domains returns 4 DNS records (MX, SPF, DKIM, DMARC)', async () => {
     const res = await app.request('/api/v1/domains', {
@@ -176,7 +176,7 @@ describe('Domain Routes - DNS Record Generation', () => {
 })
 
 describe('Domain Routes - Validation', () => {
-  const authHeaders = { Authorization: 'Bearer wm_domain_validation_key' }
+  const authHeaders = { 'X-API-Key': 'wm_domain_validation_key' }
 
   it('rejects invalid domain format', async () => {
     const res = await app.request('/api/v1/domains', {
@@ -225,7 +225,7 @@ describe('Domain Routes - Validation', () => {
 })
 
 describe('Domain Routes - DNS Check Error Handling', () => {
-  const authHeaders = { Authorization: 'Bearer wm_dns_check_test_key' }
+  const authHeaders = { 'X-API-Key': 'wm_dns_check_test_key' }
 
   it('GET /api/v1/domains lists domains without error', async () => {
     const res = await app.request('/api/v1/domains', {

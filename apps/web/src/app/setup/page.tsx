@@ -146,7 +146,7 @@ export default function SetupPage() {
           <div className="flex h-10 w-10 items-center justify-center bg-wm-accent">
             <span className="text-lg font-bold text-wm-text-on-accent">W</span>
           </div>
-          <span className="font-mono text-xl font-semibold tracking-[3px] text-wm-text-primary">WISTMAIL</span>
+          <span className="font-mono text-xl font-semibold tracking-[3px] text-wm-text-primary">WISTFARE MAIL</span>
         </div>
 
         {/* Steps */}

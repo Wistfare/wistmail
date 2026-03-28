@@ -1,6 +1,6 @@
 ---
 title: Sending Emails
-description: Send single and batch transactional emails with the WistMail API.
+description: Send single and batch transactional emails with the Wistfare Mail API.
 ---
 
 ## Send a Single Email
@@ -72,7 +72,7 @@ result = wm.emails.send(
 <Tab value="cURL">
 ```bash
 curl -X POST https://your-wistmail.com/api/v1/emails \
-  -H "Authorization: Bearer wm_your_api_key" \
+  -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "from": "notifications@yourdomain.com",
@@ -145,7 +145,7 @@ print(result["ids"])  # ['eml_xxx', 'eml_yyy']
 <Tab value="cURL">
 ```bash
 curl -X POST https://your-wistmail.com/api/v1/emails/batch \
-  -H "Authorization: Bearer wm_your_api_key" \
+  -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "emails": [
@@ -191,7 +191,7 @@ print(email["status"])  # 'delivered' | 'bounced' | 'sent' | ...
 <Tab value="cURL">
 ```bash
 curl https://your-wistmail.com/api/v1/emails/eml_abc123 \
-  -H "Authorization: Bearer wm_your_api_key"
+  -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
 </Tabs>
@@ -247,7 +247,7 @@ wm.emails.cancel("eml_abc123")
 <Tab value="cURL">
 ```bash
 curl -X PATCH https://your-wistmail.com/api/v1/emails/eml_abc123/cancel \
-  -H "Authorization: Bearer wm_your_api_key"
+  -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
 </Tabs>
