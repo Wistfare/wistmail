@@ -1,0 +1,109 @@
+---
+title: Authentication
+description: Authenticate API requests with Bearer tokens and understand API key scopes.
+---
+
+All API requests require a valid API key sent as a Bearer token in the `Authorization` header.
+
+## API Keys
+
+```
+Authorization: Bearer wm_your_api_key
+```
+
+API keys are prefixed with `wm_` and are 64+ characters long. The key is shown **once** at creation time — store it securely.
+
+## Scopes
+
+Each API key has scopes that control what it can access:
+
+| Scope | Access |
+|-------|--------|
+| `emails:send` | Send single and batch emails |
+| `emails:read` | Read email status and delivery info |
+| `domains:manage` | Create, verify, and delete domains |
+| `templates:manage` | CRUD email templates |
+| `contacts:manage` | Manage audiences and contacts |
+| `webhooks:manage` | Configure webhook endpoints |
+| `analytics:read` | Read delivery and engagement analytics |
+
+## Creating API Keys
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+// API keys are created via the web dashboard or session-authenticated API
+// The SDK uses an existing API key for all operations
+const wm = new WistMail({ apiKey: 'wm_your_api_key' })
+```
+</Tab>
+<Tab value="Python">
+```python
+# API keys are created via the web dashboard or session-authenticated API
+wm = WistMail(api_key="wm_your_api_key")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+# Create a key with specific scopes (requires session auth)
+curl -X POST https://your-wistmail.com/api/v1/api-keys \
+  -H "Cookie: wm_session=your_session" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production Sending Key",
+    "scopes": ["emails:send", "emails:read"]
+  }'
+```
+
+Response:
+```json
+{
+  "id": "key_abc123",
+  "name": "Production Sending Key",
+  "key": "wm_a1b2c3d4e5f6...",
+  "keyPrefix": "wm_a1b2",
+  "scopes": ["emails:send", "emails:read"],
+  "createdAt": "2026-03-28T00:00:00Z"
+}
+```
+</Tab>
+</Tabs>
+
+## Rate Limiting
+
+API requests are rate limited per API key:
+
+- **Default**: 10 requests/second
+- **Batch endpoints**: 5 requests/second
+
+Rate limit headers are included in every response:
+
+```
+X-RateLimit-Limit: 10
+X-RateLimit-Remaining: 7
+X-RateLimit-Reset: 1711584000
+```
+
+When the limit is exceeded, the API returns `429 Too Many Requests` with a `Retry-After` header.
+
+## Error Responses
+
+All errors follow a consistent format:
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid API key"
+  }
+}
+```
+
+| Status | Code | Description |
+|--------|------|-------------|
+| 400 | `VALIDATION_ERROR` | Invalid request body or parameters |
+| 401 | `UNAUTHORIZED` | Missing or invalid API key |
+| 403 | `INSUFFICIENT_SCOPE` | API key lacks required scope |
+| 404 | `NOT_FOUND` | Resource does not exist |
+| 429 | `RATE_LIMITED` | Too many requests |
+| 500 | `INTERNAL_ERROR` | Server error |

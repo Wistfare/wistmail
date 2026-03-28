@@ -1,0 +1,50 @@
+---
+title: Introduction
+description: WistMail is a self-hosted email platform with a transactional API, SMTP/IMAP, and AI-powered inbox.
+---
+
+WistMail is a complete email infrastructure platform that you own and control. It combines a transactional email API (like SendGrid or Resend) with a full-featured email client (like Gmail) — all self-hosted.
+
+## What You Can Do
+
+- **Send transactional emails** via REST API with DKIM signing, SPF, and DMARC
+- **Manage domains** with automated DNS record generation and verification
+- **Create templates** with variable interpolation for dynamic content
+- **Track delivery** with webhooks for sent, delivered, opened, clicked, and bounced events
+- **Manage audiences** with contact lists and subscription management
+- **Monitor analytics** with delivery rates, open rates, and engagement metrics
+
+## Architecture
+
+WistMail is a monorepo with these key components:
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **API Gateway** | Hono (Node.js) | REST API for sending, domains, templates |
+| **Mail Engine** | Go | SMTP server, DKIM signing, SPF/DMARC |
+| **Web Client** | Next.js | Email inbox, compose, settings |
+| **Database** | PostgreSQL + Drizzle | Users, emails, domains, templates |
+| **Queue** | BullMQ (Redis) | Email delivery queue, retries |
+
+## SDKs
+
+Official SDKs are available for:
+
+- [Node.js / TypeScript](/docs/sdk/node) — `npm install wistmail`
+- [Python](/docs/sdk/python) — `pip install wistmail`
+- [cURL](/docs/sdk/curl) — Direct HTTP requests
+
+## Quick Example
+
+```typescript title="Send your first email"
+import { WistMail } from 'wistmail'
+
+const wm = new WistMail({ apiKey: 'wm_your_api_key' })
+
+await wm.emails.send({
+  from: 'hello@yourdomain.com',
+  to: 'user@example.com',
+  subject: 'Welcome!',
+  html: '<h1>Welcome to our platform</h1>',
+})
+```

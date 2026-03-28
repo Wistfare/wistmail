@@ -1,0 +1,736 @@
+---
+title: Python SDK
+description: Complete reference for the WistMail Python SDK.
+---
+
+## Installation
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+See the [Node.js SDK](/docs/sdk/node) reference.
+</Tab>
+<Tab value="Python">
+```bash
+pip install wistmail
+```
+
+Requires Python 3.9+. Uses [httpx](https://www.python-httpx.org/) for HTTP.
+</Tab>
+<Tab value="cURL">
+See the [cURL reference](/docs/sdk/curl).
+</Tab>
+</Tabs>
+
+## Configuration
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+import { WistMail } from 'wistmail'
+
+const wm = new WistMail({
+  apiKey: 'wm_your_api_key',
+  baseUrl: 'https://your-wistmail.com',
+})
+```
+</Tab>
+<Tab value="Python">
+```python
+from wistmail import WistMail
+
+wm = WistMail(
+    api_key="wm_your_api_key",              # Required
+    base_url="https://your-wistmail.com",    # Default: https://api.wistmail.com
+    timeout=30.0,                            # Default: 30.0 seconds
+)
+```
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `api_key` | str | Yes | -- | Your WistMail API key |
+| `base_url` | str | No | `https://api.wistmail.com` | WistMail server URL |
+| `timeout` | float | No | `30.0` | Request timeout in seconds |
+
+Supports context manager for automatic cleanup:
+
+```python
+with WistMail(api_key="wm_your_api_key") as wm:
+    wm.emails.send(...)
+```
+</Tab>
+<Tab value="cURL">
+```bash
+# No SDK needed. Set your base URL and API key:
+export BASE_URL="https://your-wistmail.com"
+export API_KEY="wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+---
+
+## Emails
+
+### `wm.emails.send(**kwargs)`
+
+Send a single email. Uses keyword-only arguments.
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { id } = await wm.emails.send({
+  from: 'hello@yourdomain.com',
+  to: ['user@example.com'],
+  subject: 'Welcome!',
+  html: '<h1>Hello!</h1>',
+})
+```
+</Tab>
+<Tab value="Python">
+```python
+result = wm.emails.send(
+    from_address="hello@yourdomain.com",
+    to=["user@example.com"],
+    subject="Welcome!",
+    html="<h1>Hello!</h1>",
+    tags={"campaign": "onboarding"},
+)
+
+print(result["id"])  # eml_abc123
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/emails \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "hello@yourdomain.com",
+    "to": ["user@example.com"],
+    "subject": "Welcome!",
+    "html": "<h1>Hello!</h1>"
+  }'
+```
+</Tab>
+</Tabs>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `from_address` | str | Yes | Sender email (maps to `from` in the API) |
+| `to` | str \| list[str] | Yes | Recipient(s) |
+| `subject` | str | Yes | Subject line |
+| `html` | str | No | HTML body |
+| `text` | str | No | Plain text body |
+| `cc` | str \| list[str] | No | CC recipients |
+| `bcc` | str \| list[str] | No | BCC recipients |
+| `reply_to` | str \| list[str] | No | Reply-To address(es) |
+| `headers` | dict | No | Custom email headers |
+| `tags` | dict | No | Key-value tags for tracking |
+| `scheduled_at` | str \| datetime | No | Delayed send time |
+| `template_id` | str | No | Template ID |
+| `variables` | dict | No | Template variable values |
+
+### `wm.emails.batch_send(emails)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { ids } = await wm.emails.batchSend([
+  { from: 'hello@yourdomain.com', to: 'a@example.com', subject: 'Hi A', html: '<p>Hi</p>' },
+  { from: 'hello@yourdomain.com', to: 'b@example.com', subject: 'Hi B', html: '<p>Hi</p>' },
+])
+```
+</Tab>
+<Tab value="Python">
+```python
+result = wm.emails.batch_send([
+    {
+        "from": "hello@yourdomain.com",
+        "to": "a@example.com",
+        "subject": "Hi A",
+        "html": "<p>Hi</p>",
+    },
+    {
+        "from": "hello@yourdomain.com",
+        "to": "b@example.com",
+        "subject": "Hi B",
+        "html": "<p>Hi</p>",
+    },
+])
+
+print(result["ids"])  # ['eml_xxx', 'eml_yyy']
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/emails/batch \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "emails": [
+      {"from": "hello@yourdomain.com", "to": "a@example.com", "subject": "Hi A", "html": "<p>Hi</p>"},
+      {"from": "hello@yourdomain.com", "to": "b@example.com", "subject": "Hi B", "html": "<p>Hi</p>"}
+    ]
+  }'
+```
+</Tab>
+</Tabs>
+
+### `wm.emails.get(email_id)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const email = await wm.emails.get('eml_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+email = wm.emails.get("eml_abc123")
+print(email["status"])       # 'delivered'
+print(email["deliveredAt"])  # '2026-03-28T12:00:01Z'
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl https://your-wistmail.com/api/v1/emails/eml_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### `wm.emails.cancel(email_id)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+await wm.emails.cancel('eml_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+wm.emails.cancel("eml_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X PATCH https://your-wistmail.com/api/v1/emails/eml_abc123/cancel \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+---
+
+## Domains
+
+### `wm.domains.create(name)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const domain = await wm.domains.create('yourdomain.com')
+```
+</Tab>
+<Tab value="Python">
+```python
+domain = wm.domains.create("yourdomain.com")
+print(domain["dnsRecords"])  # DNS records to configure
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/domains \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "yourdomain.com"}'
+```
+</Tab>
+</Tabs>
+
+### `wm.domains.list()`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const domains = await wm.domains.list()
+```
+</Tab>
+<Tab value="Python">
+```python
+domains = wm.domains.list()
+for d in domains:
+    print(d["name"], d["status"])
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl https://your-wistmail.com/api/v1/domains \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### `wm.domains.get(domain_id)` / `verify(domain_id)` / `delete(domain_id)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const domain = await wm.domains.get('dom_abc123')
+const result = await wm.domains.verify('dom_abc123')
+await wm.domains.delete('dom_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+domain = wm.domains.get("dom_abc123")
+
+result = wm.domains.verify("dom_abc123")
+print(result["checks"])  # {'mx': True, 'spf': True, 'dkim': False, 'dmarc': True}
+
+wm.domains.delete("dom_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+# Get
+curl https://your-wistmail.com/api/v1/domains/dom_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+
+# Verify
+curl -X POST https://your-wistmail.com/api/v1/domains/dom_abc123/verify \
+  -H "Authorization: Bearer wm_your_api_key"
+
+# Delete
+curl -X DELETE https://your-wistmail.com/api/v1/domains/dom_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+---
+
+## Templates
+
+### `wm.templates.create(**kwargs)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const template = await wm.templates.create({
+  name: 'Welcome',
+  subject: 'Welcome, {{name}}!',
+  html: '<h1>Welcome, {{name}}!</h1>',
+})
+```
+</Tab>
+<Tab value="Python">
+```python
+template = wm.templates.create(
+    name="Welcome",
+    subject="Welcome, {{name}}!",
+    html="<h1>Welcome, {{name}}!</h1>",
+    variables=[{"name": "name", "required": True}],
+)
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/templates \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Welcome",
+    "subject": "Welcome, {{name}}!",
+    "html": "<h1>Welcome, {{name}}!</h1>"
+  }'
+```
+</Tab>
+</Tabs>
+
+### `wm.templates.list(page, page_size)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { data } = await wm.templates.list({ page: 1, pageSize: 10 })
+```
+</Tab>
+<Tab value="Python">
+```python
+result = wm.templates.list(page=1, page_size=10)
+for t in result["data"]:
+    print(t["name"])
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl "https://your-wistmail.com/api/v1/templates?page=1&pageSize=10" \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### `wm.templates.get(template_id)` / `update(template_id, **kwargs)` / `delete(template_id)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const template = await wm.templates.get('tpl_abc123')
+await wm.templates.update('tpl_abc123', { subject: 'Updated' })
+await wm.templates.delete('tpl_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+template = wm.templates.get("tpl_abc123")
+wm.templates.update("tpl_abc123", subject="Updated")
+wm.templates.delete("tpl_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+# Get
+curl https://your-wistmail.com/api/v1/templates/tpl_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+
+# Update
+curl -X PATCH https://your-wistmail.com/api/v1/templates/tpl_abc123 \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"subject": "Updated"}'
+
+# Delete
+curl -X DELETE https://your-wistmail.com/api/v1/templates/tpl_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+---
+
+## Webhooks
+
+### `wm.webhooks.create(**kwargs)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const webhook = await wm.webhooks.create({
+  url: 'https://yourapp.com/webhooks/wistmail',
+  events: ['email.delivered', 'email.bounced'],
+})
+```
+</Tab>
+<Tab value="Python">
+```python
+webhook = wm.webhooks.create(
+    url="https://yourapp.com/webhooks/wistmail",
+    events=["email.delivered", "email.bounced"],
+)
+
+print(webhook["signingSecret"])  # whsec_... (store this)
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/webhooks \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://yourapp.com/webhooks/wistmail",
+    "events": ["email.delivered", "email.bounced"]
+  }'
+```
+</Tab>
+</Tabs>
+
+### `wm.webhooks.list()` / `get(webhook_id)` / `update(webhook_id, **kwargs)` / `delete(webhook_id)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const webhooks = await wm.webhooks.list()
+const webhook = await wm.webhooks.get('whk_abc123')
+await wm.webhooks.update('whk_abc123', { active: false })
+await wm.webhooks.delete('whk_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+webhooks = wm.webhooks.list()
+webhook = wm.webhooks.get("whk_abc123")
+wm.webhooks.update("whk_abc123", active=False)
+wm.webhooks.delete("whk_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+# List
+curl https://your-wistmail.com/api/v1/webhooks \
+  -H "Authorization: Bearer wm_your_api_key"
+
+# Get
+curl https://your-wistmail.com/api/v1/webhooks/whk_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+
+# Update
+curl -X PATCH https://your-wistmail.com/api/v1/webhooks/whk_abc123 \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"active": false}'
+
+# Delete
+curl -X DELETE https://your-wistmail.com/api/v1/webhooks/whk_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### `wm.webhooks.test(webhook_id)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { status } = await wm.webhooks.test('whk_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+result = wm.webhooks.test("whk_abc123")
+print(result["status"])  # 200
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/webhooks/whk_abc123/test \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+---
+
+## Audiences
+
+### `wm.audiences.create(name)` / `list()` / `get(audience_id)` / `delete(audience_id)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const audience = await wm.audiences.create('Newsletter')
+const audiences = await wm.audiences.list()
+const single = await wm.audiences.get('aud_abc123')
+await wm.audiences.delete('aud_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+audience = wm.audiences.create("Newsletter")
+audiences = wm.audiences.list()
+single = wm.audiences.get("aud_abc123")
+wm.audiences.delete("aud_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+# Create
+curl -X POST https://your-wistmail.com/api/v1/audiences \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Newsletter"}'
+
+# List
+curl https://your-wistmail.com/api/v1/audiences \
+  -H "Authorization: Bearer wm_your_api_key"
+
+# Get
+curl https://your-wistmail.com/api/v1/audiences/aud_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+
+# Delete
+curl -X DELETE https://your-wistmail.com/api/v1/audiences/aud_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### `wm.audiences.add_contact(audience_id, **kwargs)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const contact = await wm.audiences.addContact('aud_abc123', {
+  email: 'alice@example.com',
+  name: 'Alice',
+})
+```
+</Tab>
+<Tab value="Python">
+```python
+contact = wm.audiences.add_contact(
+    "aud_abc123",
+    email="alice@example.com",
+    name="Alice",
+    metadata={"plan": "pro"},
+    topics=["product-updates"],
+)
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/audiences/aud_abc123/contacts \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "alice@example.com",
+    "name": "Alice",
+    "metadata": {"plan": "pro"},
+    "topics": ["product-updates"]
+  }'
+```
+</Tab>
+</Tabs>
+
+### `wm.audiences.list_contacts(audience_id, page, page_size)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { data, total } = await wm.audiences.listContacts('aud_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+result = wm.audiences.list_contacts("aud_abc123", page=1, page_size=25)
+for c in result["data"]:
+    print(c["email"])
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl "https://your-wistmail.com/api/v1/audiences/aud_abc123/contacts?page=1&pageSize=25" \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### `wm.audiences.update_contact(contact_id, **kwargs)` / `delete_contact(contact_id)`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+await wm.audiences.updateContact('con_abc123', { subscribed: false })
+await wm.audiences.deleteContact('con_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+wm.audiences.update_contact("con_abc123", subscribed=False)
+wm.audiences.delete_contact("con_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+# Update
+curl -X PATCH https://your-wistmail.com/api/v1/contacts/con_abc123 \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"subscribed": false}'
+
+# Delete
+curl -X DELETE https://your-wistmail.com/api/v1/contacts/con_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+---
+
+## Analytics
+
+### `wm.analytics.overview()`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const stats = await wm.analytics.overview()
+```
+</Tab>
+<Tab value="Python">
+```python
+stats = wm.analytics.overview()
+print(f"Delivery rate: {stats['deliveryRate']:.0%}")
+print(f"Open rate: {stats['openRate']:.0%}")
+print(f"Bounce rate: {stats['bounceRate']:.0%}")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl https://your-wistmail.com/api/v1/analytics/overview \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+---
+
+## Error Handling
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+import { ValidationError, RateLimitError, NotFoundError } from 'wistmail'
+
+try {
+  await wm.emails.send({ /* ... */ })
+} catch (err) {
+  if (err instanceof ValidationError) console.error(err.message, err.details)
+  if (err instanceof RateLimitError) console.error(`Retry after ${err.retryAfter}s`)
+}
+```
+</Tab>
+<Tab value="Python">
+```python
+from wistmail.errors import (
+    WistMailError,
+    AuthenticationError,
+    ValidationError,
+    NotFoundError,
+    RateLimitError,
+)
+
+try:
+    wm.emails.send(...)
+except ValidationError as e:
+    print(f"Invalid request: {e.message}")
+    print(f"Details: {e.details}")
+except RateLimitError as e:
+    print(f"Rate limited. Retry after {e.retry_after}s")
+except NotFoundError as e:
+    print(f"Not found: {e.message}")
+except AuthenticationError as e:
+    print(f"Auth error: {e.message}")
+except WistMailError as e:
+    print(f"Error {e.status_code}: {e.message}")
+```
+</Tab>
+<Tab value="cURL">
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid email address format"
+  }
+}
+```
+</Tab>
+</Tabs>
+
+| Exception | HTTP Status | Description |
+|-----------|-------------|-------------|
+| `AuthenticationError` | 401 | Invalid or missing API key |
+| `ValidationError` | 400 | Invalid request parameters |
+| `NotFoundError` | 404 | Resource does not exist |
+| `RateLimitError` | 429 | Too many requests |
+| `WistMailError` | Other | Base exception for all errors |

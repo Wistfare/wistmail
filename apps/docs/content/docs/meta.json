@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "index",
+    "quickstart",
+    "authentication",
+    "api/sending",
+    "api/domains",
+    "api/templates",
+    "api/webhooks",
+    "api/audiences",
+    "api/analytics",
+    "sdk/node",
+    "sdk/python",
+    "sdk/curl"
+  ]
+}

@@ -1,0 +1,253 @@
+---
+title: Sending Emails
+description: Send single and batch transactional emails with the WistMail API.
+---
+
+## Send a Single Email
+
+`POST /api/v1/emails`
+
+**Scope**: `emails:send`
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `from` | string | Yes | Sender email (must match verified domain) |
+| `to` | string \| string[] | Yes | Recipient(s), max 50 |
+| `subject` | string | Yes | Subject line, max 998 chars |
+| `html` | string | No | HTML body |
+| `text` | string | No | Plain text body |
+| `cc` | string \| string[] | No | CC recipients |
+| `bcc` | string \| string[] | No | BCC recipients |
+| `replyTo` | string \| string[] | No | Reply-To address(es) |
+| `headers` | object | No | Custom email headers |
+| `attachments` | array | No | File attachments, max 20 |
+| `tags` | object | No | Key-value tags for tracking |
+| `scheduledAt` | string | No | ISO 8601 date for delayed sending |
+| `templateId` | string | No | Template ID to use |
+| `variables` | object | No | Template variable values |
+
+### Attachments
+
+Each attachment has:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `filename` | string | Yes | File name |
+| `content` | string | Yes | Base64-encoded content |
+| `contentType` | string | No | MIME type (auto-detected if omitted) |
+
+### Example
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { id } = await wm.emails.send({
+  from: 'notifications@yourdomain.com',
+  to: ['user@example.com'],
+  subject: 'Your order has shipped',
+  html: `
+    <h1>Order Shipped!</h1>
+    <p>Your order #1234 is on its way.</p>
+  `,
+  tags: { orderId: '1234', type: 'shipping' },
+})
+```
+</Tab>
+<Tab value="Python">
+```python
+result = wm.emails.send(
+    from_address="notifications@yourdomain.com",
+    to=["user@example.com"],
+    subject="Your order has shipped",
+    html="""
+    <h1>Order Shipped!</h1>
+    <p>Your order #1234 is on its way.</p>
+    """,
+    tags={"orderId": "1234", "type": "shipping"},
+)
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/emails \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "notifications@yourdomain.com",
+    "to": ["user@example.com"],
+    "subject": "Your order has shipped",
+    "html": "<h1>Order Shipped!</h1><p>Your order #1234 is on its way.</p>",
+    "tags": { "orderId": "1234", "type": "shipping" }
+  }'
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{ "id": "eml_a1b2c3d4e5f6..." }
+```
+
+---
+
+## Batch Send
+
+`POST /api/v1/emails/batch`
+
+**Scope**: `emails:send`
+
+Send up to 100 emails in a single request.
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { ids } = await wm.emails.batchSend([
+  {
+    from: 'hello@yourdomain.com',
+    to: 'alice@example.com',
+    subject: 'Welcome, Alice!',
+    html: '<p>Welcome!</p>',
+  },
+  {
+    from: 'hello@yourdomain.com',
+    to: 'bob@example.com',
+    subject: 'Welcome, Bob!',
+    html: '<p>Welcome!</p>',
+  },
+])
+
+console.log(ids) // ['eml_xxx', 'eml_yyy']
+```
+</Tab>
+<Tab value="Python">
+```python
+result = wm.emails.batch_send([
+    {
+        "from": "hello@yourdomain.com",
+        "to": ["alice@example.com"],
+        "subject": "Welcome, Alice!",
+        "html": "<p>Welcome!</p>",
+    },
+    {
+        "from": "hello@yourdomain.com",
+        "to": ["bob@example.com"],
+        "subject": "Welcome, Bob!",
+        "html": "<p>Welcome!</p>",
+    },
+])
+
+print(result["ids"])  # ['eml_xxx', 'eml_yyy']
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/emails/batch \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "emails": [
+      {
+        "from": "hello@yourdomain.com",
+        "to": "alice@example.com",
+        "subject": "Welcome, Alice!",
+        "html": "<p>Welcome!</p>"
+      },
+      {
+        "from": "hello@yourdomain.com",
+        "to": "bob@example.com",
+        "subject": "Welcome, Bob!",
+        "html": "<p>Welcome!</p>"
+      }
+    ]
+  }'
+```
+</Tab>
+</Tabs>
+
+---
+
+## Get Email Status
+
+`GET /api/v1/emails/:id`
+
+**Scope**: `emails:read`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const email = await wm.emails.get('eml_abc123')
+console.log(email.status) // 'delivered' | 'bounced' | 'sent' | ...
+```
+</Tab>
+<Tab value="Python">
+```python
+email = wm.emails.get("eml_abc123")
+print(email["status"])  # 'delivered' | 'bounced' | 'sent' | ...
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl https://your-wistmail.com/api/v1/emails/eml_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "id": "eml_abc123",
+  "status": "delivered",
+  "from": "hello@yourdomain.com",
+  "to": ["user@example.com"],
+  "subject": "Welcome!",
+  "createdAt": "2026-03-28T12:00:00Z",
+  "deliveredAt": "2026-03-28T12:00:01Z",
+  "openedAt": "2026-03-28T14:30:00Z",
+  "clickedAt": null,
+  "bouncedAt": null
+}
+```
+
+### Email Statuses
+
+| Status | Description |
+|--------|-------------|
+| `queued` | Email accepted, waiting to be sent |
+| `sending` | Being processed by mail engine |
+| `sent` | Handed off to recipient's mail server |
+| `delivered` | Confirmed delivered to inbox |
+| `bounced` | Delivery failed (hard or soft bounce) |
+| `failed` | Sending error |
+| `complained` | Recipient marked as spam |
+
+---
+
+## Cancel Scheduled Email
+
+`PATCH /api/v1/emails/:id/cancel`
+
+Cancel an email that was scheduled for future delivery.
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+await wm.emails.cancel('eml_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+wm.emails.cancel("eml_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X PATCH https://your-wistmail.com/api/v1/emails/eml_abc123/cancel \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
