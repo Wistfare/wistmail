@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any
 from datetime import datetime
 
 import httpx
@@ -34,7 +34,7 @@ class WistMail:
         self._client = httpx.Client(
             base_url=f"{self._base_url}/api/v1",
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "X-API-Key": api_key,
                 "User-Agent": f"wistmail-python/{_SDK_VERSION}",
                 "Content-Type": "application/json",
             },
@@ -42,11 +42,8 @@ class WistMail:
         )
 
         self.emails = _Emails(self)
-        self.domains = _Domains(self)
-        self.templates = _Templates(self)
         self.webhooks = _Webhooks(self)
         self.audiences = _Audiences(self)
-        self.analytics = _Analytics(self)
 
     def _request(self, method: str, path: str, json: Any = None) -> Any:
         response = self._client.request(method, path, json=json)
@@ -152,57 +149,6 @@ class _Emails:
         self._client._request("PATCH", f"/emails/{email_id}/cancel")
 
 
-class _Domains:
-    def __init__(self, client: WistMail):
-        self._client = client
-
-    def create(self, name: str) -> dict[str, Any]:
-        return self._client._request("POST", "/domains", json={"name": name})
-
-    def list(self) -> list[dict[str, Any]]:
-        result = self._client._request("GET", "/domains")
-        return result.get("data", [])
-
-    def get(self, domain_id: str) -> dict[str, Any]:
-        return self._client._request("GET", f"/domains/{domain_id}")
-
-    def verify(self, domain_id: str) -> dict[str, Any]:
-        return self._client._request("POST", f"/domains/{domain_id}/verify")
-
-    def delete(self, domain_id: str) -> None:
-        self._client._request("DELETE", f"/domains/{domain_id}")
-
-
-class _Templates:
-    def __init__(self, client: WistMail):
-        self._client = client
-
-    def create(
-        self,
-        *,
-        name: str,
-        subject: str,
-        html: str,
-        variables: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
-        body: dict[str, Any] = {"name": name, "subject": subject, "html": html}
-        if variables is not None:
-            body["variables"] = variables
-        return self._client._request("POST", "/templates", json=body)
-
-    def list(self, page: int = 1, page_size: int = 25) -> dict[str, Any]:
-        return self._client._request("GET", f"/templates?page={page}&pageSize={page_size}")
-
-    def get(self, template_id: str) -> dict[str, Any]:
-        return self._client._request("GET", f"/templates/{template_id}")
-
-    def update(self, template_id: str, **kwargs: Any) -> dict[str, Any]:
-        return self._client._request("PATCH", f"/templates/{template_id}", json=kwargs)
-
-    def delete(self, template_id: str) -> None:
-        self._client._request("DELETE", f"/templates/{template_id}")
-
-
 class _Webhooks:
     def __init__(self, client: WistMail):
         self._client = client
@@ -274,11 +220,3 @@ class _Audiences:
 
     def delete_contact(self, contact_id: str) -> None:
         self._client._request("DELETE", f"/contacts/{contact_id}")
-
-
-class _Analytics:
-    def __init__(self, client: WistMail):
-        self._client = client
-
-    def overview(self) -> dict[str, Any]:
-        return self._client._request("GET", "/analytics/overview")

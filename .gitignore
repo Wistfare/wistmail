@@ -45,3 +45,4 @@ logs/
 # Temporary
 tmp/
 temp/
+*.pyc

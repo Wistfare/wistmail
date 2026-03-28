@@ -12,7 +12,7 @@ type Signature = { id: string; name: string; content: string; isDefault: boolean
 export default function SignaturesPage() {
   const [signatures, setSignatures] = useState<Signature[]>([
     { id: '1', name: 'Default Signature', content: 'Vedadom\nFounder, Wistfare\nv@wistfare.com · wistfare.com', isDefault: true },
-    { id: '2', name: 'Personal', content: 'V.\nSent from WistMail', isDefault: false },
+    { id: '2', name: 'Personal', content: 'V.\nSent from Wistfare Mail', isDefault: false },
   ])
   const [editing, setEditing] = useState<string | null>(null)
   const [editName, setEditName] = useState('')

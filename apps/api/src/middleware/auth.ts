@@ -5,20 +5,14 @@ import type { AppEnv } from '../app.js'
 
 /**
  * API key authentication middleware.
- * Expects: Authorization: Bearer wm_xxxxx
+ * Expects: X-API-Key: wm_xxxxx
  */
 export const apiKeyAuth = createMiddleware<AppEnv>(async (c, next) => {
-  const authHeader = c.req.header('Authorization')
-  if (!authHeader) {
-    throw new AuthenticationError('Missing Authorization header')
+  const apiKey = c.req.header('X-API-Key')
+  if (!apiKey) {
+    throw new AuthenticationError('Missing X-API-Key header')
   }
 
-  const parts = authHeader.split(' ')
-  if (parts.length !== 2 || parts[0] !== 'Bearer') {
-    throw new AuthenticationError('Invalid Authorization header format. Expected: Bearer <api_key>')
-  }
-
-  const apiKey = parts[1]
   if (!apiKey.startsWith('wm_')) {
     throw new AuthenticationError('Invalid API key format')
   }

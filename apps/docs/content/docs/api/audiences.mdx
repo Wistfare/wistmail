@@ -31,7 +31,7 @@ print(audience["id"])  # aud_abc123
 <Tab value="cURL">
 ```bash
 curl -X POST https://your-wistmail.com/api/v1/audiences \
-  -H "Authorization: Bearer wm_your_api_key" \
+  -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"name": "Newsletter Subscribers"}'
 ```
@@ -74,7 +74,7 @@ for a in audiences:
 <Tab value="cURL">
 ```bash
 curl https://your-wistmail.com/api/v1/audiences \
-  -H "Authorization: Bearer wm_your_api_key"
+  -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
 </Tabs>
@@ -118,7 +118,7 @@ print(audience["name"], audience["contactCount"])
 <Tab value="cURL">
 ```bash
 curl https://your-wistmail.com/api/v1/audiences/aud_abc123 \
-  -H "Authorization: Bearer wm_your_api_key"
+  -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
 </Tabs>
@@ -145,7 +145,7 @@ wm.audiences.delete("aud_abc123")
 <Tab value="cURL">
 ```bash
 curl -X DELETE https://your-wistmail.com/api/v1/audiences/aud_abc123 \
-  -H "Authorization: Bearer wm_your_api_key"
+  -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
 </Tabs>
@@ -198,7 +198,7 @@ print(contact["id"])  # con_abc123
 <Tab value="cURL">
 ```bash
 curl -X POST https://your-wistmail.com/api/v1/audiences/aud_abc123/contacts \
-  -H "Authorization: Bearer wm_your_api_key" \
+  -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "alice@example.com",
@@ -255,7 +255,7 @@ for c in result["data"]:
 <Tab value="cURL">
 ```bash
 curl "https://your-wistmail.com/api/v1/audiences/aud_abc123/contacts?page=1&pageSize=25" \
-  -H "Authorization: Bearer wm_your_api_key"
+  -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
 </Tabs>
@@ -317,7 +317,7 @@ updated = wm.audiences.update_contact(
 <Tab value="cURL">
 ```bash
 curl -X PATCH https://your-wistmail.com/api/v1/contacts/con_abc123 \
-  -H "Authorization: Bearer wm_your_api_key" \
+  -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "metadata": { "plan": "enterprise" },
@@ -349,7 +349,7 @@ wm.audiences.delete_contact("con_abc123")
 <Tab value="cURL">
 ```bash
 curl -X DELETE https://your-wistmail.com/api/v1/contacts/con_abc123 \
-  -H "Authorization: Bearer wm_your_api_key"
+  -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
 </Tabs>

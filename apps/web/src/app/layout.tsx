@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'WistMail',
+  title: 'Wistfare Mail',
   description: 'Open-source email platform. Self-hostable email client + transactional email API.',
   icons: { icon: '/favicon.ico' },
 }

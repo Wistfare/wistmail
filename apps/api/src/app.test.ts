@@ -6,7 +6,7 @@ describe('API Health', () => {
     const res = await app.request('/')
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.name).toBe('WistMail API')
+    expect(body.name).toBe('Wistfare Mail API')
     expect(body.version).toBe('0.1.0')
     expect(body.status).toBe('healthy')
   })
@@ -20,7 +20,7 @@ describe('API Health', () => {
 })
 
 describe('Email API', () => {
-  const authHeaders = { Authorization: 'Bearer wm_test_key_1234567890abcdef' }
+  const authHeaders = { 'X-API-Key': 'wm_test_key_1234567890abcdef' }
 
   it('POST /api/v1/emails sends an email', async () => {
     const res = await app.request('/api/v1/emails', {
@@ -110,7 +110,7 @@ describe('Email API', () => {
     const res = await app.request('/api/v1/emails', {
       method: 'POST',
       headers: {
-        Authorization: 'Bearer invalid_key',
+        'X-API-Key': 'invalid_key',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -124,7 +124,7 @@ describe('Email API', () => {
 })
 
 describe('Domain API', () => {
-  const authHeaders = { Authorization: 'Bearer wm_test_key_1234567890abcdef' }
+  const authHeaders = { 'X-API-Key': 'wm_test_key_1234567890abcdef' }
 
   it('POST /api/v1/domains creates a domain', async () => {
     const res = await app.request('/api/v1/domains', {
@@ -160,7 +160,7 @@ describe('Domain API', () => {
 })
 
 describe('API Key API', () => {
-  const authHeaders = { Authorization: 'Bearer wm_test_key_1234567890abcdef' }
+  const authHeaders = { 'X-API-Key': 'wm_test_key_1234567890abcdef' }
 
   it('POST /api/v1/api-keys creates a key', async () => {
     const res = await app.request('/api/v1/api-keys', {
@@ -187,7 +187,7 @@ describe('API Key API', () => {
 })
 
 describe('Webhook API', () => {
-  const authHeaders = { Authorization: 'Bearer wm_test_key_1234567890abcdef' }
+  const authHeaders = { 'X-API-Key': 'wm_test_key_1234567890abcdef' }
 
   it('POST /api/v1/webhooks creates a webhook', async () => {
     const res = await app.request('/api/v1/webhooks', {
@@ -219,7 +219,7 @@ describe('Webhook API', () => {
 })
 
 describe('Template API', () => {
-  const authHeaders = { Authorization: 'Bearer wm_test_key_1234567890abcdef' }
+  const authHeaders = { 'X-API-Key': 'wm_test_key_1234567890abcdef' }
 
   it('POST /api/v1/templates creates a template', async () => {
     const res = await app.request('/api/v1/templates', {
@@ -240,7 +240,7 @@ describe('Template API', () => {
 })
 
 describe('Audience API', () => {
-  const authHeaders = { Authorization: 'Bearer wm_test_key_1234567890abcdef' }
+  const authHeaders = { 'X-API-Key': 'wm_test_key_1234567890abcdef' }
 
   it('POST /api/v1/audiences creates an audience', async () => {
     const res = await app.request('/api/v1/audiences', {
@@ -256,7 +256,7 @@ describe('Audience API', () => {
 })
 
 describe('Analytics API', () => {
-  const authHeaders = { Authorization: 'Bearer wm_test_key_1234567890abcdef' }
+  const authHeaders = { 'X-API-Key': 'wm_test_key_1234567890abcdef' }
 
   it('GET /api/v1/analytics/overview returns stats', async () => {
     const res = await app.request('/api/v1/analytics/overview', {

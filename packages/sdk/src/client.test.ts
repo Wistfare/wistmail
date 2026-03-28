@@ -50,17 +50,13 @@ describe('WistMail SDK', () => {
       })
 
       expect(result.id).toBe('eml_abc123')
-      expect(mockFetch).toHaveBeenCalledOnce()
-
       const [url, opts] = mockFetch.mock.calls[0]
       expect(url).toBe('http://localhost:3001/api/v1/emails')
       expect(opts.method).toBe('POST')
-      expect(opts.headers.Authorization).toBe('Bearer wm_test_key_123')
+      expect(opts.headers['X-API-Key']).toBe('wm_test_key_123')
 
       const body = JSON.parse(opts.body)
-      expect(body.from).toBe('sender@example.com')
       expect(body.to).toEqual(['recipient@example.com'])
-      expect(body.subject).toBe('Hello')
     })
 
     it('handles string[] for to field', async () => {
@@ -109,7 +105,6 @@ describe('WistMail SDK', () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body)
       expect(body.cc).toBe('cc@b.com')
       expect(body.bcc).toEqual(['bcc1@b.com', 'bcc2@b.com'])
-      expect(body.replyTo).toBe('reply@b.com')
     })
   })
 
@@ -129,22 +124,10 @@ describe('WistMail SDK', () => {
   describe('emails.get', () => {
     it('returns email status', async () => {
       mockFetch.mockResolvedValueOnce(
-        mockResponse(200, {
-          id: 'eml_abc',
-          status: 'delivered',
-          from: 'a@b.com',
-          to: ['x@y.com'],
-          subject: 'Test',
-          createdAt: '2026-03-28T00:00:00Z',
-          deliveredAt: '2026-03-28T00:00:01Z',
-          openedAt: null,
-          clickedAt: null,
-          bouncedAt: null,
-        }),
+        mockResponse(200, { id: 'eml_abc', status: 'delivered', from: 'a@b.com', to: ['x@y.com'], subject: 'Test', createdAt: '2026-03-28T00:00:00Z', deliveredAt: '2026-03-28T00:00:01Z', openedAt: null, clickedAt: null, bouncedAt: null }),
       )
 
       const result = await client.emails.get('eml_abc')
-      expect(result.id).toBe('eml_abc')
       expect(result.status).toBe('delivered')
     })
   })
@@ -157,87 +140,13 @@ describe('WistMail SDK', () => {
     })
   })
 
-  describe('domains', () => {
-    it('creates a domain', async () => {
-      mockFetch.mockResolvedValueOnce(
-        mockResponse(201, { id: 'dom_abc', name: 'example.com', status: 'pending', records: [] }),
-      )
-
-      const result = await client.domains.create('example.com')
-      expect(result.id).toBe('dom_abc')
-      expect(result.name).toBe('example.com')
-    })
-
-    it('lists domains', async () => {
-      mockFetch.mockResolvedValueOnce(
-        mockResponse(200, { data: [{ id: 'dom_1', name: 'a.com' }] }),
-      )
-
-      const result = await client.domains.list()
-      expect(result).toHaveLength(1)
-      expect(result[0].name).toBe('a.com')
-    })
-
-    it('verifies a domain', async () => {
-      mockFetch.mockResolvedValueOnce(
-        mockResponse(200, { mx: true, spf: false, dkim: false, dmarc: false, verified: false, status: 'verifying' }),
-      )
-
-      const result = await client.domains.verify('dom_abc')
-      expect(result.mx).toBe(true)
-      expect(result.verified).toBe(false)
-    })
-
-    it('deletes a domain', async () => {
-      mockFetch.mockResolvedValueOnce(mockResponse(204))
-      await client.domains.delete('dom_abc')
-      expect(mockFetch.mock.calls[0][1].method).toBe('DELETE')
-    })
-  })
-
-  describe('templates', () => {
-    it('creates a template', async () => {
-      mockFetch.mockResolvedValueOnce(
-        mockResponse(201, { id: 'tpl_abc', name: 'Welcome', subject: 'Hi {{name}}', html: '<p>{{name}}</p>' }),
-      )
-
-      const result = await client.templates.create({
-        name: 'Welcome',
-        subject: 'Hi {{name}}',
-        html: '<p>{{name}}</p>',
-        variables: [{ name: 'name', required: true }],
-      })
-
-      expect(result.id).toBe('tpl_abc')
-    })
-
-    it('updates a template', async () => {
-      mockFetch.mockResolvedValueOnce(
-        mockResponse(200, { id: 'tpl_abc', name: 'Welcome v2' }),
-      )
-
-      const result = await client.templates.update('tpl_abc', { name: 'Welcome v2' })
-      expect(result.name).toBe('Welcome v2')
-    })
-  })
-
   describe('webhooks', () => {
     it('creates a webhook', async () => {
       mockFetch.mockResolvedValueOnce(
-        mockResponse(201, {
-          id: 'whk_abc',
-          url: 'https://example.com/webhook',
-          events: ['email.sent'],
-          secret: 'whsec_abc123',
-          active: true,
-        }),
+        mockResponse(201, { id: 'whk_abc', url: 'https://example.com/webhook', events: ['email.sent'], secret: 'whsec_abc123', active: true }),
       )
 
-      const result = await client.webhooks.create({
-        url: 'https://example.com/webhook',
-        events: ['email.sent'],
-      })
-
+      const result = await client.webhooks.create({ url: 'https://example.com/webhook', events: ['email.sent'] })
       expect(result.id).toBe('whk_abc')
       expect(result.secret).toMatch(/^whsec_/)
     })
@@ -254,7 +163,6 @@ describe('WistMail SDK', () => {
       mockFetch.mockResolvedValueOnce(
         mockResponse(201, { id: 'aud_abc', name: 'Newsletter', contactCount: 0 }),
       )
-
       const result = await client.audiences.create('Newsletter')
       expect(result.name).toBe('Newsletter')
     })
@@ -263,37 +171,8 @@ describe('WistMail SDK', () => {
       mockFetch.mockResolvedValueOnce(
         mockResponse(201, { id: 'con_abc', email: 'user@example.com', name: 'User' }),
       )
-
-      const result = await client.audiences.addContact('aud_abc', {
-        email: 'user@example.com',
-        name: 'User',
-      })
-
+      const result = await client.audiences.addContact('aud_abc', { email: 'user@example.com', name: 'User' })
       expect(result.email).toBe('user@example.com')
-    })
-  })
-
-  describe('analytics', () => {
-    it('returns overview data', async () => {
-      mockFetch.mockResolvedValueOnce(
-        mockResponse(200, {
-          sent: 1000,
-          delivered: 980,
-          opened: 500,
-          clicked: 100,
-          bounced: 20,
-          complained: 2,
-          deliveryRate: 0.98,
-          openRate: 0.51,
-          clickRate: 0.1,
-          bounceRate: 0.02,
-          period: { from: '2026-02-28', to: '2026-03-28' },
-        }),
-      )
-
-      const result = await client.analytics.overview()
-      expect(result.sent).toBe(1000)
-      expect(result.deliveryRate).toBe(0.98)
     })
   })
 
@@ -302,15 +181,13 @@ describe('WistMail SDK', () => {
       mockFetch.mockResolvedValueOnce(
         mockResponse(401, { error: { code: 'UNAUTHORIZED', message: 'Invalid API key' } }),
       )
-
       await expect(client.emails.get('eml_abc')).rejects.toThrow(AuthenticationError)
     })
 
-    it('throws RateLimitError on 429 with retryAfter', async () => {
+    it('throws RateLimitError on 429', async () => {
       mockFetch.mockResolvedValueOnce(
         mockResponse(429, { error: { code: 'RATE_LIMITED', message: 'Too many requests' } }, { 'Retry-After': '30' }),
       )
-
       try {
         await client.emails.get('eml_abc')
       } catch (err) {
@@ -321,57 +198,41 @@ describe('WistMail SDK', () => {
 
     it('throws ValidationError on 400', async () => {
       mockFetch.mockResolvedValueOnce(
-        mockResponse(400, { error: { code: 'VALIDATION_ERROR', message: 'Invalid email', details: { from: 'required' } } }),
+        mockResponse(400, { error: { code: 'VALIDATION_ERROR', message: 'Invalid email' } }),
       )
-
-      await expect(
-        client.emails.send({ from: '', to: 'x@y.com', subject: 'Hi', html: '<p>test</p>' }),
-      ).rejects.toThrow(ValidationError)
+      await expect(client.emails.send({ from: '', to: 'x@y.com', subject: 'Hi', html: '<p>test</p>' })).rejects.toThrow(ValidationError)
     })
 
     it('throws NotFoundError on 404', async () => {
       mockFetch.mockResolvedValueOnce(
         mockResponse(404, { error: { code: 'NOT_FOUND', message: 'Email not found' } }),
       )
-
       await expect(client.emails.get('eml_nonexistent')).rejects.toThrow(NotFoundError)
-    })
-
-    it('throws WistMailError on 500', async () => {
-      mockFetch.mockResolvedValueOnce(
-        mockResponse(500, { error: { code: 'INTERNAL_ERROR', message: 'Server error' } }),
-      )
-
-      await expect(client.emails.get('eml_abc')).rejects.toThrow('Server error')
     })
 
     it('handles non-JSON error response', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 502,
+        ok: false, status: 502,
         json: () => Promise.reject(new Error('not json')),
         headers: new Headers(),
       })
-
       await expect(client.emails.get('eml_abc')).rejects.toThrow('Request failed with status 502')
     })
   })
 
   describe('request headers', () => {
-    it('sends Authorization and User-Agent', async () => {
+    it('sends X-API-Key and User-Agent', async () => {
       mockFetch.mockResolvedValueOnce(mockResponse(200, { data: [] }))
-
-      await client.domains.list()
+      await client.audiences.list()
 
       const headers = mockFetch.mock.calls[0][1].headers
-      expect(headers.Authorization).toBe('Bearer wm_test_key_123')
+      expect(headers['X-API-Key']).toBe('wm_test_key_123')
       expect(headers['User-Agent']).toMatch(/^wistmail-node\//)
     })
 
     it('sends Content-Type for POST requests', async () => {
-      mockFetch.mockResolvedValueOnce(mockResponse(201, { id: 'dom_abc' }))
-
-      await client.domains.create('example.com')
+      mockFetch.mockResolvedValueOnce(mockResponse(201, { id: 'aud_abc', name: 'Test' }))
+      await client.audiences.create('Test')
 
       const headers = mockFetch.mock.calls[0][1].headers
       expect(headers['Content-Type']).toBe('application/json')

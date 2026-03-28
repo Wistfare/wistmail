@@ -4,11 +4,6 @@ import type {
   SendEmailResponse,
   BatchSendResponse,
   EmailStatusResponse,
-  Domain,
-  DomainVerification,
-  Template,
-  CreateTemplateParams,
-  UpdateTemplateParams,
   Webhook,
   CreateWebhookParams,
   UpdateWebhookParams,
@@ -16,7 +11,6 @@ import type {
   AudienceContact,
   CreateContactParams,
   UpdateContactParams,
-  AnalyticsOverview,
   PaginatedResponse,
   PaginationParams,
   WistMailErrorResponse,
@@ -33,11 +27,8 @@ export class WistMail {
   private timeout: number
 
   readonly emails: Emails
-  readonly domains: Domains
-  readonly templates: Templates
   readonly webhooks: Webhooks
   readonly audiences: Audiences
-  readonly analytics: Analytics
 
   constructor(config: WistMailConfig) {
     if (!config.apiKey) {
@@ -49,11 +40,8 @@ export class WistMail {
     this.timeout = config.timeout || DEFAULT_TIMEOUT
 
     this.emails = new Emails(this)
-    this.domains = new Domains(this)
-    this.templates = new Templates(this)
     this.webhooks = new Webhooks(this)
     this.audiences = new Audiences(this)
-    this.analytics = new Analytics(this)
   }
 
   /** @internal */
@@ -64,7 +52,7 @@ export class WistMail {
 
     try {
       const headers: Record<string, string> = {
-        Authorization: `Bearer ${this.apiKey}`,
+        'X-API-Key': this.apiKey,
         'User-Agent': `wistmail-node/${SDK_VERSION}`,
       }
 
@@ -120,7 +108,7 @@ export class WistMail {
   }
 }
 
-// ─── Resource Classes ──────────────────────────────────────────────────────
+// ─── Emails ────────────────────────────────────────────────────────────────
 
 class Emails {
   constructor(private client: WistMail) {}
@@ -160,55 +148,7 @@ class Emails {
   }
 }
 
-class Domains {
-  constructor(private client: WistMail) {}
-
-  async create(name: string): Promise<Domain> {
-    return this.client.request<Domain>('POST', '/domains', { name })
-  }
-
-  async list(): Promise<Domain[]> {
-    const res = await this.client.request<{ data: Domain[] }>('GET', '/domains')
-    return res.data
-  }
-
-  async get(domainId: string): Promise<Domain> {
-    return this.client.request<Domain>('GET', `/domains/${domainId}`)
-  }
-
-  async verify(domainId: string): Promise<DomainVerification> {
-    return this.client.request<DomainVerification>('POST', `/domains/${domainId}/verify`)
-  }
-
-  async delete(domainId: string): Promise<void> {
-    await this.client.request<void>('DELETE', `/domains/${domainId}`)
-  }
-}
-
-class Templates {
-  constructor(private client: WistMail) {}
-
-  async create(params: CreateTemplateParams): Promise<Template> {
-    return this.client.request<Template>('POST', '/templates', params)
-  }
-
-  async list(pagination?: PaginationParams): Promise<PaginatedResponse<Template>> {
-    const query = pagination ? `?page=${pagination.page || 1}&pageSize=${pagination.pageSize || 25}` : ''
-    return this.client.request<PaginatedResponse<Template>>('GET', `/templates${query}`)
-  }
-
-  async get(templateId: string): Promise<Template> {
-    return this.client.request<Template>('GET', `/templates/${templateId}`)
-  }
-
-  async update(templateId: string, params: UpdateTemplateParams): Promise<Template> {
-    return this.client.request<Template>('PATCH', `/templates/${templateId}`, params)
-  }
-
-  async delete(templateId: string): Promise<void> {
-    await this.client.request<void>('DELETE', `/templates/${templateId}`)
-  }
-}
+// ─── Webhooks ──────────────────────────────────────────────────────────────
 
 class Webhooks {
   constructor(private client: WistMail) {}
@@ -238,6 +178,8 @@ class Webhooks {
     return this.client.request<{ status: number }>('POST', `/webhooks/${webhookId}/test`)
   }
 }
+
+// ─── Audiences ─────────────────────────────────────────────────────────────
 
 class Audiences {
   constructor(private client: WistMail) {}
@@ -274,13 +216,5 @@ class Audiences {
 
   async deleteContact(contactId: string): Promise<void> {
     await this.client.request<void>('DELETE', `/contacts/${contactId}`)
-  }
-}
-
-class Analytics {
-  constructor(private client: WistMail) {}
-
-  async overview(): Promise<AnalyticsOverview> {
-    return this.client.request<AnalyticsOverview>('GET', '/analytics/overview')
   }
 }

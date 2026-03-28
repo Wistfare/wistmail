@@ -18,7 +18,7 @@ const defaultUser = {
 }
 
 describe('Sidebar', () => {
-  it('renders the WistMail logo link', () => {
+  it('renders the Wistfare Mail logo link', () => {
     render(<Sidebar user={defaultUser} />)
     expect(screen.getByText('W')).toBeInTheDocument()
   })

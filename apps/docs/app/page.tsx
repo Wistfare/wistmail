@@ -7,7 +7,7 @@ export default function HomePage() {
         <div className="mx-auto flex h-16 w-16 items-center justify-center bg-fd-primary text-fd-primary-foreground text-2xl font-bold">
           W
         </div>
-        <h1 className="text-4xl font-bold tracking-tight">WistMail Documentation</h1>
+        <h1 className="text-4xl font-bold tracking-tight">Wistfare Mail Documentation</h1>
         <p className="text-lg text-fd-muted-foreground">
           Send transactional emails, manage domains, and build integrations with the WistMail API.
         </p>

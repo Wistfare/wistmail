@@ -17,7 +17,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             <span className="text-wm-text-on-accent text-2xl font-bold">W</span>
           </div>
           <span className="font-mono text-2xl font-semibold tracking-[4px] text-wm-text-primary">
-            WISTMAIL
+            WISTFARE MAIL
           </span>
         </div>
 
