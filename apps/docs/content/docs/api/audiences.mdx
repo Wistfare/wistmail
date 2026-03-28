@@ -1,0 +1,357 @@
+---
+title: Audiences
+description: Manage contact lists and audiences for targeted email sending.
+---
+
+## Create an Audience
+
+`POST /api/v1/audiences`
+
+**Scope**: `contacts:manage`
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Audience name |
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const audience = await wm.audiences.create('Newsletter Subscribers')
+console.log(audience.id) // aud_abc123
+```
+</Tab>
+<Tab value="Python">
+```python
+audience = wm.audiences.create("Newsletter Subscribers")
+print(audience["id"])  # aud_abc123
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/audiences \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Newsletter Subscribers"}'
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "id": "aud_abc123",
+  "name": "Newsletter Subscribers",
+  "contactCount": 0,
+  "createdAt": "2026-03-28T00:00:00Z"
+}
+```
+
+---
+
+## List Audiences
+
+`GET /api/v1/audiences`
+
+**Scope**: `contacts:manage`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const audiences = await wm.audiences.list()
+audiences.forEach(a => console.log(a.name, a.contactCount))
+```
+</Tab>
+<Tab value="Python">
+```python
+audiences = wm.audiences.list()
+for a in audiences:
+    print(a["name"], a["contactCount"])
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl https://your-wistmail.com/api/v1/audiences \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "aud_abc123",
+      "name": "Newsletter Subscribers",
+      "contactCount": 1250,
+      "createdAt": "2026-03-28T00:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Get an Audience
+
+`GET /api/v1/audiences/:id`
+
+**Scope**: `contacts:manage`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const audience = await wm.audiences.get('aud_abc123')
+console.log(audience.name, audience.contactCount)
+```
+</Tab>
+<Tab value="Python">
+```python
+audience = wm.audiences.get("aud_abc123")
+print(audience["name"], audience["contactCount"])
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl https://your-wistmail.com/api/v1/audiences/aud_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+---
+
+## Delete an Audience
+
+`DELETE /api/v1/audiences/:id`
+
+**Scope**: `contacts:manage`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+await wm.audiences.delete('aud_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+wm.audiences.delete("aud_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X DELETE https://your-wistmail.com/api/v1/audiences/aud_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+Returns `204 No Content` on success.
+
+---
+
+## Add a Contact
+
+`POST /api/v1/audiences/:audienceId/contacts`
+
+**Scope**: `contacts:manage`
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `email` | string | Yes | Contact email address |
+| `name` | string | No | Contact display name |
+| `metadata` | object | No | Custom key-value data |
+| `topics` | string[] | No | Subscription topics |
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const contact = await wm.audiences.addContact('aud_abc123', {
+  email: 'alice@example.com',
+  name: 'Alice Smith',
+  metadata: { plan: 'pro', signupSource: 'landing-page' },
+  topics: ['product-updates', 'changelog'],
+})
+
+console.log(contact.id) // con_abc123
+```
+</Tab>
+<Tab value="Python">
+```python
+contact = wm.audiences.add_contact(
+    "aud_abc123",
+    email="alice@example.com",
+    name="Alice Smith",
+    metadata={"plan": "pro", "signupSource": "landing-page"},
+    topics=["product-updates", "changelog"],
+)
+
+print(contact["id"])  # con_abc123
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X POST https://your-wistmail.com/api/v1/audiences/aud_abc123/contacts \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "alice@example.com",
+    "name": "Alice Smith",
+    "metadata": { "plan": "pro", "signupSource": "landing-page" },
+    "topics": ["product-updates", "changelog"]
+  }'
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "id": "con_abc123",
+  "email": "alice@example.com",
+  "name": "Alice Smith",
+  "metadata": { "plan": "pro", "signupSource": "landing-page" },
+  "topics": ["product-updates", "changelog"],
+  "subscribed": true,
+  "createdAt": "2026-03-28T00:00:00Z"
+}
+```
+
+---
+
+## List Contacts
+
+`GET /api/v1/audiences/:audienceId/contacts`
+
+**Scope**: `contacts:manage`
+
+Supports pagination with `page` and `pageSize` query parameters.
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { data, total } = await wm.audiences.listContacts('aud_abc123', {
+  page: 1,
+  pageSize: 25,
+})
+
+data.forEach(c => console.log(c.email, c.subscribed))
+```
+</Tab>
+<Tab value="Python">
+```python
+result = wm.audiences.list_contacts("aud_abc123", page=1, page_size=25)
+for c in result["data"]:
+    print(c["email"], c["subscribed"])
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl "https://your-wistmail.com/api/v1/audiences/aud_abc123/contacts?page=1&pageSize=25" \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "con_abc123",
+      "email": "alice@example.com",
+      "name": "Alice Smith",
+      "subscribed": true,
+      "createdAt": "2026-03-28T00:00:00Z"
+    }
+  ],
+  "total": 1250,
+  "page": 1,
+  "pageSize": 25
+}
+```
+
+---
+
+## Update a Contact
+
+`PATCH /api/v1/contacts/:contactId`
+
+**Scope**: `contacts:manage`
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | No | Updated display name |
+| `metadata` | object | No | Updated custom data (merged) |
+| `topics` | string[] | No | Updated subscription topics |
+| `subscribed` | boolean | No | Subscription status |
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const updated = await wm.audiences.updateContact('con_abc123', {
+  metadata: { plan: 'enterprise' },
+  topics: ['product-updates', 'changelog', 'security'],
+})
+```
+</Tab>
+<Tab value="Python">
+```python
+updated = wm.audiences.update_contact(
+    "con_abc123",
+    metadata={"plan": "enterprise"},
+    topics=["product-updates", "changelog", "security"],
+)
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X PATCH https://your-wistmail.com/api/v1/contacts/con_abc123 \
+  -H "Authorization: Bearer wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": { "plan": "enterprise" },
+    "topics": ["product-updates", "changelog", "security"]
+  }'
+```
+</Tab>
+</Tabs>
+
+---
+
+## Delete a Contact
+
+`DELETE /api/v1/contacts/:contactId`
+
+**Scope**: `contacts:manage`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+await wm.audiences.deleteContact('con_abc123')
+```
+</Tab>
+<Tab value="Python">
+```python
+wm.audiences.delete_contact("con_abc123")
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl -X DELETE https://your-wistmail.com/api/v1/contacts/con_abc123 \
+  -H "Authorization: Bearer wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+Returns `204 No Content` on success.

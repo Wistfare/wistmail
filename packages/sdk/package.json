@@ -1,0 +1,30 @@
+{
+  "name": "wistmail",
+  "version": "0.1.0",
+  "description": "Official Node.js/TypeScript SDK for the WistMail email API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "keywords": ["email", "wistmail", "smtp", "transactional", "api", "sdk"],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.1"
+  }
+}
