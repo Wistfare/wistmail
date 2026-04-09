@@ -34,21 +34,18 @@ jobs:
 
       - name: Deploy to server
         run: |
-          # Sync built artifacts to server
-          rsync -avz --delete \
+          # Sync everything including node_modules (pre-built from CI)
+          # Exclude only git, env files, and mail-engine (Docker-built)
+          rsync -azq \
             -e "ssh -i ~/.ssh/deploy_key" \
-            --exclude node_modules \
+            --delete \
             --exclude .git \
             --exclude .env \
             --exclude .env.local \
             --exclude packages/mail-engine \
+            --exclude packages/db/drizzle \
             ./ root@${{ secrets.DEPLOY_HOST }}:/opt/wistmail/
 
-          # Install deps, run migrations, restart services
-          ssh -i ~/.ssh/deploy_key root@${{ secrets.DEPLOY_HOST }} '
-            cd /opt/wistmail &&
-            pnpm install --frozen-lockfile &&
-            pnpm db:generate || true &&
-            pnpm db:migrate || true &&
-            systemctl restart wistmail-api wistmail-web wistmail-docs
-          '
+          # Only restart services — no installs, no builds on server
+          ssh -i ~/.ssh/deploy_key root@${{ secrets.DEPLOY_HOST }} \
+            'systemctl restart wistmail-api wistmail-web wistmail-docs'
