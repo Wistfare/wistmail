@@ -19,3 +19,4 @@ COPY --from=builder /wistmail-engine /usr/local/bin/wistmail-engine
 EXPOSE 25 587 465 143 993 50051
 
 ENTRYPOINT ["wistmail-engine"]
+
