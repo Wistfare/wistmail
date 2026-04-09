@@ -22,6 +22,7 @@ FROM deps AS build
 
 COPY . .
 RUN pnpm turbo build --filter=@wistmail/api
+RUN cd packages/db && npx drizzle-kit generate
 
 # ── Runner ───────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
@@ -43,6 +44,7 @@ COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/packages/shared/src ./packages/shared/src
 COPY --from=build /app/packages/db/src ./packages/db/src
 COPY --from=build /app/packages/db/drizzle.config.ts ./packages/db/
+COPY --from=build /app/packages/db/drizzle ./packages/db/drizzle
 COPY --from=build /app/packages/dns-manager/src ./packages/dns-manager/src
 
 # Copy workspace node_modules symlinks
