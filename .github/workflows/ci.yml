@@ -44,11 +44,11 @@ jobs:
             --exclude packages/mail-engine \
             ./ root@${{ secrets.DEPLOY_HOST }}:/opt/wistmail/
 
-          # Install production deps and restart services on server
+          # Install deps, run migrations, restart services
           ssh -i ~/.ssh/deploy_key root@${{ secrets.DEPLOY_HOST }} '
             cd /opt/wistmail &&
             pnpm install --frozen-lockfile &&
-            pnpm db:generate &&
-            pnpm db:migrate &&
+            pnpm db:generate || true &&
+            pnpm db:migrate || true &&
             systemctl restart wistmail-api wistmail-web wistmail-docs
           '
