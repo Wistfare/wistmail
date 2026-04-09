@@ -1,0 +1,43 @@
+{
+  "providerId": "mail.wistfare.com",
+  "providerName": "Wistfare Mail",
+  "serviceId": "mail-setup",
+  "serviceName": "Wistfare Mail",
+  "description": "Configure DNS records for Wistfare Mail email hosting (MX, SPF, DKIM, DMARC)",
+  "syncBlock": false,
+  "hostRequired": false,
+  "syncPubKeyDomain": "mail.wistfare.com",
+  "version": 1,
+  "logoUrl": "https://mail.wistfare.com/logo.svg",
+  "records": [
+    {
+      "groupId": "wistfare-mx",
+      "type": "MX",
+      "host": "@",
+      "pointsTo": "mail.%domain%",
+      "priority": 10,
+      "ttl": 600
+    },
+    {
+      "groupId": "wistfare-spf",
+      "type": "SPFM",
+      "host": "@",
+      "spfRules": "a mx ip4:%serverIp%"
+    },
+    {
+      "groupId": "wistfare-dkim",
+      "type": "TXT",
+      "host": "wistmail._domainkey",
+      "data": "%dkimKey%",
+      "ttl": 600
+    },
+    {
+      "groupId": "wistfare-dmarc",
+      "type": "TXT",
+      "host": "_dmarc",
+      "data": "v=DMARC1; p=quarantine; rua=mailto:dmarc@%domain%",
+      "txtConflictMatchingMode": "All",
+      "ttl": 600
+    }
+  ]
+}

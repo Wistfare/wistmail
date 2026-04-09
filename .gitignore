@@ -46,3 +46,4 @@ logs/
 tmp/
 temp/
 *.pyc
+domain-connect/keys/

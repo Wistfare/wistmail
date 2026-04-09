@@ -11,6 +11,7 @@ import { AuditService } from '../services/audit.js'
 import { getDb } from '../lib/db.js'
 import { getServerIp } from '../lib/server-ip.js'
 import { createDnsProvider } from '@wistmail/dns-manager'
+import { generateDomainConnectUrl, verifyDomainConnectCallback } from '../lib/domain-connect.js'
 
 const SETUP_COOKIE = 'wm_setup_token'
 const SETUP_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
@@ -196,7 +197,89 @@ setupRoutes.post('/skip-dns', async (c) => {
   return c.json({ step: 'account' })
 })
 
-// ── Cloudflare Integration ──────────────────────────────────────────────────
+// ── Domain Connect (one-click Cloudflare DNS) ───────────────────────────────
+
+/**
+ * GET /api/v1/setup/domain-connect/url
+ * Generates a signed Domain Connect apply URL for the user's domain.
+ * User is redirected to Cloudflare to authorize DNS changes.
+ */
+setupRoutes.get('/domain-connect/url', async (c) => {
+  const setupToken = await getSetupToken(c)
+  if (!setupToken || !setupToken.domainId) {
+    throw new ValidationError('Invalid or expired setup session. Please start over.')
+  }
+
+  const db = getDb()
+  const domainService = new DomainService(db)
+  const domainData = await domainService.getRecordsById(setupToken.domainId)
+
+  // Get the DKIM public key from the domain
+  const domainResult = await db.select().from(domains).where(eq(domains.id, setupToken.domainId)).limit(1)
+  if (domainResult.length === 0) {
+    throw new ValidationError('Domain not found.')
+  }
+
+  const domain = domainResult[0]
+  const serverIp = domain.serverIp || await getServerIp()
+
+  const callbackUrl = `${c.req.header('origin') || 'https://mail.wistfare.com'}/setup/callback`
+
+  try {
+    const url = generateDomainConnectUrl({
+      domain: domain.name,
+      serverIp,
+      dkimKey: domain.dkimPublicKey || '',
+      redirectUri: callbackUrl,
+    })
+
+    return c.json({ url, domain: domain.name })
+  } catch (err) {
+    // Domain Connect signing not available — fall back to token flow
+    return c.json({
+      url: null,
+      fallback: true,
+      domain: domain.name,
+      error: 'Domain Connect is not yet available. Please use the API token method.',
+    })
+  }
+})
+
+/**
+ * GET /api/v1/setup/domain-connect/callback
+ * Handles the redirect back from Cloudflare after Domain Connect authorization.
+ */
+setupRoutes.get('/domain-connect/callback', async (c) => {
+  const queryParams = Object.fromEntries(new URL(c.req.url).searchParams.entries())
+  const result = verifyDomainConnectCallback(queryParams)
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error })
+  }
+
+  // Domain Connect succeeded — Cloudflare already created the records
+  // Advance setup token to account step
+  const setupToken = await getSetupToken(c)
+  if (setupToken) {
+    const db = getDb()
+    await db
+      .update(setupTokens)
+      .set({ step: 'account' })
+      .where(eq(setupTokens.id, setupToken.id))
+
+    // Update domain provider
+    if (setupToken.domainId) {
+      await db
+        .update(domains)
+        .set({ dnsProvider: 'cloudflare', updatedAt: new Date() })
+        .where(eq(domains.id, setupToken.domainId))
+    }
+  }
+
+  return c.json({ success: true })
+})
+
+// ── Cloudflare Token Integration (fallback) ─────────────────────────────────
 
 const cloudflareSchema = z.object({
   apiToken: z.string().min(1, 'API token is required'),
