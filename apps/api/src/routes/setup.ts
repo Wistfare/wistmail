@@ -211,10 +211,7 @@ setupRoutes.get('/domain-connect/url', async (c) => {
   }
 
   const db = getDb()
-  const domainService = new DomainService(db)
-  const domainData = await domainService.getRecordsById(setupToken.domainId)
 
-  // Get the DKIM public key from the domain
   const domainResult = await db.select().from(domains).where(eq(domains.id, setupToken.domainId)).limit(1)
   if (domainResult.length === 0) {
     throw new ValidationError('Domain not found.')
