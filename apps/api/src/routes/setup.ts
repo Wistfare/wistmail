@@ -9,6 +9,8 @@ import { users, domains, mailboxes, setupTokens, organizations, orgMembers, sess
 import { DomainService } from '../services/domain.js'
 import { AuditService } from '../services/audit.js'
 import { getDb } from '../lib/db.js'
+import { getServerIp } from '../lib/server-ip.js'
+import { createDnsProvider } from '@wistmail/dns-manager'
 
 const SETUP_COOKIE = 'wm_setup_token'
 const SETUP_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
@@ -41,16 +43,11 @@ async function getSetupToken(c: any) {
 
 // ── Check if system has any users (fresh install detection) ─────────────────
 
-/**
- * GET /api/v1/setup/status
- * Returns whether the system has been set up (any users exist).
- */
 setupRoutes.get('/status', async (c) => {
   const db = getDb()
   const result = await db.select({ count: sql<number>`count(*)` }).from(users)
   const userCount = Number(result[0]?.count || 0)
 
-  // Also check if there's an active setup token
   const setupToken = await getSetupToken(c)
 
   return c.json({
@@ -61,7 +58,7 @@ setupRoutes.get('/status', async (c) => {
   })
 })
 
-// ── Step 1: Add Domain (NO AUTH — first thing user does) ────────────────────
+// ── Domain check (validate domain + detect server IP) ───────────────────────
 
 const domainSchema = z.object({
   name: z
@@ -71,10 +68,39 @@ const domainSchema = z.object({
     .regex(/^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/, 'Invalid domain name'),
 })
 
-/**
- * POST /api/v1/setup/domain
- * No auth required. Creates domain + setup token.
- */
+setupRoutes.post('/domain/check', async (c) => {
+  const body = await c.req.json()
+  const parsed = domainSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new ValidationError('Invalid domain name', { errors: parsed.error.flatten().fieldErrors })
+  }
+
+  const domainName = parsed.data.name.toLowerCase()
+  const { promises: dns } = await import('node:dns')
+
+  let resolvedIps: string[] = []
+  let domainExists = false
+
+  try {
+    const ipv4 = await dns.resolve4(domainName).catch(() => [])
+    const ipv6 = await dns.resolve6(domainName).catch(() => [])
+    resolvedIps = [...ipv4, ...ipv6]
+    domainExists = resolvedIps.length > 0
+  } catch {
+    domainExists = false
+  }
+
+  const serverIp = await getServerIp()
+
+  return c.json({
+    domainExists,
+    resolvedIps,
+    serverIp,
+  })
+})
+
+// ── Step 1: Add Domain ──────────────────────────────────────────────────────
+
 setupRoutes.post('/domain', async (c) => {
   const body = await c.req.json()
   const parsed = domainSchema.safeParse(body)
@@ -85,17 +111,14 @@ setupRoutes.post('/domain', async (c) => {
   const db = getDb()
   const domainName = parsed.data.name.toLowerCase()
 
-  // Check if domain already registered
   const existing = await db.select().from(domains).where(eq(domains.name, domainName)).limit(1)
   if (existing.length > 0) {
     throw new ValidationError('This domain is already registered')
   }
 
-  // Create domain without userId (no user yet)
   const domainService = new DomainService(db)
   const result = await domainService.createWithoutUser(domainName)
 
-  // Create setup token
   const tokenId = generateId('stk')
   const token = randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + SETUP_TOKEN_EXPIRY_MS)
@@ -108,24 +131,19 @@ setupRoutes.post('/domain', async (c) => {
     expiresAt,
   })
 
-  // Set setup token cookie
   setCookie(c, SETUP_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: 86400, // 24 hours
+    maxAge: 86400,
   })
 
   return c.json(result, 201)
 })
 
-// ── Step 2: Verify DNS (uses setup token) ───────────────────────────────────
+// ── Step 2: DNS Verification ────────────────────────────────────────────────
 
-/**
- * POST /api/v1/setup/domain/verify
- * No auth — uses setup token cookie.
- */
 setupRoutes.post('/domain/verify', async (c) => {
   const setupToken = await getSetupToken(c)
   if (!setupToken || !setupToken.domainId) {
@@ -136,7 +154,6 @@ setupRoutes.post('/domain/verify', async (c) => {
   const domainService = new DomainService(db)
   const result = await domainService.verifyById(setupToken.domainId)
 
-  // Update setup token step if MX verified
   if (result.mx) {
     await db
       .update(setupTokens)
@@ -147,10 +164,6 @@ setupRoutes.post('/domain/verify', async (c) => {
   return c.json(result)
 })
 
-/**
- * GET /api/v1/setup/domain/records
- * Get DNS records for the domain in current setup session.
- */
 setupRoutes.get('/domain/records', async (c) => {
   const setupToken = await getSetupToken(c)
   if (!setupToken || !setupToken.domainId) {
@@ -164,11 +177,11 @@ setupRoutes.get('/domain/records', async (c) => {
   return c.json(result)
 })
 
-/**
- * POST /api/v1/setup/skip-dns
- * Skip remaining DNS verification (MX must be verified or user explicitly skips all).
- */
 setupRoutes.post('/skip-dns', async (c) => {
+  if (process.env.ALLOW_SKIP_DNS !== 'true') {
+    throw new ValidationError('DNS verification is required. Please configure your DNS records to continue.')
+  }
+
   const setupToken = await getSetupToken(c)
   if (!setupToken) {
     throw new ValidationError('Invalid or expired setup session.')
@@ -183,7 +196,100 @@ setupRoutes.post('/skip-dns', async (c) => {
   return c.json({ step: 'account' })
 })
 
-// ── Step 3: Create Admin Account (uses setup token) ─────────────────────────
+// ── Cloudflare Integration ──────────────────────────────────────────────────
+
+const cloudflareSchema = z.object({
+  apiToken: z.string().min(1, 'API token is required'),
+})
+
+setupRoutes.post('/cloudflare/connect', async (c) => {
+  const setupToken = await getSetupToken(c)
+  if (!setupToken || !setupToken.domainId) {
+    throw new ValidationError('Invalid or expired setup session. Please start over.')
+  }
+
+  const body = await c.req.json()
+  const parsed = cloudflareSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new ValidationError('Invalid input', { errors: parsed.error.flatten().fieldErrors })
+  }
+
+  const db = getDb()
+  // Get the domain name
+  const domainResult = await db.select().from(domains).where(eq(domains.id, setupToken.domainId)).limit(1)
+  if (domainResult.length === 0) {
+    throw new ValidationError('Domain not found. Please start over.')
+  }
+
+  const provider = createDnsProvider({
+    provider: 'cloudflare',
+    cloudflare: { apiToken: parsed.data.apiToken },
+  })
+
+  const result = await provider.verifyConnection(domainResult[0].name)
+
+  if (result.valid && result.zoneId) {
+    const domainService = new DomainService(db)
+    await domainService.updateCloudflare(setupToken.domainId, result.zoneId)
+  }
+
+  return c.json(result)
+})
+
+setupRoutes.post('/cloudflare/create-records', async (c) => {
+  const setupToken = await getSetupToken(c)
+  if (!setupToken || !setupToken.domainId) {
+    throw new ValidationError('Invalid or expired setup session. Please start over.')
+  }
+
+  const body = await c.req.json()
+  const parsed = cloudflareSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new ValidationError('Invalid input', { errors: parsed.error.flatten().fieldErrors })
+  }
+
+  const db = getDb()
+  const domainResult = await db.select().from(domains).where(eq(domains.id, setupToken.domainId)).limit(1)
+  if (domainResult.length === 0) {
+    throw new ValidationError('Domain not found. Please start over.')
+  }
+
+  const domain = domainResult[0]
+  if (!domain.cloudflareZoneId) {
+    throw new ValidationError('Cloudflare not connected for this domain. Please connect first.')
+  }
+
+  const domainService = new DomainService(db)
+  const dnsRecords = domainService.getDnsRecords(domain.name, domain.dkimPublicKey || '', domain.serverIp || undefined)
+
+  const provider = createDnsProvider({
+    provider: 'cloudflare',
+    cloudflare: { apiToken: parsed.data.apiToken, zoneId: domain.cloudflareZoneId },
+  })
+
+  // Convert to DnsRecordInput format
+  const recordInputs = dnsRecords.map((r) => ({
+    type: r.type as 'MX' | 'TXT',
+    name: r.name,
+    content: r.value,
+    priority: r.priority,
+  }))
+
+  const results = await provider.createRecords(domain.cloudflareZoneId, recordInputs)
+  const allCreated = results.every((r) => r.success)
+
+  return c.json({
+    results: results.map((r) => ({
+      type: r.type,
+      name: r.name,
+      success: r.success,
+      error: r.error,
+    })),
+    allCreated,
+  })
+})
+
+// ── Step 3: Create Admin Account ────────────────────────────────────────────
 
 const accountSchema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters').max(255),
@@ -196,10 +302,6 @@ const accountSchema = z.object({
     .regex(/\d/, 'Must include a number'),
 })
 
-/**
- * POST /api/v1/setup/account
- * No auth — uses setup token. Creates user + mailbox + org + session.
- */
 setupRoutes.post('/account', async (c) => {
   const setupToken = await getSetupToken(c)
   if (!setupToken || !setupToken.domainId) {
@@ -214,26 +316,21 @@ setupRoutes.post('/account', async (c) => {
 
   const db = getDb()
 
-  // Get the domain
   const domainResult = await db.select().from(domains).where(eq(domains.id, setupToken.domainId)).limit(1)
   if (domainResult.length === 0) {
     throw new ValidationError('Domain not found. Please start over.')
   }
   const domain = domainResult[0]
 
-  // Construct full email
   const fullEmail = `${parsed.data.emailLocal.toLowerCase()}@${domain.name}`
 
-  // Check email uniqueness
   const existingUser = await db.select().from(users).where(eq(users.email, fullEmail)).limit(1)
   if (existingUser.length > 0) {
     throw new ValidationError('This email address is already taken')
   }
 
-  // Hash password
   const passwordHash = await hash(parsed.data.password)
 
-  // Create user
   const userId = generateId('usr')
   const now = new Date()
   await db.insert(users).values({
@@ -247,10 +344,8 @@ setupRoutes.post('/account', async (c) => {
     updatedAt: now,
   })
 
-  // Assign domain to user
   await db.update(domains).set({ userId }).where(eq(domains.id, domain.id))
 
-  // Create mailbox
   const mailboxId = generateId('mbx')
   await db.insert(mailboxes).values({
     id: mailboxId,
@@ -262,7 +357,6 @@ setupRoutes.post('/account', async (c) => {
     updatedAt: now,
   })
 
-  // Create organization
   const orgId = generateId('org')
   const orgSlug = domain.name.replace(/\./g, '-')
   await db.insert(organizations).values({
@@ -274,7 +368,6 @@ setupRoutes.post('/account', async (c) => {
     updatedAt: now,
   })
 
-  // Add user as owner of organization
   await db.insert(orgMembers).values({
     id: generateId('mem'),
     orgId,
@@ -283,7 +376,6 @@ setupRoutes.post('/account', async (c) => {
     createdAt: now,
   })
 
-  // Create session
   const sessionId = generateId('ses')
   const sessionToken = randomBytes(32).toString('hex')
   const sessionExpiry = new Date(Date.now() + SESSION_DURATION_MS)
@@ -295,7 +387,6 @@ setupRoutes.post('/account', async (c) => {
     expiresAt: sessionExpiry,
   })
 
-  // Set session cookie
   setCookie(c, SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -304,11 +395,9 @@ setupRoutes.post('/account', async (c) => {
     maxAge: 30 * 24 * 60 * 60,
   })
 
-  // Delete setup token
   await db.delete(setupTokens).where(eq(setupTokens.id, setupToken.id))
   deleteCookie(c, SETUP_COOKIE)
 
-  // Audit log
   const audit = new AuditService(db)
   await audit.log({
     userId,
@@ -337,12 +426,7 @@ setupRoutes.post('/account', async (c) => {
 
 // ── Authenticated setup routes (for existing users managing domains) ────────
 
-/**
- * GET /api/v1/setup/domains
- * List domains (requires session auth — for settings page).
- */
 setupRoutes.get('/domains', async (c) => {
-  // Try session auth
   const sessionCookie = getCookie(c, SESSION_COOKIE)
   if (!sessionCookie) {
     return c.json({ data: [] })
@@ -360,10 +444,6 @@ setupRoutes.get('/domains', async (c) => {
   return c.json({ data: result })
 })
 
-/**
- * GET /api/v1/setup/mailboxes
- * List mailboxes (requires session auth).
- */
 setupRoutes.get('/mailboxes', async (c) => {
   const sessionCookie = getCookie(c, SESSION_COOKIE)
   if (!sessionCookie) {

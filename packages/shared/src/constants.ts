@@ -75,3 +75,13 @@ export const SPAM_HIGH_THRESHOLD = 10.0
 
 export const DNS_PROPAGATION_CHECK_INTERVAL_MS = 30000 // 30 seconds
 export const DNS_PROPAGATION_MAX_ATTEMPTS = 60 // 30 minutes total
+export const DNS_VERIFY_POLL_INTERVAL_MS = 10_000 // 10 seconds
+export const DNS_VERIFY_MAX_POLL_DURATION_MS = 30 * 60_000 // 30 minutes
+
+// ─── Cloudflare ────────────────────────────────────────────────────────────
+
+export const CLOUDFLARE_API_BASE = 'https://api.cloudflare.com/client/v4'
+
+// ─── DNS Providers ─────────────────────────────────────────────────────────
+
+export const DNS_PROVIDERS = ['cloudflare', 'manual'] as const

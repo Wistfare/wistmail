@@ -17,6 +17,7 @@
     "@hono/node-server": "^1.14.3",
     "@hono/zod-openapi": "^0.19.6",
     "@wistmail/db": "workspace:*",
+    "@wistmail/dns-manager": "workspace:*",
     "@wistmail/shared": "workspace:*",
     "argon2": "^0.44.0",
     "bullmq": "^5.52.2",

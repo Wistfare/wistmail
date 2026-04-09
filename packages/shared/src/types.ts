@@ -24,11 +24,38 @@ export interface Domain {
   spfVerified: boolean
   dkimVerified: boolean
   dmarcVerified: boolean
+  dnsProvider: DnsProviderType
+  cloudflareZoneId: string | null
+  serverIp: string | null
   createdAt: Date
   updatedAt: Date
 }
 
 export type DomainStatus = 'pending' | 'verifying' | 'active' | 'failed' | 'suspended'
+
+export type DnsProviderType = 'cloudflare' | 'manual'
+
+export interface DomainCheckResult {
+  domainExists: boolean
+  resolvedIps: string[]
+  serverIp: string
+}
+
+export interface CloudflareConnectResult {
+  valid: boolean
+  zoneId?: string
+  error?: string
+}
+
+export interface CloudflareCreateResult {
+  results: Array<{
+    type: string
+    name: string
+    success: boolean
+    error?: string
+  }>
+  allCreated: boolean
+}
 
 export interface Mailbox {
   id: string

@@ -10,6 +10,7 @@ import {
 } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 import { generateDkimKeyPair } from '../lib/crypto.js'
+import { getServerIp } from '../lib/server-ip.js'
 
 export class DomainService {
   constructor(private db: Database) {}
@@ -21,7 +22,6 @@ export class DomainService {
       throw new ValidationError('Invalid domain name')
     }
 
-    // Check if domain already exists
     const existing = await this.db
       .select()
       .from(domains)
@@ -31,8 +31,8 @@ export class DomainService {
       throw new ConflictError('Domain already registered')
     }
 
-    // Generate DKIM key pair
     const { privateKey, publicKeyDns } = await generateDkimKeyPair()
+    const serverIp = await getServerIp()
 
     const domainId = generateId('dom')
     const now = new Date()
@@ -45,6 +45,7 @@ export class DomainService {
       dkimSelector: DKIM_SELECTOR,
       dkimPrivateKey: privateKey,
       dkimPublicKey: publicKeyDns,
+      serverIp,
       createdAt: now,
       updatedAt: now,
     })
@@ -53,7 +54,8 @@ export class DomainService {
       id: domainId,
       name: domainName,
       status: 'pending' as const,
-      records: this.getDnsRecords(domainName, publicKeyDns),
+      serverIp,
+      records: this.getDnsRecords(domainName, publicKeyDns, serverIp),
     }
   }
 
@@ -74,6 +76,8 @@ export class DomainService {
     }
 
     const { privateKey, publicKeyDns } = await generateDkimKeyPair()
+    const serverIp = await getServerIp()
+
     const domainId = generateId('dom')
     const now = new Date()
 
@@ -85,6 +89,7 @@ export class DomainService {
       dkimSelector: DKIM_SELECTOR,
       dkimPrivateKey: privateKey,
       dkimPublicKey: publicKeyDns,
+      serverIp,
       createdAt: now,
       updatedAt: now,
     })
@@ -93,7 +98,8 @@ export class DomainService {
       id: domainId,
       name: domainName,
       status: 'pending' as const,
-      records: this.getDnsRecords(domainName, publicKeyDns),
+      serverIp,
+      records: this.getDnsRecords(domainName, publicKeyDns, serverIp),
     }
   }
 
@@ -139,7 +145,8 @@ export class DomainService {
     return {
       id: domain.id,
       name: domain.name,
-      records: this.getDnsRecords(domain.name, domain.dkimPublicKey || ''),
+      serverIp: domain.serverIp,
+      records: this.getDnsRecords(domain.name, domain.dkimPublicKey || '', domain.serverIp || undefined),
       mx: domain.mxVerified,
       spf: domain.spfVerified,
       dkim: domain.dkimVerified,
@@ -169,15 +176,13 @@ export class DomainService {
 
     return {
       ...domain,
-      records: this.getDnsRecords(domain.name, domain.dkimPublicKey || ''),
+      records: this.getDnsRecords(domain.name, domain.dkimPublicKey || '', domain.serverIp || undefined),
     }
   }
 
   async verify(domainId: string, userId: string) {
     const domain = await this.getById(domainId, userId)
 
-    // In production, this would do real DNS lookups
-    // For now, simulate verification checks
     const checks = {
       mx: await this.checkMx(domain.name),
       spf: await this.checkSpf(domain.name),
@@ -209,7 +214,18 @@ export class DomainService {
     await this.db.delete(domains).where(eq(domains.id, domain.id))
   }
 
-  private getDnsRecords(domainName: string, dkimPublicKey: string) {
+  async updateCloudflare(domainId: string, zoneId: string) {
+    await this.db
+      .update(domains)
+      .set({
+        dnsProvider: 'cloudflare',
+        cloudflareZoneId: zoneId,
+        updatedAt: new Date(),
+      })
+      .where(eq(domains.id, domainId))
+  }
+
+  getDnsRecords(domainName: string, dkimPublicKey: string, serverIp?: string) {
     return [
       {
         type: 'MX' as const,
@@ -221,7 +237,7 @@ export class DomainService {
       {
         type: 'TXT' as const,
         name: domainName,
-        value: `v=spf1 a mx ip4:YOUR_SERVER_IP ~all`,
+        value: `v=spf1 a mx ip4:${serverIp || 'YOUR_SERVER_IP'} ~all`,
         verified: false,
       },
       {
