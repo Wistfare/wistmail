@@ -15,11 +15,9 @@ interface CfResponse<T> {
 
 export class CloudflareProvider implements DnsProvider {
   private apiToken: string
-  private zoneId?: string
 
   constructor(config: CloudflareConfig) {
     this.apiToken = config.apiToken
-    this.zoneId = config.zoneId
   }
 
   private headers(): HeadersInit {
@@ -50,8 +48,6 @@ export class CloudflareProvider implements DnsProvider {
       }
 
       const zoneId = zoneData.result[0].id
-      this.zoneId = zoneId
-
       return { valid: true, zoneId }
     } catch (err) {
       return { valid: false, error: err instanceof Error ? err.message : 'Failed to connect to Cloudflare' }
