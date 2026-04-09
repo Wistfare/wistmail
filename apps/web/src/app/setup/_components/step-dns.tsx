@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Cloud, Settings2, ArrowLeft } from 'lucide-react'
+import { Cloud, Settings2 } from 'lucide-react'
 import { StepDnsCloudflare } from './step-dns-cloudflare'
 import { StepDnsManual } from './step-dns-manual'
 import { StepDnsVerification } from './step-dns-verification'
@@ -14,10 +14,9 @@ interface StepDnsProps {
   domain: string
   records: DnsRecord[]
   onNext: () => void
-  onBack: () => void
 }
 
-export function StepDns({ domain, records, onNext, onBack }: StepDnsProps) {
+export function StepDns({ domain, records, onNext }: StepDnsProps) {
   const [view, setView] = useState<DnsView>('choose')
 
   if (view === 'cloudflare') {
@@ -98,15 +97,6 @@ export function StepDns({ domain, records, onNext, onBack }: StepDnsProps) {
         </button>
       </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="flex cursor-pointer items-center gap-1 font-mono text-xs text-wm-text-muted hover:text-wm-text-secondary"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Back
-        </button>
-      </div>
     </div>
   )
 }

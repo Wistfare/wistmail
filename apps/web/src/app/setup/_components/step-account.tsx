@@ -1,17 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react'
+import { User, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api-client'
 
 interface StepAccountProps {
   domain: string
   onNext: () => void
-  onBack: () => void
 }
 
-export function StepAccount({ domain, onNext, onBack }: StepAccountProps) {
+export function StepAccount({ domain, onNext }: StepAccountProps) {
   const [displayName, setDisplayName] = useState('')
   const [emailLocal, setEmailLocal] = useState('')
   const [password, setPassword] = useState('')
@@ -108,14 +107,9 @@ export function StepAccount({ domain, onNext, onBack }: StepAccountProps) {
 
       {error && <p className="font-mono text-xs text-wm-error">{error}</p>}
 
-      <div className="flex items-center gap-3">
-        <Button variant="secondary" icon={<ArrowLeft className="h-4 w-4" />} onClick={onBack}>
-          Back
-        </Button>
-        <Button type="submit" variant="primary" loading={loading} icon={<ArrowRight className="h-4 w-4" />}>
-          Create Account
-        </Button>
-      </div>
+      <Button type="submit" variant="primary" loading={loading}>
+        Create Account
+      </Button>
     </form>
   )
 }

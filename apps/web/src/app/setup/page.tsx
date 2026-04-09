@@ -77,7 +77,6 @@ export default function SetupPage() {
               domain={domain}
               records={records}
               onNext={() => setStep(2)}
-              onBack={() => setStep(0)}
             />
           )}
 
@@ -85,7 +84,6 @@ export default function SetupPage() {
             <StepAccount
               domain={domain}
               onNext={() => setStep(3)}
-              onBack={() => setStep(1)}
             />
           )}
 

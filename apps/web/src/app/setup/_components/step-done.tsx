@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, ArrowRight } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export function StepDone() {
@@ -16,7 +16,7 @@ export function StepDone() {
       <p className="font-mono text-xs text-wm-text-tertiary">
         Your email infrastructure is ready. Start sending and receiving emails.
       </p>
-      <Button variant="primary" icon={<ArrowRight className="h-4 w-4" />} onClick={() => router.push('/inbox')}>
+      <Button variant="primary" onClick={() => router.push('/inbox')}>
         Go to Inbox
       </Button>
     </div>

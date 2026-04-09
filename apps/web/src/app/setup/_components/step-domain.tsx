@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Globe, ArrowRight, Check, AlertTriangle } from 'lucide-react'
+import { Globe, Check, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api-client'
 
@@ -37,11 +37,20 @@ export function StepDomain({ onNext }: StepDomainProps) {
       )
       setCheckResult(check)
 
-      // Step 2: Create domain
-      const res = await api.post<{ id: string; name: string; records: DnsRecord[]; serverIp: string }>(
-        '/api/v1/setup/domain',
-        { name: domain.trim() },
-      )
+      // Step 2: Create domain (or resume if already registered)
+      let res: { id: string; name: string; records: DnsRecord[]; serverIp: string }
+      try {
+        res = await api.post<{ id: string; name: string; records: DnsRecord[]; serverIp: string }>(
+          '/api/v1/setup/domain',
+          { name: domain.trim() },
+        )
+      } catch {
+        // Domain already registered — try to resume existing setup
+        const existing = await api.get<{ id: string; name: string; records: DnsRecord[]; serverIp: string }>(
+          '/api/v1/setup/domain/records',
+        )
+        res = existing
+      }
 
       onNext({
         domain: res.name,
@@ -108,7 +117,7 @@ export function StepDomain({ onNext }: StepDomainProps) {
 
       {error && <p className="font-mono text-xs text-wm-error">{error}</p>}
 
-      <Button type="submit" variant="primary" loading={loading} icon={<ArrowRight className="h-4 w-4" />}>
+      <Button type="submit" variant="primary" loading={loading}>
         Continue
       </Button>
     </form>
