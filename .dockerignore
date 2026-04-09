@@ -1,0 +1,16 @@
+node_modules
+.git
+.next
+dist
+.turbo
+.env
+.env.*
+*.log
+coverage
+.DS_Store
+images/
+sdks/
+tests/
+design.lib.pen
+domain-connect/keys/
+.claude/

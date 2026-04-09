@@ -33,13 +33,11 @@ services:
 
   # ── Go Mail Engine (SMTP + IMAP + gRPC) ────────────────────────────────────
   mail-engine:
-    build:
-      context: ./packages/mail-engine
-      dockerfile: Dockerfile
+    image: ghcr.io/wistfare/wistmail-engine:latest
     restart: unless-stopped
     environment:
       MAIL_DOMAIN: ${MAIL_DOMAIN:-localhost}
-      HOSTNAME: ${HOSTNAME:-localhost}
+      HOSTNAME: ${MAIL_HOSTNAME:-localhost}
       DATABASE_URL: postgresql://wistmail:wistmail@postgres:5432/wistmail
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
@@ -55,18 +53,18 @@ services:
       TLS_CERT_PATH: ${TLS_CERT_PATH:-}
       TLS_KEY_PATH: ${TLS_KEY_PATH:-}
     ports:
-      - "25:25"         # SMTP inbound
-      - "587:587"       # SMTP submission
-      - "143:143"       # IMAP
-      - "993:993"       # IMAPS
-      - "50051:50051"   # gRPC (internal API)
+      - "25:25"
+      - "587:587"
+      - "143:143"
+      - "993:993"
+      - "50051:50051"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "true"]  # Basic check — engine logs to stdout
+      test: ["CMD", "true"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -106,6 +104,55 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # ── API Gateway (Hono / Node.js) ───────────────────────────────────────────
+  api:
+    image: ghcr.io/wistfare/wistmail-api:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://wistmail:wistmail@postgres:5432/wistmail
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: wistmail
+      S3_SECRET_KEY: wistmail-secret
+      S3_BUCKET: wistmail-attachments
+      S3_REGION: us-east-1
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: wistmail-search-key
+      JWT_SECRET: ${JWT_SECRET:-wistmail-jwt-secret}
+      API_PORT: "3001"
+      ALLOW_SKIP_DNS: ${ALLOW_SKIP_DNS:-false}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+
+  # ── Web Client (Next.js) ───────────────────────────────────────────────────
+  web:
+    image: ghcr.io/wistfare/wistmail-web:latest
+    restart: unless-stopped
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  # ── Docs (Next.js) ─────────────────────────────────────────────────────────
+  docs:
+    image: ghcr.io/wistfare/wistmail-docs:latest
+    restart: unless-stopped
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3002"
+    ports:
+      - "3002:3002"
 
 volumes:
   postgres_data:
