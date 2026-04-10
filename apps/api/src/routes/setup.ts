@@ -14,6 +14,20 @@ import { createDnsProvider } from '@wistmail/dns-manager'
 import { generateDomainConnectUrl, verifyDomainConnectCallback } from '../lib/domain-connect.js'
 import { ResendService } from '../services/resend.js'
 
+// Simple IP-based rate limiting for setup endpoints
+const setupRateLimit = new Map<string, { count: number; resetAt: number }>()
+function checkSetupRateLimit(ip: string, maxRequests = 10, windowMs = 60000): boolean {
+  const now = Date.now()
+  const entry = setupRateLimit.get(ip)
+  if (!entry || now > entry.resetAt) {
+    setupRateLimit.set(ip, { count: 1, resetAt: now + windowMs })
+    return true
+  }
+  if (entry.count >= maxRequests) return false
+  entry.count++
+  return true
+}
+
 const SETUP_COOKIE = 'wm_setup_token'
 const SETUP_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
 const SESSION_COOKIE = 'wm_session'
@@ -110,6 +124,12 @@ setupRoutes.post('/domain/check', async (c) => {
 // ── Step 1: Add Domain ──────────────────────────────────────────────────────
 
 setupRoutes.post('/domain', async (c) => {
+  // Rate limit: 10 domain registrations per minute per IP
+  const ip = c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || 'unknown'
+  if (!checkSetupRateLimit(ip, 10, 60000)) {
+    return c.json({ error: { code: 'RATE_LIMIT', message: 'Too many requests. Please try again later.' } }, 429)
+  }
+
   const body = await c.req.json()
   const parsed = domainSchema.safeParse(body)
   if (!parsed.success) {
@@ -402,6 +422,12 @@ const accountSchema = z.object({
 })
 
 setupRoutes.post('/account', async (c) => {
+  // Rate limit: 5 account creations per minute per IP
+  const ip = c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || 'unknown'
+  if (!checkSetupRateLimit(ip, 5, 60000)) {
+    return c.json({ error: { code: 'RATE_LIMIT', message: 'Too many requests. Please try again later.' } }, 429)
+  }
+
   const setupToken = await getSetupToken(c)
   if (!setupToken || !setupToken.domainId) {
     throw new ValidationError('Invalid or expired setup session. Please start over.')
