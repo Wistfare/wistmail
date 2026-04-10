@@ -1,4 +1,4 @@
-import { createSign } from 'node:crypto'
+import { createSign, createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { domains, emails, sendingLogs, mailboxes } from '@wistmail/db'
 import { generateId, DKIM_SELECTOR } from '@wistmail/shared'
@@ -172,7 +172,7 @@ export class EmailSender {
     const body = message.substring(headerEnd + 4)
 
     // Hash the body
-    const bodyHash = require('node:crypto').createHash('sha256').update(body).digest('base64')
+    const bodyHash = createHash('sha256').update(body).digest('base64')
 
     // Build DKIM header value (without signature)
     const timestamp = Math.floor(Date.now() / 1000)
