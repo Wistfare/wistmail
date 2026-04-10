@@ -135,7 +135,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		},
 	}
 
-	session.writeLine(fmt.Sprintf("220 %s ESMTP WistMail", s.Hostname))
+	session.writeLine(fmt.Sprintf("220 %s ESMTP Wistfare", s.Hostname))
 
 	for {
 		if s.ReadTimeout > 0 {

@@ -12,7 +12,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <span className="flex h-6 w-6 items-center justify-center bg-fd-primary text-xs font-bold text-fd-primary-foreground">
               W
             </span>
-            WistMail
+            Wistfare Mail
           </span>
         ),
       }}

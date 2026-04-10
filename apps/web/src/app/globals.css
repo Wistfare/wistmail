@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 @theme {
-  /* ── Colors from WistMail design system ── */
+  /* ── Colors from Wistfare Mail design system ── */
   --color-wm-bg: #000000;
   --color-wm-surface: #111111;
   --color-wm-surface-hover: #1A1A1A;

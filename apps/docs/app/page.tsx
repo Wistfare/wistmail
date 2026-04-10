@@ -9,7 +9,7 @@ export default function HomePage() {
         </div>
         <h1 className="text-4xl font-bold tracking-tight">Wistfare Mail Documentation</h1>
         <p className="text-lg text-fd-muted-foreground">
-          Send transactional emails, manage domains, and build integrations with the WistMail API.
+          Send transactional emails, manage domains, and build integrations with the Wistfare Mail API.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Link
