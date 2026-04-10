@@ -30,12 +30,12 @@ export default function SetupPage() {
   // Check if setup is already in progress (resume)
   useEffect(() => {
     api
-      .get<{ hasUsers: boolean; inProgress: boolean; step: string | null; domainId: string | null }>(
+      .get<{ hasSession: boolean; inProgress: boolean; step: string | null; domainId: string | null }>(
         '/api/v1/setup/status',
       )
       .then((res) => {
-        if (res.hasUsers) {
-          router.replace('/login')
+        if (res.hasSession) {
+          router.replace('/inbox')
           return
         }
         if (res.inProgress && res.step && res.domainId) {

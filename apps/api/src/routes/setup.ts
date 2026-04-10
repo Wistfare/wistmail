@@ -12,6 +12,7 @@ import { getDb } from '../lib/db.js'
 import { getServerIp } from '../lib/server-ip.js'
 import { createDnsProvider } from '@wistmail/dns-manager'
 import { generateDomainConnectUrl, verifyDomainConnectCallback } from '../lib/domain-connect.js'
+import { ResendService } from '../services/resend.js'
 
 const SETUP_COOKIE = 'wm_setup_token'
 const SETUP_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
@@ -46,13 +47,19 @@ async function getSetupToken(c: any) {
 
 setupRoutes.get('/status', async (c) => {
   const db = getDb()
-  const result = await db.select({ count: sql<number>`count(*)` }).from(users)
-  const userCount = Number(result[0]?.count || 0)
+
+  // Check if the current visitor already has an active session
+  const sessionCookie = getCookie(c, SESSION_COOKIE)
+  let hasSession = false
+  if (sessionCookie) {
+    const sessionResult = await db.select().from(sessions).where(eq(sessions.token, sessionCookie)).limit(1)
+    hasSession = sessionResult.length > 0 && new Date() < sessionResult[0].expiresAt
+  }
 
   const setupToken = await getSetupToken(c)
 
   return c.json({
-    hasUsers: userCount > 0,
+    hasSession,
     inProgress: setupToken !== null,
     step: setupToken?.step || null,
     domainId: setupToken?.domainId || null,
@@ -119,6 +126,18 @@ setupRoutes.post('/domain', async (c) => {
 
   const domainService = new DomainService(db)
   const result = await domainService.createWithoutUser(domainName)
+
+  // Auto-provision domain in Resend for email delivery
+  try {
+    const resend = new ResendService()
+    const resendResult = await resend.addDomain(domainName)
+    if (resendResult.id) {
+      console.log(`Domain ${domainName} provisioned in Resend (id: ${resendResult.id})`)
+    }
+  } catch (err) {
+    // Don't block setup if Resend provisioning fails — emails can be set up later
+    console.error('Resend domain provisioning failed (non-blocking):', err)
+  }
 
   const tokenId = generateId('stk')
   const token = randomBytes(32).toString('hex')
