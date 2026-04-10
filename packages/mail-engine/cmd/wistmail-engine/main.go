@@ -12,24 +12,28 @@ import (
 
 func main() {
 	cfg := config.Load()
-	log.Printf("WistMail Engine starting on %s", cfg.MailDomain)
+	log.Printf("Wistfare Mail Engine starting on %s", cfg.MailDomain)
 
 	// Create SMTP server
 	server := smtpserver.NewServer(cfg.Hostname, cfg.SMTPPort)
 	server.MaxMessageSize = cfg.SMTPMaxMessageSize
 	server.MaxRecipients = cfg.SMTPMaxRecipients
 
-	// Set up message handler
+	// Set up message handler — forward to API for storage
 	server.OnMessage = func(env *smtpserver.Envelope) error {
 		log.Printf("Received email from %s to %v (%d bytes)",
 			env.From, env.To, len(env.Data))
-		// TODO: Parse, store, and process email
+
+		if err := smtpserver.NotifyAPI(env); err != nil {
+			log.Printf("Error storing email via API: %v", err)
+			return err
+		}
+
 		return nil
 	}
 
 	// Set up domain checker
 	server.CheckDomain = func(domain string) bool {
-		// TODO: Check against database
 		return domain == cfg.MailDomain
 	}
 
@@ -40,6 +44,8 @@ func main() {
 		}
 	}()
 
+	log.Printf("SMTP server listening on port %s", cfg.SMTPPort)
+
 	// Wait for shutdown signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -47,5 +53,5 @@ func main() {
 	log.Printf("Received signal %v, shutting down...", sig)
 
 	server.Shutdown()
-	log.Println("WistMail Engine stopped")
+	log.Println("Wistfare Mail Engine stopped")
 }

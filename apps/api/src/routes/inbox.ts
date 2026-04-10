@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { ValidationError } from '@wistmail/shared'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
+import { EmailSender } from '../services/email-sender.js'
+import { EmailReceiver } from '../services/email-receiver.js'
 import { getDb } from '../lib/db.js'
 
 export const inboxRoutes = new Hono<SessionEnv>()
@@ -163,15 +165,19 @@ inboxRoutes.post('/compose', async (c) => {
   const emailService = new EmailService(db)
 
   if (parsed.data.send) {
-    // Create in sent folder
+    // Create email as draft first
     const result = await emailService.createDraft(c.get('userId'), {
       ...parsed.data,
       mailboxId: parsed.data.mailboxId,
     })
-    // TODO: Queue for actual SMTP sending via mail engine
-    // For now, move to sent
-    await emailService.moveToFolder(result.id, c.get('userId'), 'sent')
-    return c.json({ id: result.id, status: 'sent' }, 201)
+
+    // Send via SMTP in the background
+    const sender = new EmailSender(db)
+    sender.sendEmail(result.id).catch((err) => {
+      console.error(`Failed to send email ${result.id}:`, err)
+    })
+
+    return c.json({ id: result.id, status: 'sending' }, 201)
   }
 
   const result = await emailService.createDraft(c.get('userId'), parsed.data)

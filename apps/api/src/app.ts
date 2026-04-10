@@ -14,6 +14,7 @@ import { authRoutes } from './routes/auth.js'
 import { setupRoutes } from './routes/setup.js'
 import { adminRoutes } from './routes/admin.js'
 import { inboxRoutes } from './routes/inbox.js'
+import { inboundRoutes } from './routes/inbound.js'
 import { userRoutes } from './routes/user.js'
 
 export type AppEnv = {
@@ -31,7 +32,7 @@ app.use('*', logger())
 app.use(
   '*',
   cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://mail.wistfare.com'],
     credentials: true,
   }),
 )
@@ -65,6 +66,7 @@ v1.route('/analytics', analyticsRoutes)
 v1.route('/setup', setupRoutes)
 v1.route('/admin', adminRoutes)
 v1.route('/inbox', inboxRoutes)
+v1.route('/inbox', inboundRoutes)
 v1.route('/user', userRoutes)
 
 app.route('/api/v1', v1)
