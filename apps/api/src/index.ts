@@ -29,7 +29,7 @@ async function ensureSchema() {
       mx_verified boolean NOT NULL DEFAULT false, spf_verified boolean NOT NULL DEFAULT false,
       dkim_verified boolean NOT NULL DEFAULT false, dmarc_verified boolean NOT NULL DEFAULT false,
       dns_provider varchar(20) NOT NULL DEFAULT 'manual',
-      cloudflare_zone_id varchar(64), server_ip varchar(45),
+      cloudflare_zone_id varchar(64), resend_domain_id varchar(64), server_ip varchar(45),
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE TABLE IF NOT EXISTS organizations (
@@ -172,10 +172,25 @@ async function ensureSchema() {
     try {
       await db.execute(sql.raw(stmt))
     } catch (err) {
-      // Only log non-"already exists" errors
       const errStr = String(err)
       if (!errStr.includes('already exists')) {
         console.error('Schema creation error:', errStr.substring(0, 200))
+      }
+    }
+  }
+
+  // Add new columns to existing tables (safe — IF NOT EXISTS prevents errors)
+  const alterStatements = [
+    `ALTER TABLE domains ADD COLUMN IF NOT EXISTS resend_domain_id varchar(64)`,
+  ]
+
+  for (const stmt of alterStatements) {
+    try {
+      await db.execute(sql.raw(stmt))
+    } catch (err) {
+      const errStr = String(err)
+      if (!errStr.includes('already exists')) {
+        console.error('Schema alter error:', errStr.substring(0, 200))
       }
     }
   }

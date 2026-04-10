@@ -69,6 +69,36 @@ export class ResendService {
   }
 
   /**
+   * Get the DNS records that Resend needs for a domain.
+   */
+  async getDomainRecords(resendDomainId: string): Promise<{
+    records: Array<{ type: string; name: string; value: string; priority?: number }>
+  }> {
+    try {
+      const res = await fetch(`${RESEND_API_BASE}/domains/${resendDomainId}`, {
+        headers: this.headers(),
+      })
+
+      const data = (await res.json()) as {
+        records?: Array<{ type: string; name: string; value: string; priority?: number }>
+      }
+
+      if (!res.ok) return { records: [] }
+
+      return {
+        records: (data.records || []).map((r) => ({
+          type: r.type,
+          name: r.name,
+          value: r.value,
+          priority: r.priority,
+        })),
+      }
+    } catch {
+      return { records: [] }
+    }
+  }
+
+  /**
    * Check domain verification status in Resend.
    */
   async verifyDomain(resendDomainId: string): Promise<{ verified: boolean; error?: string }> {

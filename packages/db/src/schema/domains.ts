@@ -18,6 +18,7 @@ export const domains = pgTable('domains', {
   dmarcVerified: boolean('dmarc_verified').notNull().default(false),
   dnsProvider: varchar('dns_provider', { length: 20 }).notNull().default('manual'),
   cloudflareZoneId: varchar('cloudflare_zone_id', { length: 64 }),
+  resendDomainId: varchar('resend_domain_id', { length: 64 }),
   serverIp: varchar('server_ip', { length: 45 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

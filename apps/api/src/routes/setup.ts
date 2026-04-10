@@ -148,14 +148,19 @@ setupRoutes.post('/domain', async (c) => {
   const result = await domainService.createWithoutUser(domainName)
 
   // Auto-provision domain in Resend for email delivery
+  let resendDomainId = ''
+  let resendRecords: Array<{ type: string; name: string; value: string; priority?: number }> = []
   try {
     const resend = new ResendService()
     const resendResult = await resend.addDomain(domainName)
     if (resendResult.id) {
-      console.log(`Domain ${domainName} provisioned in Resend (id: ${resendResult.id})`)
+      resendDomainId = resendResult.id
+      resendRecords = resendResult.records
+      // Store Resend domain ID
+      await db.update(domains).set({ resendDomainId: resendResult.id }).where(eq(domains.id, result.id))
+      console.log(`Domain ${domainName} provisioned in Resend (id: ${resendResult.id}, ${resendRecords.length} DNS records)`)
     }
   } catch (err) {
-    // Don't block setup if Resend provisioning fails — emails can be set up later
     console.error('Resend domain provisioning failed (non-blocking):', err)
   }
 
@@ -179,7 +184,19 @@ setupRoutes.post('/domain', async (c) => {
     maxAge: 86400,
   })
 
-  return c.json(result, 201)
+  // Include Resend DNS records alongside our own so they all get added together
+  const allRecords = [
+    ...result.records,
+    ...resendRecords.map((r) => ({
+      type: r.type,
+      name: r.name,
+      value: r.value,
+      priority: r.priority,
+      verified: false,
+    })),
+  ]
+
+  return c.json({ ...result, records: allRecords, resendDomainId }, 201)
 })
 
 // ── Step 2: DNS Verification ────────────────────────────────────────────────
@@ -381,21 +398,52 @@ setupRoutes.post('/cloudflare/create-records', async (c) => {
   const domainService = new DomainService(db)
   const dnsRecords = domainService.getDnsRecords(domain.name, domain.dkimPublicKey || '', domain.serverIp || undefined)
 
+  // Also fetch Resend DNS records for this domain
+  let resendRecords: Array<{ type: string; name: string; value: string; priority?: number }> = []
+  if (domain.resendDomainId) {
+    try {
+      const resend = new ResendService()
+      const resendDomain = await resend.getDomainRecords(domain.resendDomainId)
+      resendRecords = resendDomain.records
+    } catch (err) {
+      console.error('Failed to fetch Resend records:', err)
+    }
+  }
+
   const provider = createDnsProvider({
     provider: 'cloudflare',
     cloudflare: { apiToken: parsed.data.apiToken, zoneId: domain.cloudflareZoneId },
   })
 
-  // Convert to DnsRecordInput format
-  const recordInputs = dnsRecords.map((r) => ({
-    type: r.type as 'MX' | 'TXT',
-    name: r.name,
-    content: r.value,
-    priority: r.priority,
-  }))
+  // Combine our records + Resend's records
+  const recordInputs = [
+    ...dnsRecords.map((r) => ({
+      type: r.type as 'MX' | 'TXT',
+      name: r.name,
+      content: r.value,
+      priority: r.priority,
+    })),
+    ...resendRecords.map((r) => ({
+      type: r.type as 'MX' | 'TXT',
+      name: r.name.includes('.') ? r.name : `${r.name}.${domain.name}`,
+      content: r.value,
+      priority: r.priority,
+    })),
+  ]
 
   const results = await provider.createRecords(domain.cloudflareZoneId, recordInputs)
   const allCreated = results.every((r) => r.success)
+
+  // If all records created, trigger Resend domain verification
+  if (allCreated && domain.resendDomainId) {
+    try {
+      const resend = new ResendService()
+      await resend.verifyDomain(domain.resendDomainId)
+      console.log(`Triggered Resend verification for ${domain.name}`)
+    } catch (err) {
+      console.error('Resend verification trigger failed:', err)
+    }
+  }
 
   return c.json({
     results: results.map((r) => ({
