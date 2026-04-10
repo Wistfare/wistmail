@@ -13,8 +13,9 @@ async function start() {
     console.log('Database migrations applied')
   } catch (err: unknown) {
     // "already exists" errors are safe to ignore — tables were created by a previous migration
-    const errMsg = err instanceof Error ? err.message : String(err)
-    if (errMsg.includes('already exists')) {
+    const errStr = String(err)
+    const causeStr = err && typeof err === 'object' && 'cause' in err ? String((err as { cause: unknown }).cause) : ''
+    if (errStr.includes('already exists') || causeStr.includes('already exists')) {
       console.log('Database tables already exist, skipping migration')
     } else {
       console.error('Migration failed:', err)
