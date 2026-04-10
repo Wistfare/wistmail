@@ -1,9 +1,12 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { eq } from 'drizzle-orm'
 import { ValidationError } from '@wistmail/shared'
+import { mailboxes } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
 import { EmailSender } from '../services/email-sender.js'
+import { BillingService } from '../services/billing.js'
 import { getDb } from '../lib/db.js'
 
 export const inboxRoutes = new Hono<SessionEnv>()
@@ -163,16 +166,47 @@ inboxRoutes.post('/compose', async (c) => {
   const db = getDb()
   const emailService = new EmailService(db)
 
+  // Validate fromAddress belongs to the user's mailbox
+  const userMailboxes = await db
+    .select()
+    .from(mailboxes)
+    .where(eq(mailboxes.userId, c.get('userId')))
+  const validAddresses = userMailboxes.map((m) => m.address.toLowerCase())
+  if (!validAddresses.includes(parsed.data.fromAddress.toLowerCase())) {
+    throw new ValidationError('You can only send from your own email addresses')
+  }
+  // Validate mailboxId belongs to the user
+  if (!userMailboxes.some((m) => m.id === parsed.data.mailboxId)) {
+    throw new ValidationError('Invalid mailbox')
+  }
+
   if (parsed.data.send) {
+    // Check org has credits before sending
+    const orgId = c.get('orgId')
+    if (orgId) {
+      const billing = new BillingService(db)
+      const hasCredits = await billing.hasCredits(orgId)
+      if (!hasCredits) {
+        throw new ValidationError('Insufficient email credits. Please purchase more credits to continue sending.')
+      }
+    }
+
     // Create email as draft first
     const result = await emailService.createDraft(c.get('userId'), {
       ...parsed.data,
       mailboxId: parsed.data.mailboxId,
     })
 
-    // Send via SMTP in the background
+    // Deduct credit and send via Resend in the background
     const sender = new EmailSender(db)
-    sender.sendEmail(result.id).catch((err) => {
+    const sendAndDeduct = async () => {
+      const sendResult = await sender.sendEmail(result.id)
+      if (sendResult.success && orgId) {
+        const billing = new BillingService(db)
+        await billing.deductCredit(orgId, result.id)
+      }
+    }
+    sendAndDeduct().catch((err) => {
       console.error(`Failed to send email ${result.id}:`, err)
     })
 

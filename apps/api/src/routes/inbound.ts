@@ -6,6 +6,8 @@ import { getDb } from '../lib/db.js'
 
 export const inboundRoutes = new Hono()
 
+const INBOUND_SECRET = process.env.INBOUND_SECRET || 'wistfare-inbound-secret-change-me'
+
 const inboundSchema = z.object({
   from: z.string(),
   to: z.array(z.string()),
@@ -15,9 +17,15 @@ const inboundSchema = z.object({
 /**
  * POST /api/v1/inbox/inbound
  * Called by the Go mail engine when an email is received via SMTP.
- * No user auth — internal service-to-service call.
+ * Authenticated via shared secret — not user session auth.
  */
 inboundRoutes.post('/inbound', async (c) => {
+  // Validate shared secret from mail engine
+  const authHeader = c.req.header('X-Inbound-Secret')
+  if (authHeader !== INBOUND_SECRET) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
   const body = await c.req.json()
   const parsed = inboundSchema.safeParse(body)
 

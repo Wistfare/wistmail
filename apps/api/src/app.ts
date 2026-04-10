@@ -16,6 +16,7 @@ import { adminRoutes } from './routes/admin.js'
 import { inboxRoutes } from './routes/inbox.js'
 import { inboundRoutes } from './routes/inbound.js'
 import { userRoutes } from './routes/user.js'
+import { domains as domainsTable } from '@wistmail/db'
 
 export type AppEnv = {
   Variables: {
@@ -32,7 +33,9 @@ app.use('*', logger())
 app.use(
   '*',
   cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://mail.wistfare.com'],
+    origin: process.env.NODE_ENV === 'production'
+      ? ['https://mail.wistfare.com']
+      : ['http://localhost:3000', 'http://localhost:3001', 'https://mail.wistfare.com'],
     credentials: true,
   }),
 )
@@ -50,6 +53,14 @@ app.get('/', (c) => {
 
 app.get('/health', (c) => {
   return c.json({ status: 'ok' })
+})
+
+// Internal endpoint for mail engine — list all registered domains
+app.get('/api/v1/domains/registered', async (c) => {
+  const { getDb } = await import('./lib/db.js')
+  const db = getDb()
+  const allDomains = await db.select({ name: domainsTable.name }).from(domainsTable)
+  return c.json({ domains: allDomains.map((d) => d.name) })
 })
 
 // API v1 routes

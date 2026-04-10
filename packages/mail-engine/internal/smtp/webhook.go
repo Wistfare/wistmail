@@ -24,6 +24,11 @@ func NotifyAPI(env *Envelope) error {
 		apiURL = "http://api:3001"
 	}
 
+	inboundSecret := os.Getenv("INBOUND_SECRET")
+	if inboundSecret == "" {
+		inboundSecret = "wistfare-inbound-secret-change-me"
+	}
+
 	payload := InboundEmail{
 		From:    env.From,
 		To:      env.To,
@@ -36,11 +41,14 @@ func NotifyAPI(env *Envelope) error {
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Post(
-		apiURL+"/api/v1/inbox/inbound",
-		"application/json",
-		bytes.NewReader(body),
-	)
+	req, err := http.NewRequest("POST", apiURL+"/api/v1/inbox/inbound", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Inbound-Secret", inboundSecret)
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to notify API: %w", err)
 	}
