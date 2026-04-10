@@ -125,6 +125,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-wistmail-jwt-secret}
       API_PORT: "3001"
       ALLOW_SKIP_DNS: ${ALLOW_SKIP_DNS:-false}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
     ports:
       - "3001:3001"
     depends_on:
