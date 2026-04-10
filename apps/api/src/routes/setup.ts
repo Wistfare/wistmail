@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { z } from 'zod'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { hash } from 'argon2'
 import { randomBytes } from 'node:crypto'
 import { ValidationError, generateId } from '@wistmail/shared'
