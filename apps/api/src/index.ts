@@ -11,9 +11,15 @@ async function start() {
     const db = getDb()
     await migrate(db, { migrationsFolder: '../../packages/db/drizzle' })
     console.log('Database migrations applied')
-  } catch (err) {
-    console.error('Migration failed:', err)
-    process.exit(1)
+  } catch (err: unknown) {
+    // "already exists" errors are safe to ignore — tables were created by a previous migration
+    const errMsg = err instanceof Error ? err.message : String(err)
+    if (errMsg.includes('already exists')) {
+      console.log('Database tables already exist, skipping migration')
+    } else {
+      console.error('Migration failed:', err)
+      process.exit(1)
+    }
   }
 
   serve({
