@@ -57,6 +57,26 @@ export class CloudflareProvider implements DnsProvider {
   async createRecords(zoneId: string, records: DnsRecordInput[]): Promise<DnsRecordResult[]> {
     const results = await Promise.allSettled(
       records.map(async (record) => {
+        // First, delete any existing records with the same type and name
+        // This prevents "An identical record already exists" errors
+        try {
+          const existingRes = await fetch(
+            `${CF_API}/zones/${zoneId}/dns_records?type=${record.type}&name=${encodeURIComponent(record.name)}&per_page=50`,
+            { headers: this.headers() },
+          )
+          const existingData = (await existingRes.json()) as CfResponse<Array<{ id: string }>>
+          if (existingData.success && existingData.result.length > 0) {
+            for (const existing of existingData.result) {
+              await fetch(`${CF_API}/zones/${zoneId}/dns_records/${existing.id}`, {
+                method: 'DELETE',
+                headers: this.headers(),
+              })
+            }
+          }
+        } catch {
+          // If cleanup fails, still try to create — worst case we get "already exists"
+        }
+
         const body: Record<string, unknown> = {
           type: record.type,
           name: record.name,
