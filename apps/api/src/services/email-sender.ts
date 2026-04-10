@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { emails, sendingLogs, mailboxes } from '@wistmail/db'
+import { emails, sendingLogs } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 
