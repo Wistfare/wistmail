@@ -161,12 +161,16 @@ jobs:
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Deploy via SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Sync docker-compose.yml to server
+          scp -i ~/.ssh/deploy_key docker-compose.yml root@${{ secrets.DEPLOY_HOST }}:/opt/wistmail/docker-compose.yml
 
           ssh -i ~/.ssh/deploy_key root@${{ secrets.DEPLOY_HOST }} '
             cd /opt/wistmail &&
