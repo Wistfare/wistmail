@@ -4,7 +4,6 @@ import { domains, emails, sendingLogs, mailboxes } from '@wistmail/db'
 import { generateId, DKIM_SELECTOR } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 import * as net from 'node:net'
-import * as tls from 'node:tls'
 import * as dns from 'node:dns/promises'
 
 /**

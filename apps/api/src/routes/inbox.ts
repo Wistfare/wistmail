@@ -4,7 +4,6 @@ import { ValidationError } from '@wistmail/shared'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
 import { EmailSender } from '../services/email-sender.js'
-import { EmailReceiver } from '../services/email-receiver.js'
 import { getDb } from '../lib/db.js'
 
 export const inboxRoutes = new Hono<SessionEnv>()
