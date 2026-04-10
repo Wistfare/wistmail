@@ -211,6 +211,26 @@ setupRoutes.post('/domain/verify', async (c) => {
   const domainService = new DomainService(db)
   const result = await domainService.verifyById(setupToken.domainId)
 
+  // Also check Resend domain verification status
+  let resendVerified = false
+  const domainRow = await db.select().from(domains).where(eq(domains.id, setupToken.domainId)).limit(1)
+  if (domainRow.length > 0 && domainRow[0].resendDomainId) {
+    try {
+      const resend = new ResendService()
+      const resendStatus = await resend.getDomainStatus(domainRow[0].resendDomainId)
+      resendVerified = resendStatus.status === 'verified'
+
+      // If not verified yet, trigger verification
+      if (!resendVerified) {
+        await resend.verifyDomain(domainRow[0].resendDomainId)
+      }
+    } catch (err) {
+      console.error('Resend verification check failed:', err)
+    }
+  }
+
+  // Only advance to account step when BOTH our DNS and Resend are verified
+  const allVerified = result.verified && resendVerified
   if (result.mx) {
     await db
       .update(setupTokens)
@@ -218,7 +238,8 @@ setupRoutes.post('/domain/verify', async (c) => {
       .where(eq(setupTokens.id, setupToken.id))
   }
 
-  return c.json(result)
+  // Don't expose Resend internals to the frontend — just report overall verified status
+  return c.json({ ...result, verified: allVerified })
 })
 
 setupRoutes.get('/domain/records', async (c) => {
