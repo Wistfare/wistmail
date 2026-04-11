@@ -41,7 +41,7 @@ func NotifyAPI(env *Envelope) error {
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("POST", apiURL+"/api/v1/inbox/inbound", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", apiURL+"/api/v1/internal/inbound", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

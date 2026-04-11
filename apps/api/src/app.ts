@@ -77,7 +77,7 @@ v1.route('/analytics', analyticsRoutes)
 v1.route('/setup', setupRoutes)
 v1.route('/admin', adminRoutes)
 v1.route('/inbox', inboxRoutes)
-v1.route('/inbox', inboundRoutes)
+v1.route('/internal', inboundRoutes)
 v1.route('/user', userRoutes)
 
 app.route('/api/v1', v1)
