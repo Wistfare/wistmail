@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { InputField } from '@/components/ui/input-field'
 import { StatCard } from '@/components/ui/stat-card'
 import { api } from '@/lib/api-client'
-import { cn, formatRelativeTime } from '@/lib/utils'
+import { formatRelativeTime } from '@/lib/utils'
 
 type Member = {
   id: string
