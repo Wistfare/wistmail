@@ -2,13 +2,14 @@ import { Hono } from 'hono'
 import { eq, and, desc } from 'drizzle-orm'
 import { generateId, generateWebhookSecret, NotFoundError, ValidationError } from '@wistmail/shared'
 import { webhooks, webhookLogs } from '@wistmail/db'
-import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
+import { dualAuth, requireScope, type DualAuthEnv } from '../middleware/dual-auth.js'
 import { getDb } from '../lib/db.js'
 
-export const webhookRoutes = new Hono<SessionEnv>()
+export const webhookRoutes = new Hono<DualAuthEnv>()
 
-// Webhook management via session auth (settings UI)
-webhookRoutes.use('*', sessionAuth)
+// Webhook management works via API key (SDK) OR session cookie (dashboard)
+webhookRoutes.use('*', dualAuth)
+webhookRoutes.use('*', requireScope('webhooks:manage'))
 
 const VALID_EVENTS = [
   'email.sent', 'email.delivered', 'email.bounced',

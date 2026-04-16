@@ -3,7 +3,7 @@ title: Introduction
 description: Wistfare Mail API — send transactional emails, receive delivery webhooks, and manage audiences programmatically.
 ---
 
-Wistfare Mail provides a simple API to send transactional emails from your applications. Domains, templates, and analytics are managed through the Wistfare Mail dashboard — the API is focused on what your code needs.
+Wistfare Mail provides a simple REST API to send transactional emails from your applications. Domains, templates, and analytics are managed through the Wistfare Mail dashboard — the API is focused on what your code needs.
 
 ## What the API Does
 
@@ -12,6 +12,15 @@ Wistfare Mail provides a simple API to send transactional emails from your appli
 | **Send Emails** | Single and batch transactional email delivery with DKIM signing |
 | **Webhooks** | Real-time notifications for delivery, bounce, open, and click events |
 | **Audiences** | Manage contact lists and subscriptions for targeted sending |
+| **Domains** | Add verified sending domains programmatically |
+
+## Base URL
+
+Wistfare Mail is self-hosted. Use your instance's base URL in all requests:
+
+```
+https://mail.yourdomain.com/api/v1
+```
 
 ## Quick Example
 
@@ -20,7 +29,10 @@ Wistfare Mail provides a simple API to send transactional emails from your appli
 ```typescript
 import { WistMail } from 'wistmail'
 
-const wm = new WistMail({ apiKey: 'wm_your_api_key' })
+const wm = new WistMail({
+  apiKey: 'wm_your_api_key',
+  baseUrl: 'https://mail.yourdomain.com',
+})
 
 await wm.emails.send({
   from: 'hello@yourdomain.com',
@@ -34,7 +46,10 @@ await wm.emails.send({
 ```python
 from wistmail import WistMail
 
-wm = WistMail(api_key="wm_your_api_key")
+wm = WistMail(
+    api_key="wm_your_api_key",
+    base_url="https://mail.yourdomain.com",
+)
 
 wm.emails.send(
     from_address="hello@yourdomain.com",
@@ -46,7 +61,7 @@ wm.emails.send(
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://your-wistfare.com/api/v1/emails \
+curl -X POST https://mail.yourdomain.com/api/v1/emails \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -75,6 +90,7 @@ Create API keys from **Settings > API Keys** in the Wistfare Mail dashboard. Eac
 | `emails:read` | Read email delivery status |
 | `contacts:manage` | Manage audiences and contacts |
 | `webhooks:manage` | Configure webhook endpoints |
+| `domains:manage` | Add and verify sending domains |
 
 ## Rate Limits
 
@@ -101,11 +117,4 @@ All errors return a consistent JSON structure:
 }
 ```
 
-| Status | Code | Description |
-|--------|------|-------------|
-| 400 | `VALIDATION_ERROR` | Invalid request body |
-| 401 | `UNAUTHORIZED` | Missing or invalid API key |
-| 403 | `INSUFFICIENT_SCOPE` | API key lacks required scope |
-| 404 | `NOT_FOUND` | Resource does not exist |
-| 429 | `RATE_LIMITED` | Too many requests |
-| 500 | `INTERNAL_ERROR` | Server error |
+See the [Errors Reference](/docs/errors) for a complete list of error codes.

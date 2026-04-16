@@ -17,7 +17,6 @@ import type {
 } from './types.js'
 import { WistMailError, AuthenticationError, RateLimitError, ValidationError, NotFoundError } from './errors.js'
 
-const DEFAULT_BASE_URL = 'https://api.wistmail.com'
 const DEFAULT_TIMEOUT = 30000
 const SDK_VERSION = '0.1.0'
 
@@ -34,9 +33,12 @@ export class WistMail {
     if (!config.apiKey) {
       throw new Error('WistMail: apiKey is required')
     }
+    if (!config.baseUrl) {
+      throw new Error('WistMail: baseUrl is required (e.g., https://mail.yourdomain.com)')
+    }
 
     this.apiKey = config.apiKey
-    this.baseUrl = (config.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, '')
+    this.baseUrl = config.baseUrl.replace(/\/$/, '')
     this.timeout = config.timeout || DEFAULT_TIMEOUT
 
     this.emails = new Emails(this)

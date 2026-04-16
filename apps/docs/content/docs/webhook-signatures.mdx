@@ -1,0 +1,183 @@
+---
+title: Verifying Webhook Signatures
+description: Every webhook delivery is signed with HMAC-SHA256 so you can verify it came from Wistfare Mail.
+---
+
+## How Signatures Work
+
+Each webhook delivery includes these headers:
+
+| Header | Value |
+|--------|-------|
+| `X-Webhook-Signature` | `sha256=<hex digest>` |
+| `X-Webhook-Event` | Event type (e.g., `email.delivered`) |
+| `X-Webhook-Id` | Unique event ID (for idempotency) |
+
+The signature is computed as `HMAC-SHA256(secret, raw_request_body)`. The signing secret is returned **once** when you create the webhook — store it securely.
+
+## Verification Examples
+
+<Tabs items={["Node.js", "Python", "Go", "PHP", "Ruby"]}>
+<Tab value="Node.js">
+```typescript
+import crypto from 'node:crypto'
+import express from 'express'
+
+const app = express()
+
+app.post(
+  '/webhooks/wistmail',
+  express.raw({ type: 'application/json' }),
+  (req, res) => {
+    const signature = req.header('X-Webhook-Signature') || ''
+    const secret = process.env.WISTMAIL_WEBHOOK_SECRET!
+
+    const expected = 'sha256=' + crypto
+      .createHmac('sha256', secret)
+      .update(req.body)
+      .digest('hex')
+
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      return res.status(401).json({ error: 'invalid signature' })
+    }
+
+    const event = JSON.parse(req.body.toString())
+    console.log(event.type, event.data)
+    res.status(200).json({ received: true })
+  },
+)
+```
+</Tab>
+<Tab value="Python">
+```python
+import hmac
+import hashlib
+import os
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+SECRET = os.environ["WISTMAIL_WEBHOOK_SECRET"]
+
+@app.post("/webhooks/wistmail")
+def webhook():
+    signature = request.headers.get("X-Webhook-Signature", "")
+    expected = "sha256=" + hmac.new(
+        SECRET.encode(),
+        request.get_data(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature, expected):
+        return jsonify(error="invalid signature"), 401
+
+    event = request.get_json()
+    print(event["type"], event["data"])
+    return jsonify(received=True)
+```
+</Tab>
+<Tab value="Go">
+```go
+package main
+
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "io"
+    "net/http"
+    "os"
+)
+
+var secret = []byte(os.Getenv("WISTMAIL_WEBHOOK_SECRET"))
+
+func webhookHandler(w http.ResponseWriter, r *http.Request) {
+    body, _ := io.ReadAll(r.Body)
+    defer r.Body.Close()
+
+    mac := hmac.New(sha256.New, secret)
+    mac.Write(body)
+    expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+    signature := r.Header.Get("X-Webhook-Signature")
+    if !hmac.Equal([]byte(signature), []byte(expected)) {
+        http.Error(w, "invalid signature", http.StatusUnauthorized)
+        return
+    }
+
+    // Parse and process event
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte(`{"received":true}`))
+}
+
+func main() {
+    http.HandleFunc("/webhooks/wistmail", webhookHandler)
+    http.ListenAndServe(":8080", nil)
+}
+```
+</Tab>
+<Tab value="PHP">
+```php
+<?php
+$secret = getenv('WISTMAIL_WEBHOOK_SECRET');
+$body = file_get_contents('php://input');
+$signature = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'] ?? '';
+
+$expected = 'sha256=' . hash_hmac('sha256', $body, $secret);
+
+if (!hash_equals($signature, $expected)) {
+    http_response_code(401);
+    echo json_encode(['error' => 'invalid signature']);
+    exit;
+}
+
+$event = json_decode($body, true);
+// handle $event['type'] and $event['data']
+http_response_code(200);
+echo json_encode(['received' => true]);
+```
+</Tab>
+<Tab value="Ruby">
+```ruby
+require 'openssl'
+require 'sinatra'
+require 'json'
+
+SECRET = ENV['WISTMAIL_WEBHOOK_SECRET']
+
+post '/webhooks/wistmail' do
+  body = request.body.read
+  signature = request.env['HTTP_X_WEBHOOK_SIGNATURE'].to_s
+
+  expected = 'sha256=' + OpenSSL::HMAC.hexdigest('sha256', SECRET, body)
+
+  halt 401, { error: 'invalid signature' }.to_json unless
+    OpenSSL.secure_compare(signature, expected)
+
+  event = JSON.parse(body)
+  # handle event['type']
+  status 200
+  { received: true }.to_json
+end
+```
+</Tab>
+</Tabs>
+
+## Retry Behavior
+
+If your endpoint returns a non-2xx status (or times out after 10 seconds), the delivery is retried up to 3 times with exponential backoff: 1 second, 5 seconds, then 30 seconds.
+
+4xx responses (except `429`) are **not retried** — fix the issue on your side and we'll send the next event normally.
+
+## Idempotency
+
+The `X-Webhook-Id` header uniquely identifies each event. If you process events in a queue, dedupe by this ID to handle retries gracefully.
+
+## Testing Locally
+
+Use a tunnel like [ngrok](https://ngrok.com) or [webhook.site](https://webhook.site) to receive events on your dev machine:
+
+```bash
+ngrok http 3000
+# Copy the https URL (e.g., https://abc123.ngrok.io) into
+# Settings > Webhooks in the dashboard.
+```

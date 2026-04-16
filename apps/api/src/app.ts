@@ -9,6 +9,7 @@ import { apiKeyRoutes } from './routes/api-keys.js'
 import { webhookRoutes } from './routes/webhooks.js'
 import { templateRoutes } from './routes/templates.js'
 import { audienceRoutes } from './routes/audiences.js'
+import { contactRoutes } from './routes/contacts.js'
 import { analyticsRoutes } from './routes/analytics.js'
 import { authRoutes } from './routes/auth.js'
 import { setupRoutes } from './routes/setup.js'
@@ -92,6 +93,7 @@ v1.route('/api-keys', apiKeyRoutes)
 v1.route('/webhooks', webhookRoutes)
 v1.route('/templates', templateRoutes)
 v1.route('/audiences', audienceRoutes)
+v1.route('/contacts', contactRoutes)
 v1.route('/analytics', analyticsRoutes)
 v1.route('/setup', setupRoutes)
 v1.route('/admin', adminRoutes)

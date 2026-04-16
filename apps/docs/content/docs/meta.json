@@ -2,8 +2,11 @@
   "pages": [
     "index",
     "quickstart",
+    "errors",
+    "---API---",
     "api/sending",
     "api/webhooks",
-    "api/audiences"
+    "api/audiences",
+    "webhook-signatures"
   ]
 }
