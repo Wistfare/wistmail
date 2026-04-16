@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { eq, and } from 'drizzle-orm'
-import { generateId, generateApiKey, NotFoundError, ValidationError } from '@wistmail/shared'
+import { generateId, generateApiKey, ValidationError } from '@wistmail/shared'
 import { apiKeys } from '@wistmail/db'
 import { hashApiKey } from '../middleware/auth.js'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
@@ -84,7 +84,7 @@ apiKeyRoutes.delete('/:id', async (c) => {
   const userId = c.get('userId')
   const db = getDb()
 
-  const result = await db
+  await db
     .delete(apiKeys)
     .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, userId)))
 

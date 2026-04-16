@@ -132,7 +132,6 @@ emailRoutes.post('/batch', requireScope('emails:send'), rateLimit(5), async (c) 
     })
   }
 
-  const db = getDb()
   const results: Array<{ id: string; status: string }> = []
 
   for (const email of parsed.data.emails) {
