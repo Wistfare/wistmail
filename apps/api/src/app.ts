@@ -55,12 +55,31 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok' })
 })
 
-// Internal endpoint for mail engine — list all registered domains
+// Internal endpoint for mail engine — list registered domains with DKIM keys
 app.get('/api/v1/domains/registered', async (c) => {
+  const secret = c.req.header('X-Inbound-Secret')
+  const expected = process.env.INBOUND_SECRET
+  if (!expected || secret !== expected) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
   const { getDb } = await import('./lib/db.js')
   const db = getDb()
-  const allDomains = await db.select({ name: domainsTable.name }).from(domainsTable)
-  return c.json({ domains: allDomains.map((d) => d.name) })
+  const allDomains = await db
+    .select({
+      name: domainsTable.name,
+      dkimPrivateKey: domainsTable.dkimPrivateKey,
+      dkimSelector: domainsTable.dkimSelector,
+    })
+    .from(domainsTable)
+
+  return c.json({
+    domains: allDomains.map((d) => ({
+      name: d.name,
+      dkimPrivateKey: d.dkimPrivateKey || '',
+      dkimSelector: d.dkimSelector || 'wistmail',
+    })),
+  })
 })
 
 // API v1 routes

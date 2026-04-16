@@ -6,7 +6,7 @@ import { getDb } from '../lib/db.js'
 
 export const inboundRoutes = new Hono()
 
-const INBOUND_SECRET = process.env.INBOUND_SECRET || 'wistfare-inbound-secret-change-me'
+const INBOUND_SECRET = process.env.INBOUND_SECRET
 
 const inboundSchema = z.object({
   from: z.string(),
@@ -22,7 +22,7 @@ const inboundSchema = z.object({
 inboundRoutes.post('/inbound', async (c) => {
   // Validate shared secret from mail engine
   const authHeader = c.req.header('X-Inbound-Secret')
-  if (authHeader !== INBOUND_SECRET) {
+  if (!INBOUND_SECRET || authHeader !== INBOUND_SECRET) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 

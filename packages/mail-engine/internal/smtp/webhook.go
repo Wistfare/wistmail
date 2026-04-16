@@ -26,7 +26,7 @@ func NotifyAPI(env *Envelope) error {
 
 	inboundSecret := os.Getenv("INBOUND_SECRET")
 	if inboundSecret == "" {
-		inboundSecret = "wistfare-inbound-secret-change-me"
+		return fmt.Errorf("INBOUND_SECRET not configured")
 	}
 
 	payload := InboundEmail{

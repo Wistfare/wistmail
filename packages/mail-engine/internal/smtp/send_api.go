@@ -13,6 +13,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Wistfare/wistmail/packages/mail-engine/internal/dkim"
 )
 
 // OutboundRequest is the JSON body accepted by the internal send API.
@@ -29,10 +31,14 @@ type OutboundRequest struct {
 	Headers   map[string]string `json:"headers,omitempty"`
 }
 
+// DkimLookup returns the PEM-encoded private key and selector for a domain.
+// Returns empty strings if no DKIM key is configured.
+type DkimLookup func(domain string) (privateKeyPEM, selector string)
+
 // StartSendAPI starts an internal HTTP server on the given port that accepts
 // outbound send requests from the API service. It is never exposed externally —
 // only reachable within the Docker network.
-func StartSendAPI(hostname string, port int, client *Client) {
+func StartSendAPI(hostname string, port int, client *Client, dkimLookup DkimLookup) {
 	secret := os.Getenv("INBOUND_SECRET")
 
 	mux := http.NewServeMux()
@@ -41,7 +47,7 @@ func StartSendAPI(hostname string, port int, client *Client) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if secret != "" && r.Header.Get("X-Inbound-Secret") != secret {
+		if secret == "" || r.Header.Get("X-Inbound-Secret") != secret {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -61,6 +67,26 @@ func StartSendAPI(hostname string, port int, client *Client) {
 			log.Printf("send_api: build message error: %v", err)
 			sendAPIJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to build message"})
 			return
+		}
+
+		// DKIM sign the message if we have a key for the sending domain
+		senderDomain := extractDomain(req.From)
+		if senderDomain != "" && dkimLookup != nil {
+			privKey, selector := dkimLookup(senderDomain)
+			if privKey != "" && selector != "" {
+				signer, err := dkim.NewSigner(senderDomain, selector, privKey)
+				if err != nil {
+					log.Printf("send_api: DKIM signer init failed for %s: %v", senderDomain, err)
+				} else {
+					signed, err := signer.Sign(data)
+					if err != nil {
+						log.Printf("send_api: DKIM signing failed for %s: %v", senderDomain, err)
+					} else {
+						data = signed
+						log.Printf("send_api: DKIM signed for domain %s (selector=%s)", senderDomain, selector)
+					}
+				}
+			}
 		}
 
 		// SMTP RCPT TO must include all recipients (To + Cc + Bcc).
@@ -101,6 +127,19 @@ func sendAPIJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
+}
+
+// extractDomain pulls the domain part from an email address or "Name <addr>" format.
+func extractDomain(from string) string {
+	addr := from
+	if idx := strings.LastIndex(addr, "<"); idx >= 0 {
+		addr = addr[idx+1:]
+		addr = strings.TrimSuffix(addr, ">")
+	}
+	if idx := strings.LastIndex(addr, "@"); idx >= 0 {
+		return strings.ToLower(addr[idx+1:])
+	}
+	return ""
 }
 
 // buildMessage constructs a standards-compliant RFC 2822 / MIME email from the request.
