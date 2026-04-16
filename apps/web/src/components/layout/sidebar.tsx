@@ -1,15 +1,17 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
-  Plus, Mail, Settings,
+  Plus, Mail, Settings, LogOut,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
 import { LabelDot } from '@/components/ui/label-dot'
 import { ROUTES } from '@/lib/constants'
+import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 
 export interface SidebarProps {
@@ -40,8 +42,17 @@ const DEFAULT_LABELS = [
 
 export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
+  const [showUserMenu, setShowUserMenu] = useState(false)
   const isAdmin = user.role === 'owner' || user.role === 'admin'
   const displayLabels = labels && labels.length > 0 ? labels : DEFAULT_LABELS
+
+  async function handleLogout() {
+    try {
+      await api.post('/api/v1/auth/logout')
+    } catch {}
+    router.push('/login')
+  }
 
   return (
     <aside className={cn('flex h-full shrink-0', className)}>
@@ -54,7 +65,7 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
 
         <div className="h-px w-8 bg-wm-border mb-1" />
 
-        {/* Mail — always active since it's the only module */}
+        {/* Mail — always active */}
         <Link
           href={ROUTES.INBOX}
           className="flex h-12 w-14 items-center justify-center"
@@ -71,9 +82,7 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
         {isAdmin && (
           <Link
             href="/admin/members"
-            className={cn(
-              'flex h-12 w-14 items-center justify-center',
-            )}
+            className="flex h-12 w-14 items-center justify-center"
             title="Admin"
           >
             <div className={cn(
@@ -90,8 +99,65 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
           </Link>
         )}
 
-        {/* User avatar */}
-        <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+        {/* User avatar with popup menu */}
+        <div className="relative">
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="cursor-pointer"
+          >
+            <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+          </button>
+
+          {showUserMenu && (
+            <>
+              {/* Backdrop */}
+              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+
+              {/* Menu */}
+              <div className="absolute bottom-10 left-0 z-50 w-56 border border-wm-border bg-wm-surface shadow-lg">
+                {/* User info */}
+                <div className="border-b border-wm-border px-4 py-3">
+                  <p className="text-sm font-medium text-wm-text-primary">{user.name}</p>
+                  <p className="font-mono text-[10px] text-wm-text-muted">{user.email}</p>
+                </div>
+
+                {/* Links */}
+                <div className="flex flex-col py-1">
+                  <Link
+                    href="/settings/account"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex items-center gap-2 px-4 py-2 text-xs text-wm-text-secondary hover:bg-wm-surface-hover"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    Account Settings
+                  </Link>
+
+                  {isAdmin && (
+                    <Link
+                      href="/admin/members"
+                      onClick={() => setShowUserMenu(false)}
+                      className="flex items-center gap-2 px-4 py-2 text-xs text-wm-text-secondary hover:bg-wm-surface-hover"
+                    >
+                      <Settings className="h-3.5 w-3.5 text-wm-accent" />
+                      Admin Panel
+                    </Link>
+                  )}
+                </div>
+
+                {/* Logout */}
+                <div className="border-t border-wm-border py-1">
+                  <button
+                    onClick={handleLogout}
+                    className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-xs text-wm-error hover:bg-wm-surface-hover"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Log out
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Detail Panel ── */}
