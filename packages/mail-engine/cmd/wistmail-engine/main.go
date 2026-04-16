@@ -126,6 +126,10 @@ func main() {
 	log.Printf("SMTP server listening on port %s", cfg.SMTPPort)
 	fmt.Printf("Accepting emails for %s and all registered domains\n", cfg.MailDomain)
 
+	// Start internal send API (used by the API service to trigger outbound delivery)
+	sendClient := smtpserver.NewClient(cfg.Hostname)
+	go smtpserver.StartSendAPI(cfg.Hostname, 8025, sendClient)
+
 	// Wait for shutdown signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

@@ -157,24 +157,63 @@ jobs:
   # ── Deploy to server ───────────────────────────────────────────────────────
   deploy:
     name: Deploy
-    needs: [build-api, build-web, build-docs, build-engine]
-    if: always() && !failure() && !cancelled()
+    needs: [detect-changes, build-api, build-web, build-docs, build-engine]
+    # Run if nothing failed/cancelled AND at least one thing changed
+    if: >-
+      always() && !failure() && !cancelled() && (
+        needs.detect-changes.outputs.api == 'true' ||
+        needs.detect-changes.outputs.web == 'true' ||
+        needs.detect-changes.outputs.docs == 'true' ||
+        needs.detect-changes.outputs.engine == 'true' ||
+        needs.detect-changes.outputs.deploy == 'true'
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Deploy via SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          CHANGED_API:    ${{ needs.detect-changes.outputs.api }}
+          CHANGED_WEB:    ${{ needs.detect-changes.outputs.web }}
+          CHANGED_DOCS:   ${{ needs.detect-changes.outputs.docs }}
+          CHANGED_ENGINE: ${{ needs.detect-changes.outputs.engine }}
+          CHANGED_DEPLOY: ${{ needs.detect-changes.outputs.deploy }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          # Sync docker-compose.yml to server
-          scp -i ~/.ssh/deploy_key docker-compose.yml root@${{ secrets.DEPLOY_HOST }}:/opt/wistmail/docker-compose.yml
+          # Map changed workflow outputs → docker compose service names
+          SERVICES=""
+          [ "$CHANGED_API"    = "true" ] && SERVICES="$SERVICES api"
+          [ "$CHANGED_WEB"    = "true" ] && SERVICES="$SERVICES web"
+          [ "$CHANGED_DOCS"   = "true" ] && SERVICES="$SERVICES docs"
+          [ "$CHANGED_ENGINE" = "true" ] && SERVICES="$SERVICES mail-engine"
+          SERVICES="${SERVICES# }"  # trim leading space
 
-          ssh -i ~/.ssh/deploy_key root@${{ secrets.DEPLOY_HOST }} '
-            cd /opt/wistmail &&
-            docker compose pull &&
-            docker compose up -d --remove-orphans &&
+          # Always sync the compose file first
+          scp -i ~/.ssh/deploy_key docker-compose.yml \
+            root@"$DEPLOY_HOST":/opt/wistmail/docker-compose.yml
+
+          # Deploy only what changed
+          ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" "
+            set -e
+            cd /opt/wistmail
+
+            if [ '$CHANGED_DEPLOY' = 'true' ]; then
+              # Compose file changed — pull any rebuilt images then re-apply full stack
+              [ -n '$SERVICES' ] && docker compose pull $SERVICES
+              docker compose up -d --remove-orphans
+            else
+              # Only specific service images changed — targeted pull + restart
+              for svc in $SERVICES; do
+                docker compose pull \$svc
+                docker compose up -d --no-deps \$svc
+              done
+            fi
+
             docker image prune -f
-          '
+          "
