@@ -1,7 +1,7 @@
 import { verify } from 'argon2'
 import { randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { users, sessions } from '@wistmail/db'
+import { users, sessions, orgMembers } from '@wistmail/db'
 import { generateId, AuthenticationError } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 
@@ -52,9 +52,11 @@ export class AuthService {
         userAvatar: users.avatarUrl,
         setupComplete: users.setupComplete,
         setupStep: users.setupStep,
+        role: orgMembers.role,
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
+      .leftJoin(orgMembers, eq(orgMembers.userId, users.id))
       .where(eq(sessions.token, token))
       .limit(1)
 
@@ -75,6 +77,7 @@ export class AuthService {
         avatarUrl: session.userAvatar,
         setupComplete: session.setupComplete,
         setupStep: session.setupStep,
+        role: session.role || 'member',
       },
     }
   }

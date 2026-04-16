@@ -10,6 +10,7 @@ type SessionUser = {
   email: string
   avatarUrl: string | null
   setupComplete: boolean
+  role: string
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -55,7 +56,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
-        user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? undefined }}
+        user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? undefined, role: user.role }}
         activeRoute={pathname}
         unreadCounts={{ inbox: 0 }}
       />

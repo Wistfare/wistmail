@@ -1,14 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
-  Plus, Users, Settings, Mail, Shield,
-  User, Globe, Key, Webhook, PenLine, Filter, Sparkles, Lock,
-  Building2, ScrollText, UserPlus, Search, Calendar,
-  LayoutTemplate, SendHorizontal,
+  Plus, Mail, Settings,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
@@ -17,23 +13,12 @@ import { ROUTES } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 export interface SidebarProps {
-  user: { name: string; email: string; avatarUrl?: string }
+  user: { name: string; email: string; avatarUrl?: string; role?: string }
   activeRoute?: string
   unreadCounts?: Record<string, number>
   labels?: Array<{ name: string; color: string }>
   className?: string
 }
-
-type Module = 'mail' | 'contacts' | 'search' | 'calendar' | 'settings' | 'admin'
-
-const MODULE_ICONS: Array<{ id: Module; icon: typeof Mail; label: string; href: string }> = [
-  { id: 'mail', icon: Mail, label: 'Mail', href: ROUTES.INBOX },
-  { id: 'contacts', icon: Users, label: 'Contacts', href: ROUTES.CONTACTS },
-  { id: 'search', icon: Search, label: 'Search', href: ROUTES.SEARCH },
-  { id: 'calendar', icon: Calendar, label: 'Calendar', href: '/calendar' },
-  { id: 'admin', icon: Shield, label: 'Admin', href: '/admin/users' },
-  { id: 'settings', icon: Settings, label: 'Settings', href: ROUTES.SETTINGS },
-]
 
 const MAIL_NAV = [
   { icon: <Inbox className="h-4 w-4" />, label: 'Inbox', href: ROUTES.INBOX, countKey: 'inbox' },
@@ -46,194 +31,116 @@ const MAIL_NAV = [
   { icon: <Trash2 className="h-4 w-4" />, label: 'Trash', href: ROUTES.TRASH },
 ]
 
-const SETTINGS_NAV = [
-  { icon: <User className="h-4 w-4" />, label: 'Account', href: '/settings/account' },
-  { icon: <Globe className="h-4 w-4" />, label: 'Domains', href: '/settings/domains' },
-  { icon: <Key className="h-4 w-4" />, label: 'API Keys', href: '/settings/api-keys' },
-  { icon: <Webhook className="h-4 w-4" />, label: 'Webhooks', href: '/settings/webhooks' },
-  { icon: <PenLine className="h-4 w-4" />, label: 'Signatures', href: '/settings/signatures' },
-  { icon: <Filter className="h-4 w-4" />, label: 'Filters', href: '/settings/filters' },
-  { icon: <Sparkles className="h-4 w-4" />, label: 'AI', href: '/settings/ai' },
-  { icon: <Lock className="h-4 w-4" />, label: 'Security', href: '/settings/security' },
+const DEFAULT_LABELS = [
+  { name: 'Primary', color: 'var(--color-wm-accent)' },
+  { name: 'Updates', color: 'var(--color-wm-info)' },
+  { name: 'Promotions', color: 'var(--color-wm-warning)' },
+  { name: 'Newsletters', color: '#A78BFA' },
 ]
 
-const SETTINGS_ADMIN_NAV = [
-  { icon: <Users className="h-4 w-4" />, label: 'Users & Mailbox', href: '/settings/users' },
-  { icon: <SendHorizontal className="h-4 w-4" />, label: 'Sending Logs', href: '/settings/sending-logs' },
-  { icon: <LayoutTemplate className="h-4 w-4" />, label: 'Sending', href: '/settings/sending' },
-]
-
-const ADMIN_NAV = [
-  { icon: <Users className="h-4 w-4" />, label: 'Users', href: '/admin/users' },
-  { icon: <Shield className="h-4 w-4" />, label: 'Roles', href: '/admin/roles' },
-  { icon: <Building2 className="h-4 w-4" />, label: 'Organization', href: '/admin/organization' },
-  { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
-  { icon: <ScrollText className="h-4 w-4" />, label: 'Audit Log', href: '/admin/audit-logs' },
-]
-
-function detectModule(pathname: string): Module {
-  if (pathname.startsWith('/admin')) return 'admin'
-  if (pathname.startsWith('/settings')) return 'settings'
-  if (pathname.startsWith('/contacts')) return 'contacts'
-  if (pathname.startsWith('/search')) return 'search'
-  if (pathname.startsWith('/calendar')) return 'calendar'
-  return 'mail'
-}
-
-export function Sidebar({ user, unreadCounts = {}, labels = [], className }: SidebarProps) {
+export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarProps) {
   const pathname = usePathname()
-  const [activeModule, setActiveModule] = useState<Module>(detectModule(pathname))
-
-  useEffect(() => {
-    setActiveModule(detectModule(pathname))
-  }, [pathname])
+  const isAdmin = user.role === 'owner' || user.role === 'admin'
+  const displayLabels = labels && labels.length > 0 ? labels : DEFAULT_LABELS
 
   return (
     <aside className={cn('flex h-full shrink-0', className)}>
-      {/* ── Panel 1: Icon rail ── */}
-      <div className="flex w-12 flex-col items-center border-r border-wm-border bg-wm-bg py-3 gap-1">
-        <Link href="/" className="mb-3 flex h-7 w-7 items-center justify-center bg-wm-accent">
-          <span className="text-xs font-bold text-wm-text-on-accent">W</span>
+      {/* ── Icon Rail ── */}
+      <div className="flex w-14 flex-col items-center border-r border-wm-border bg-wm-bg py-3 gap-0.5">
+        {/* Logo */}
+        <Link href="/" className="mb-3 flex h-8 w-8 items-center justify-center bg-wm-accent">
+          <span className="text-sm font-bold text-wm-text-on-accent">W</span>
         </Link>
 
-        {MODULE_ICONS.map((mod) => {
-          const Icon = mod.icon
-          const isActive = activeModule === mod.id
-          return (
-            <Link
-              key={mod.id}
-              href={mod.href}
-              onClick={() => setActiveModule(mod.id)}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center transition-colors',
-                isActive
-                  ? 'bg-wm-accent/15 text-wm-accent'
-                  : 'text-wm-text-muted hover:bg-wm-surface-hover hover:text-wm-text-secondary',
-              )}
-              title={mod.label}
-            >
-              <Icon className="h-[18px] w-[18px]" />
-            </Link>
-          )
-        })}
+        <div className="h-px w-8 bg-wm-border mb-1" />
+
+        {/* Mail — always active since it's the only module */}
+        <Link
+          href={ROUTES.INBOX}
+          className="flex h-12 w-14 items-center justify-center"
+          title="Mail"
+        >
+          <div className="flex h-9 w-10 items-center justify-center bg-wm-accent/15">
+            <Mail className="h-5 w-5 text-wm-accent" />
+          </div>
+        </Link>
 
         <div className="flex-1" />
 
-        {/* Only avatar — no name/email */}
+        {/* Settings — admin only */}
+        {isAdmin && (
+          <Link
+            href="/admin/members"
+            className={cn(
+              'flex h-12 w-14 items-center justify-center',
+            )}
+            title="Admin"
+          >
+            <div className={cn(
+              'flex h-9 w-10 items-center justify-center',
+              pathname.startsWith('/admin')
+                ? 'bg-wm-accent/15'
+                : 'hover:bg-wm-surface-hover',
+            )}>
+              <Settings className={cn(
+                'h-5 w-5',
+                pathname.startsWith('/admin') ? 'text-wm-accent' : 'text-wm-text-muted',
+              )} />
+            </div>
+          </Link>
+        )}
+
+        {/* User avatar */}
         <Avatar name={user.name} src={user.avatarUrl} size="sm" />
       </div>
 
-      {/* ── Panel 2: Contextual navigation ── */}
+      {/* ── Detail Panel ── */}
       <div className="flex w-[180px] flex-col border-r border-wm-border bg-wm-surface">
-        {/* ── MAIL ── */}
-        {activeModule === 'mail' && (
-          <>
-            <div className="px-3 pt-3 pb-2">
-              <Link
-                href="/compose"
-                className="flex w-full items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-xs font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
-              >
-                <Plus className="h-4 w-4" />
-                Compose
-              </Link>
-            </div>
+        {/* Compose button */}
+        <div className="px-3 pt-4 pb-2">
+          <Link
+            href="/compose"
+            className="flex w-full items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
+          >
+            <Plus className="h-4 w-4" />
+            Compose
+          </Link>
+        </div>
 
-            <div className="px-4 pb-1 pt-2">
-              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">MAIL</span>
-            </div>
+        {/* MAIL section */}
+        <div className="px-4 pb-1 pt-3">
+          <span className="font-sans text-[10px] font-semibold tracking-[2px] text-wm-text-muted">MAIL</span>
+        </div>
 
-            <nav className="flex flex-col">
-              {MAIL_NAV.map((item) => (
-                <NavItem
-                  key={item.href}
-                  icon={item.icon}
-                  label={item.label}
-                  href={item.href}
-                  active={pathname === item.href}
-                  badge={item.countKey ? unreadCounts[item.countKey] : undefined}
-                />
-              ))}
-            </nav>
+        <nav className="flex flex-col">
+          {MAIL_NAV.map((item) => (
+            <NavItem
+              key={item.href}
+              icon={item.icon}
+              label={item.label}
+              href={item.href}
+              active={pathname === item.href}
+              badge={item.countKey ? unreadCounts[item.countKey] : undefined}
+            />
+          ))}
+        </nav>
 
-            {labels.length > 0 && (
-              <>
-                <div className="flex items-center justify-between px-4 pb-1 pt-4">
-                  <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">LABELS</span>
-                  <Plus className="h-3 w-3 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
-                </div>
-                <div className="flex flex-col">
-                  {labels.map((label) => (
-                    <button key={label.name} className="flex items-center gap-2 px-5 py-1.5 text-left hover:bg-wm-surface-hover">
-                      <LabelDot color={label.color} label={label.name} />
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        )}
+        {/* LABELS section */}
+        <div className="flex items-center justify-between px-4 pb-1 pt-4">
+          <span className="font-sans text-[10px] font-semibold tracking-[2px] text-wm-text-muted">LABELS</span>
+          <Plus className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
+        </div>
 
-        {/* ── ADMIN ── */}
-        {activeModule === 'admin' && (
-          <>
-            <div className="px-3 pt-3 pb-2">
-              <button className="flex w-full cursor-pointer items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-xs font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover">
-                <UserPlus className="h-4 w-4" />
-                Invite User
-              </button>
-            </div>
-
-            <div className="px-4 pb-1 pt-2">
-              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">ADMIN</span>
-            </div>
-
-            <nav className="flex flex-col">
-              {ADMIN_NAV.map((item) => (
-                <NavItem key={item.href} icon={item.icon} label={item.label} href={item.href} active={pathname === item.href} />
-              ))}
-            </nav>
-          </>
-        )}
-
-        {/* ── SETTINGS ── */}
-        {activeModule === 'settings' && (
-          <>
-            <div className="px-4 pt-4 pb-1">
-              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">SETTINGS</span>
-            </div>
-
-            <nav className="flex flex-col">
-              {SETTINGS_NAV.map((item) => (
-                <NavItem key={item.href} icon={item.icon} label={item.label} href={item.href} active={pathname === item.href} />
-              ))}
-            </nav>
-
-            {/* Admin sub-section */}
-            <div className="px-4 pb-1 pt-4">
-              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">ADMIN</span>
-            </div>
-
-            <nav className="flex flex-col">
-              {SETTINGS_ADMIN_NAV.map((item) => (
-                <NavItem key={item.href} icon={item.icon} label={item.label} href={item.href} active={pathname === item.href} />
-              ))}
-            </nav>
-          </>
-        )}
-
-        {/* ── Placeholder modules ── */}
-        {(activeModule === 'contacts' || activeModule === 'search' || activeModule === 'calendar') && (
-          <>
-            <div className="px-4 pt-4 pb-2">
-              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">
-                {activeModule.toUpperCase()}
-              </span>
-            </div>
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4">
-              <p className="text-center font-mono text-[11px] text-wm-text-muted">Coming soon</p>
-            </div>
-          </>
-        )}
+        <div className="flex flex-col">
+          {displayLabels.map((label) => (
+            <button
+              key={label.name}
+              className="flex items-center gap-2 px-5 py-1.5 text-left hover:bg-wm-surface-hover"
+            >
+              <LabelDot color={label.color} label={label.name} />
+            </button>
+          ))}
+        </div>
       </div>
     </aside>
   )

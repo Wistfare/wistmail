@@ -1,12 +1,15 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
+import { hash } from 'argon2'
+import { randomBytes } from 'node:crypto'
 import { ValidationError } from '@wistmail/shared'
 import { generateId } from '@wistmail/shared'
-import { users, organizations, orgMembers } from '@wistmail/db'
+import { users, organizations, orgMembers, mailboxes, domains } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { AuditService } from '../services/audit.js'
 import { getDb } from '../lib/db.js'
+import { buildInvitationEmail } from '../templates/invitation.js'
 
 export const adminRoutes = new Hono<SessionEnv>()
 
@@ -208,4 +211,146 @@ adminRoutes.delete('/members/:id', async (c) => {
   })
 
   return c.json({ ok: true })
+})
+
+// ── Create User ────────────────────────────────────────────────────────────
+
+const createUserSchema = z.object({
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().max(100).default(''),
+  externalEmail: z.string().email('Invalid external email'),
+  emailLocal: z.string().min(1).max(64).regex(/^[a-zA-Z0-9._%+-]+$/, 'Invalid email characters'),
+  displayName: z.string().min(1).max(255),
+})
+
+/**
+ * POST /api/v1/admin/users/create
+ * Creates a new user, mailbox, and sends invitation to their external email.
+ */
+adminRoutes.post('/users/create', async (c) => {
+  const body = await c.req.json()
+  const parsed = createUserSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new ValidationError('Invalid input', { errors: parsed.error.flatten().fieldErrors })
+  }
+
+  const db = getDb()
+  const adminUserId = c.get('userId')
+  const { firstName, lastName, externalEmail, emailLocal, displayName } = parsed.data
+
+  // Get admin's org
+  const orgResult = await db
+    .select({ orgId: orgMembers.orgId, orgName: organizations.name })
+    .from(orgMembers)
+    .innerJoin(organizations, eq(orgMembers.orgId, organizations.id))
+    .where(eq(orgMembers.userId, adminUserId))
+    .limit(1)
+
+  if (orgResult.length === 0) {
+    throw new ValidationError('No organization found')
+  }
+
+  const { orgId, orgName } = orgResult[0]
+
+  // Get the domain
+  const domainResult = await db.select().from(domains).limit(1)
+  if (domainResult.length === 0) {
+    throw new ValidationError('No domain configured')
+  }
+  const domain = domainResult[0]
+  const fullEmail = `${emailLocal.toLowerCase()}@${domain.name}`
+
+  // Check for existing user
+  const existing = await db.select().from(users).where(eq(users.email, fullEmail)).limit(1)
+  if (existing.length > 0) {
+    throw new ValidationError('This email address is already taken')
+  }
+
+  // Generate temporary password
+  const tempPassword = randomBytes(6).toString('base64url').slice(0, 10)
+  const passwordHash = await hash(tempPassword)
+
+  const userId = generateId('usr')
+  const now = new Date()
+
+  // Create user
+  await db.insert(users).values({
+    id: userId,
+    email: fullEmail,
+    name: `${firstName} ${lastName}`.trim(),
+    passwordHash,
+    setupComplete: true,
+    setupStep: 'done',
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  // Create mailbox
+  const mailboxId = generateId('mbx')
+  await db.insert(mailboxes).values({
+    id: mailboxId,
+    address: fullEmail,
+    displayName,
+    domainId: domain.id,
+    userId,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  // Add to organization
+  await db.insert(orgMembers).values({
+    id: generateId('mem'),
+    orgId,
+    userId,
+    role: 'member',
+    createdAt: now,
+  })
+
+  // Send invitation email to external email
+  const loginUrl = process.env.SITE_URL || 'https://mail.wistfare.com'
+  const { html, text } = buildInvitationEmail({
+    displayName,
+    newEmail: fullEmail,
+    tempPassword,
+    orgName,
+    loginUrl: `${loginUrl}/login`,
+  })
+
+  const mailEngineUrl = process.env.MAIL_ENGINE_URL || 'http://mail-engine:8025'
+  const inboundSecret = process.env.INBOUND_SECRET || ''
+
+  try {
+    await fetch(`${mailEngineUrl}/api/v1/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Inbound-Secret': inboundSecret,
+      },
+      body: JSON.stringify({
+        from: `"${orgName}" <noreply@${domain.name}>`,
+        to: [externalEmail],
+        subject: `You've been invited to ${orgName} on WistMail`,
+        html,
+        text,
+      }),
+    })
+    console.log(`Invitation email sent to ${externalEmail} for ${fullEmail}`)
+  } catch (err) {
+    console.error('Failed to send invitation email:', err)
+  }
+
+  const audit = new AuditService(db)
+  await audit.log({
+    userId: adminUserId,
+    action: 'user.created',
+    resource: 'user',
+    resourceId: userId,
+    details: { email: fullEmail, invitedVia: externalEmail },
+  })
+
+  return c.json({
+    user: { id: userId, name: displayName, email: fullEmail },
+    mailbox: { id: mailboxId, address: fullEmail },
+    invitationSentTo: externalEmail,
+  }, 201)
 })

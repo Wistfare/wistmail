@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search as SearchIcon, X, Calendar, Paperclip, Sparkles } from 'lucide-react'
+import { Search as SearchIcon, X, Calendar, Paperclip } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { api } from '@/lib/api-client'
 import { cn, formatRelativeTime } from '@/lib/utils'
@@ -77,10 +77,6 @@ export default function SearchPage() {
           <span className="font-mono text-[11px] text-wm-text-secondary">Unread only</span>
         </button>
         <div className="flex-1" />
-        <div className="flex items-center gap-1.5 bg-wm-accent/10 px-3 py-1.5">
-          <Sparkles className="h-3 w-3 text-wm-accent" />
-          <span className="font-mono text-[10px] text-wm-accent">Try AI search: &quot;What did Alex say about the API?&quot;</span>
-        </div>
       </div>
 
       {/* Results */}

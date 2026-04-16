@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { Search, ArrowUpDown, SlidersHorizontal, Star, Archive, Trash2, Tag, Reply, ReplyAll, Forward, Sparkles } from 'lucide-react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { Search, ArrowUpDown, SlidersHorizontal, Star, Archive, Trash2, Tag, Reply, ReplyAll, Forward } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api-client'
@@ -13,6 +13,7 @@ type Email = {
   messageId: string
   fromAddress: string
   toAddresses: string[]
+  cc?: string[]
   subject: string
   textBody: string | null
   htmlBody: string | null
@@ -20,6 +21,7 @@ type Email = {
   isRead: boolean
   isStarred: boolean
   isDraft: boolean
+  inReplyTo?: string
   sizeBytes: number
   createdAt: string
 }
@@ -33,6 +35,7 @@ const FOLDER_TABS = [
 
 export default function InboxPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const folderParam = searchParams.get('folder') || 'inbox'
   const [emails, setEmails] = useState<Email[]>([])
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
@@ -97,6 +100,91 @@ export default function InboxPage() {
 
   function extractPreview(email: Email): string {
     return (email.textBody || '').slice(0, 120).replace(/\n/g, ' ')
+  }
+
+  function handleReply() {
+    if (!selectedEmail) return
+    const params = new URLSearchParams({
+      replyTo: selectedEmail.id,
+      to: selectedEmail.fromAddress,
+      subject: selectedEmail.subject.startsWith('Re:') ? selectedEmail.subject : `Re: ${selectedEmail.subject}`,
+    })
+    router.push(`/compose?${params.toString()}`)
+  }
+
+  function handleReplyAll() {
+    if (!selectedEmail) return
+    const allRecipients = [selectedEmail.fromAddress, ...(selectedEmail.toAddresses || []), ...(selectedEmail.cc || [])]
+    const unique = [...new Set(allRecipients)]
+    const params = new URLSearchParams({
+      replyTo: selectedEmail.id,
+      to: unique.join(','),
+      subject: selectedEmail.subject.startsWith('Re:') ? selectedEmail.subject : `Re: ${selectedEmail.subject}`,
+    })
+    router.push(`/compose?${params.toString()}`)
+  }
+
+  function handleForward() {
+    if (!selectedEmail) return
+    const params = new URLSearchParams({
+      forward: selectedEmail.id,
+      subject: selectedEmail.subject.startsWith('Fwd:') ? selectedEmail.subject : `Fwd: ${selectedEmail.subject}`,
+    })
+    router.push(`/compose?${params.toString()}`)
+  }
+
+  /** Sanitize and render email HTML safely */
+  function renderEmailBody(email: Email) {
+    if (email.htmlBody) {
+      // Basic sanitization: strip script tags and event handlers
+      const sanitized = email.htmlBody
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/\son\w+="[^"]*"/gi, '')
+        .replace(/\son\w+='[^']*'/gi, '')
+      return (
+        <div
+          className="email-body max-w-none text-sm leading-relaxed text-wm-text-secondary"
+          dangerouslySetInnerHTML={{ __html: sanitized }}
+        />
+      )
+    }
+
+    // Plain text: style quoted lines (lines starting with >)
+    const text = email.textBody || 'No content'
+    const lines = text.split('\n')
+    const parts: Array<{ quoted: boolean; text: string }> = []
+    let currentQuoted = false
+    let currentLines: string[] = []
+
+    for (const line of lines) {
+      const isQuoted = line.startsWith('>')
+      if (isQuoted !== currentQuoted && currentLines.length > 0) {
+        parts.push({ quoted: currentQuoted, text: currentLines.join('\n') })
+        currentLines = []
+      }
+      currentQuoted = isQuoted
+      currentLines.push(isQuoted ? line.replace(/^>+\s?/, '') : line)
+    }
+    if (currentLines.length > 0) {
+      parts.push({ quoted: currentQuoted, text: currentLines.join('\n') })
+    }
+
+    return (
+      <div className="text-sm leading-relaxed text-wm-text-secondary">
+        {parts.map((part, i) =>
+          part.quoted ? (
+            <blockquote
+              key={i}
+              className="my-2 border-l-2 border-wm-text-muted/30 pl-3 text-wm-text-muted"
+            >
+              <pre className="whitespace-pre-wrap font-mono text-xs">{part.text}</pre>
+            </blockquote>
+          ) : (
+            <pre key={i} className="whitespace-pre-wrap font-mono text-sm">{part.text}</pre>
+          ),
+        )}
+      </div>
+    )
   }
 
   return (
@@ -202,6 +290,7 @@ export default function InboxPage() {
           </div>
         ) : (
           <>
+            {/* Subject bar */}
             <div className="flex items-center gap-2 border-b border-wm-border px-6 py-3">
               <h2 className="flex-1 truncate text-base font-semibold text-wm-text-primary">
                 {selectedEmail.subject || '(no subject)'}
@@ -211,6 +300,7 @@ export default function InboxPage() {
               <Trash2 className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" onClick={() => handleDelete(selectedEmail.id)} />
             </div>
 
+            {/* Sender info + actions */}
             <div className="flex items-center gap-3 border-b border-wm-border px-6 py-3">
               <Avatar name={extractSenderName(selectedEmail.fromAddress)} size="md" />
               <div className="flex-1">
@@ -220,34 +310,43 @@ export default function InboxPage() {
                 </p>
               </div>
               <div className="flex gap-1.5">
-                <Button variant="secondary" size="sm" icon={<Reply className="h-3.5 w-3.5" />}>Reply</Button>
-                <Button variant="secondary" size="sm" icon={<ReplyAll className="h-3.5 w-3.5" />}>Reply All</Button>
-                <Button variant="secondary" size="sm" icon={<Forward className="h-3.5 w-3.5" />}>Forward</Button>
+                <Button variant="secondary" size="sm" icon={<Reply className="h-3.5 w-3.5" />} onClick={handleReply}>Reply</Button>
+                <Button variant="secondary" size="sm" icon={<ReplyAll className="h-3.5 w-3.5" />} onClick={handleReplyAll}>Reply All</Button>
+                <Button variant="secondary" size="sm" icon={<Forward className="h-3.5 w-3.5" />} onClick={handleForward}>Forward</Button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 border-b border-wm-border bg-wm-accent/5 px-6 py-2">
-              <Sparkles className="h-3.5 w-3.5 text-wm-accent" />
-              <span className="font-mono text-[10px] font-semibold text-wm-accent">AI Summary</span>
-              <span className="flex-1 truncate font-mono text-[10px] text-wm-text-tertiary">
-                {(selectedEmail.textBody || '').slice(0, 100)}...
-              </span>
-              <button className="cursor-pointer font-mono text-[10px] font-medium text-wm-accent hover:underline">Draft reply</button>
-              <button className="cursor-pointer font-mono text-[10px] font-medium text-wm-accent hover:underline">Extract tasks</button>
-            </div>
-
+            {/* Email body */}
             <div className="flex-1 overflow-y-auto px-6 py-6">
-              {selectedEmail.htmlBody ? (
-                <div className="max-w-none text-sm leading-relaxed text-wm-text-secondary" dangerouslySetInnerHTML={{ __html: selectedEmail.htmlBody }} />
-              ) : (
-                <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-wm-text-secondary">
-                  {selectedEmail.textBody || 'No content'}
-                </pre>
-              )}
+              {renderEmailBody(selectedEmail)}
             </div>
           </>
         )}
       </div>
+
+      {/* Global styles for email HTML content */}
+      <style jsx global>{`
+        .email-body blockquote {
+          border-left: 2px solid var(--color-wm-text-muted);
+          padding-left: 12px;
+          margin: 8px 0;
+          opacity: 0.7;
+        }
+        .email-body img {
+          max-width: 100%;
+          height: auto;
+        }
+        .email-body a {
+          color: var(--color-wm-accent);
+          text-decoration: underline;
+        }
+        .email-body table {
+          border-collapse: collapse;
+        }
+        .email-body td, .email-body th {
+          padding: 4px 8px;
+        }
+      `}</style>
     </div>
   )
 }

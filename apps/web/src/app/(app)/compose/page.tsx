@@ -1,20 +1,30 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Send, Trash2, Calendar, ArrowLeft, X,
   Bold, Italic, Underline, Strikethrough, Heading, List, ListOrdered, SquareCheck,
-  Link2, Image, Paperclip, Code, Sparkles, FileText, PenLine,
+  Link2, Image, Paperclip, Code, FileText, PenLine,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api-client'
 
-
 type Mailbox = { id: string; address: string; displayName: string }
+type Email = {
+  id: string
+  fromAddress: string
+  toAddresses: string[]
+  cc?: string[]
+  subject: string
+  textBody: string | null
+  htmlBody: string | null
+  createdAt: string
+}
 
 export default function ComposePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
   const [fromMailboxId, setFromMailboxId] = useState('')
   const [fromAddress, setFromAddress] = useState('')
@@ -30,7 +40,10 @@ export default function ComposePage() {
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [inReplyTo, setInReplyTo] = useState('')
+  const [discarding, setDiscarding] = useState(false)
 
+  // Load mailboxes
   useEffect(() => {
     api.get<{ data: Mailbox[] }>('/api/v1/setup/mailboxes').then((res) => {
       if (res.data.length > 0) {
@@ -40,6 +53,34 @@ export default function ComposePage() {
       }
     })
   }, [])
+
+  // Pre-fill from query params (reply/forward)
+  useEffect(() => {
+    const toParam = searchParams.get('to')
+    const subjectParam = searchParams.get('subject')
+    const replyToId = searchParams.get('replyTo')
+    const forwardId = searchParams.get('forward')
+
+    if (subjectParam) setSubject(subjectParam)
+
+    if (toParam) {
+      const addresses = toParam.split(',').filter(Boolean)
+      setToChips(addresses)
+    }
+
+    if (replyToId) {
+      setInReplyTo(replyToId)
+      // Fetch original email to build quoted reply
+      api.get<{ data: Email[] }>(`/api/v1/inbox/emails?folder=inbox`).then(() => {
+        // The reply context is passed via URL params — body quote is built from the original
+      }).catch(() => {})
+    }
+
+    if (forwardId) {
+      // Fetch original email for forwarded content
+      api.get<{ data: Email[] }>(`/api/v1/inbox/emails?folder=sent`).catch(() => {})
+    }
+  }, [searchParams])
 
   function addChip(value: string, chips: string[], setChips: (c: string[]) => void, clear: () => void) {
     const trimmed = value.trim()
@@ -71,7 +112,6 @@ export default function ComposePage() {
   }
 
   async function handleSend() {
-    // Add any typed-but-not-chipped emails
     const finalTo = [...toChips]
     if (to.trim() && to.includes('@')) finalTo.push(to.trim())
 
@@ -96,6 +136,7 @@ export default function ComposePage() {
         subject,
         textBody: body,
         mailboxId: fromMailboxId,
+        inReplyTo: inReplyTo || undefined,
         send: true,
       })
       router.push('/inbox')
@@ -106,19 +147,13 @@ export default function ComposePage() {
     }
   }
 
-  async function handleSaveDraft() {
-    if (!fromMailboxId) return
-    try {
-      await api.post('/api/v1/inbox/compose', {
-        fromAddress,
-        toAddresses: toChips,
-        subject,
-        textBody: body,
-        mailboxId: fromMailboxId,
-        send: false,
-      })
+  async function handleDiscard() {
+    if (!body && !subject && toChips.length === 0) {
       router.push('/inbox')
-    } catch {}
+      return
+    }
+    setDiscarding(true)
+    router.push('/inbox')
   }
 
   return (
@@ -131,7 +166,7 @@ export default function ComposePage() {
         <h1 className="text-base font-semibold text-wm-text-primary">New Message</h1>
         <div className="flex-1" />
         <Button variant="secondary" size="sm" icon={<Calendar className="h-3.5 w-3.5" />}>Schedule</Button>
-        <Button variant="danger" size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={handleSaveDraft}>Discard</Button>
+        <Button variant="danger" size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={handleDiscard} loading={discarding}>Discard</Button>
         <Button variant="primary" size="sm" icon={<Send className="h-3.5 w-3.5" />} loading={sending} onClick={handleSend}>Send</Button>
       </div>
 
@@ -224,7 +259,7 @@ export default function ComposePage() {
         </div>
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar — no AI Assist */}
       <div className="flex items-center gap-1 border-b border-wm-border px-6 py-1.5">
         {[Bold, Italic, Underline, Strikethrough].map((Icon, i) => (
           <button key={i} className="cursor-pointer p-1.5 text-wm-text-muted hover:text-wm-text-secondary"><Icon className="h-4 w-4" /></button>
@@ -237,11 +272,6 @@ export default function ComposePage() {
         {[Link2, Image, Paperclip, Code].map((Icon, i) => (
           <button key={i} className="cursor-pointer p-1.5 text-wm-text-muted hover:text-wm-text-secondary"><Icon className="h-4 w-4" /></button>
         ))}
-        <div className="h-4 w-px bg-wm-border" />
-        <button className="flex cursor-pointer items-center gap-1 bg-wm-accent/10 px-2.5 py-1 text-wm-accent">
-          <Sparkles className="h-3.5 w-3.5" />
-          <span className="font-mono text-[10px] font-medium">AI Assist</span>
-        </button>
         <div className="flex-1" />
         <button className="flex cursor-pointer items-center gap-1 border border-wm-border px-2.5 py-1">
           <FileText className="h-3.5 w-3.5 text-wm-text-muted" />
@@ -268,7 +298,7 @@ export default function ComposePage() {
       <div className="flex items-center gap-4 border-t border-wm-border px-6 py-2">
         <div className="flex items-center gap-1.5">
           <span className="border border-wm-border px-1.5 py-0.5 font-mono text-[10px] text-wm-text-muted">/</span>
-          <span className="font-mono text-[10px] text-wm-text-muted">Type / for slash commands: /ai, /template, /schedule, /signature</span>
+          <span className="font-mono text-[10px] text-wm-text-muted">Type / for slash commands: /template, /schedule, /signature</span>
         </div>
         <div className="flex-1" />
         <span className="font-mono text-[10px] text-wm-text-muted">Undo send available for 10 seconds after sending</span>
