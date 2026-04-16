@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { emails, sendingLogs } from '@wistmail/db'
+import { emails, sendingLogs, mailboxes } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 
@@ -20,8 +20,19 @@ export class EmailSender {
     }
     const email = emailResult[0]
 
+    // Look up sender's display name from their mailbox
+    let fromHeader = email.fromAddress
+    const mailboxResult = await this.db
+      .select({ displayName: mailboxes.displayName })
+      .from(mailboxes)
+      .where(eq(mailboxes.address, email.fromAddress))
+      .limit(1)
+    if (mailboxResult.length > 0 && mailboxResult[0].displayName) {
+      fromHeader = `"${mailboxResult[0].displayName}" <${email.fromAddress}>`
+    }
+
     const payload: Record<string, unknown> = {
-      from: email.fromAddress,
+      from: fromHeader,
       to: email.toAddresses,
       subject: email.subject,
     }
