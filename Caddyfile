@@ -1,0 +1,11 @@
+{$SITE_DOMAIN:mail.wistfare.com} {
+	# API — forward /api/* to the Hono API gateway
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+
+	# Everything else → Next.js web client
+	handle {
+		reverse_proxy web:3000
+	}
+}

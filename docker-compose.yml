@@ -98,6 +98,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Caddy (reverse proxy + automatic HTTPS) ─────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-mail.wistfare.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
   # ── API Gateway (Hono / Node.js) ───────────────────────────────────────────
   api:
     image: ghcr.io/wistfare/wistmail-api:latest
@@ -117,8 +135,6 @@ services:
       ALLOW_SKIP_DNS: ${ALLOW_SKIP_DNS:-false}
       INBOUND_SECRET: ${INBOUND_SECRET}
       MAIL_ENGINE_URL: http://mail-engine:8025
-    ports:
-      - "3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,8 +150,6 @@ services:
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
-    ports:
-      - "3000:3000"
     depends_on:
       - api
 
@@ -146,11 +160,11 @@ services:
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3002"
-    ports:
-      - "3002:3002"
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   meilisearch_data:
+  caddy_data:
+  caddy_config:

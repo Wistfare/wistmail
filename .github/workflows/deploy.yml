@@ -51,6 +51,7 @@ jobs:
               - 'packages/mail-engine/**'
             deploy:
               - 'docker-compose.yml'
+              - 'Caddyfile'
 
   # ── Build API image ────────────────────────────────────────────────────────
   build-api:
@@ -194,9 +195,9 @@ jobs:
           [ "$CHANGED_ENGINE" = "true" ] && SERVICES="$SERVICES mail-engine"
           SERVICES="${SERVICES# }"  # trim leading space
 
-          # Always sync the compose file first
-          scp -i ~/.ssh/deploy_key docker-compose.yml \
-            root@"$DEPLOY_HOST":/opt/wistmail/docker-compose.yml
+          # Always sync compose + Caddyfile
+          scp -i ~/.ssh/deploy_key docker-compose.yml Caddyfile \
+            root@"$DEPLOY_HOST":/opt/wistmail/
 
           # Deploy only what changed
           ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" "
