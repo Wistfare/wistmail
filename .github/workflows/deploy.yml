@@ -101,7 +101,7 @@ jobs:
             ${{ env.IMAGE_PREFIX }}-web:latest
             ${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
           build-args: |
-            NEXT_PUBLIC_API_URL=https://mail.wistfare.com/api
+            NEXT_PUBLIC_API_URL=https://mail.wistfare.com
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
