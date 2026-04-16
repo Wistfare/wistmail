@@ -218,7 +218,7 @@ adminRoutes.delete('/members/:id', async (c) => {
 const createUserSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().max(100).default(''),
-  externalEmail: z.string().email('Invalid external email'),
+  externalEmail: z.string().email('Invalid external email').optional().or(z.literal('')),
   emailLocal: z.string().min(1).max(64).regex(/^[a-zA-Z0-9._%+-]+$/, 'Invalid email characters'),
   displayName: z.string().min(1).max(255),
 })
@@ -306,8 +306,9 @@ adminRoutes.post('/users/create', async (c) => {
     createdAt: now,
   })
 
-  // Send invitation email to external email
+  // Send invitation email to external email (only if provided)
   const loginUrl = process.env.SITE_URL || 'https://mail.wistfare.com'
+  if (externalEmail) {
   const { html, text } = buildInvitationEmail({
     displayName,
     newEmail: fullEmail,
@@ -337,6 +338,7 @@ adminRoutes.post('/users/create', async (c) => {
     console.log(`Invitation email sent to ${externalEmail} for ${fullEmail}`)
   } catch (err) {
     console.error('Failed to send invitation email:', err)
+  }
   }
 
   const audit = new AuditService(db)

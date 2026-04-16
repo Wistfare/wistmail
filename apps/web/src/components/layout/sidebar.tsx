@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
-  Plus, Mail, Settings, LogOut, Users, Building2, ScrollText, UserPlus,
+  Plus, Mail, Settings, LogOut, Users, Building2, ScrollText,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
@@ -154,18 +154,7 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
         {isOnAdmin ? (
           /* ── ADMIN MODE ── */
           <>
-            {/* Invite User button */}
-            <div className="px-3 pt-4 pb-2">
-              <Link
-                href="/admin/members?create=true"
-                className="flex w-full items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
-              >
-                <UserPlus className="h-4 w-4" />
-                Invite User
-              </Link>
-            </div>
-
-            <div className="px-4 pb-1 pt-3">
+            <div className="px-4 pb-1 pt-4">
               <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">ADMIN</span>
             </div>
 
