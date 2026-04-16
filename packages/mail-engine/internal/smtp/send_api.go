@@ -98,7 +98,7 @@ func StartSendAPI(hostname string, port int, client *Client, dkimLookup DkimLook
 
 		// SMTP envelope MAIL FROM requires a bare email address (RFC 5321),
 		// not the display name format used in the From header.
-		envelopeFrom := extractAddress(req.From)
+		envelopeFrom := extractBareAddress(req.From)
 		result, err := client.Send(r.Context(), envelopeFrom, recipients, data)
 		if err != nil {
 			log.Printf("send_api: smtp error: %v", err)
@@ -132,8 +132,8 @@ func sendAPIJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
 }
 
-// extractAddress pulls the bare email address from "Name <addr>" or plain addr format.
-func extractAddress(from string) string {
+// extractBareAddress pulls the bare email address from "Name <addr>" or plain addr format.
+func extractBareAddress(from string) string {
 	addr := from
 	if idx := strings.LastIndex(addr, "<"); idx >= 0 {
 		addr = addr[idx+1:]
