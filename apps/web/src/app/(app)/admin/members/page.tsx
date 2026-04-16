@@ -119,12 +119,11 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div className="flex gap-6">
+    <div className="flex gap-6 p-8">
       {/* Main content */}
       <div className="flex flex-1 flex-col gap-6">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold text-wm-text-primary">User Management</h1>
-          <Badge variant="default">{totalUsers} users</Badge>
           <div className="flex-1" />
           <Button
             variant="primary"
@@ -212,78 +211,83 @@ export default function UserManagementPage() {
         </div>
       </div>
 
-      {/* Create User Panel */}
+      {/* Create User Panel — floating overlay */}
       {showCreatePanel && (
-        <div className="w-[360px] shrink-0 border-l border-wm-border bg-wm-surface p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-wm-text-primary">Create User</h2>
-            <button onClick={() => setShowCreatePanel(false)} className="cursor-pointer text-wm-text-muted hover:text-wm-text-secondary">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Profile photo placeholder */}
-          <div className="mb-6 flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-wm-surface-hover">
-              <Users className="h-6 w-6 text-wm-text-muted" />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4">
-            <div className="flex gap-3">
-              <InputField
-                label="First name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="John"
-              />
-              <InputField
-                label="Last name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="Doe"
-              />
+        <>
+          <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setShowCreatePanel(false)} />
+          <div className="fixed right-0 top-0 z-50 flex h-full w-[400px] flex-col border-l border-wm-border bg-wm-surface shadow-2xl">
+            <div className="flex items-center justify-between border-b border-wm-border px-6 py-4">
+              <h2 className="text-lg font-semibold text-wm-text-primary">Create User</h2>
+              <button onClick={() => setShowCreatePanel(false)} className="cursor-pointer text-wm-text-muted hover:text-wm-text-secondary">
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
-            <InputField
-              label="External email (for invitation)"
-              value={externalEmail}
-              onChange={(e) => setExternalEmail(e.target.value)}
-              placeholder="john@gmail.com"
-              hint="Invitation with login credentials will be sent here"
-            />
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Profile photo placeholder */}
+              <div className="mb-6 flex justify-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-wm-surface-hover">
+                  <Users className="h-6 w-6 text-wm-text-muted" />
+                </div>
+              </div>
 
-            <div>
-              <label className="mb-1 block font-mono text-[10px] font-semibold tracking-wider text-wm-text-muted">
-                Email address
-              </label>
-              <div className="flex items-center border border-wm-border bg-wm-bg px-3 py-2">
-                <input
-                  type="text"
-                  value={newEmailLocal}
-                  onChange={(e) => setNewEmailLocal(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
-                  placeholder="john.doe"
-                  className="flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+              <div className="flex flex-col gap-4">
+                <div className="flex gap-3">
+                  <InputField
+                    label="First name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="John"
+                  />
+                  <InputField
+                    label="Last name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Doe"
+                  />
+                </div>
+
+                <InputField
+                  label="External email (for invitation)"
+                  value={externalEmail}
+                  onChange={(e) => setExternalEmail(e.target.value)}
+                  placeholder="john@gmail.com"
+                  hint="Invitation with login credentials will be sent here"
                 />
-                <span className="font-mono text-sm text-wm-text-muted">@{domain || 'wistfare.com'}</span>
+
+                <div>
+                  <label className="mb-1 block font-mono text-[10px] font-semibold tracking-wider text-wm-text-muted">
+                    Email address
+                  </label>
+                  <div className="flex items-center border border-wm-border bg-wm-bg px-3 py-2">
+                    <input
+                      type="text"
+                      value={newEmailLocal}
+                      onChange={(e) => setNewEmailLocal(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
+                      placeholder="john.doe"
+                      className="flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+                    />
+                    <span className="font-mono text-sm text-wm-text-muted">@{domain || 'wistfare.com'}</span>
+                  </div>
+                </div>
+
+                <InputField
+                  label="Display name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="John Doe"
+                />
+
+                {createError && (
+                  <p className="font-mono text-xs text-wm-error">{createError}</p>
+                )}
+                {createSuccess && (
+                  <p className="font-mono text-xs text-wm-accent">{createSuccess}</p>
+                )}
               </div>
             </div>
 
-            <InputField
-              label="Display name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="John Doe"
-            />
-
-            {createError && (
-              <p className="font-mono text-xs text-wm-error">{createError}</p>
-            )}
-            {createSuccess && (
-              <p className="font-mono text-xs text-wm-accent">{createSuccess}</p>
-            )}
-
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 border-t border-wm-border px-6 py-4">
               <Button variant="secondary" size="sm" onClick={() => setShowCreatePanel(false)} className="flex-1">
                 Cancel
               </Button>
@@ -299,7 +303,7 @@ export default function UserManagementPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   )

@@ -15,9 +15,11 @@ export default function AdminOrganizationPage() {
   const [domains, setDomains] = useState<Domain[]>([])
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   const fetchData = useCallback(async () => {
+    setLoading(true)
     try {
       const orgRes = await api.get<{ organization: Organization | null }>('/api/v1/admin/organization')
       if (orgRes.organization) {
@@ -27,6 +29,7 @@ export default function AdminOrganizationPage() {
       const domRes = await api.get<{ data: Domain[] }>('/api/v1/setup/domains')
       setDomains(domRes.data)
     } catch {}
+    setLoading(false)
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -51,6 +54,17 @@ export default function AdminOrganizationPage() {
       <h1 className="text-lg font-semibold text-wm-text-primary">Organization</h1>
     </div>
   )
+
+  if (loading) {
+    return (
+      <div className="flex h-full flex-col">
+        {header}
+        <div className="flex flex-1 items-center justify-center">
+          <div className="h-6 w-6 animate-spin border-2 border-wm-accent border-t-transparent" />
+        </div>
+      </div>
+    )
+  }
 
   if (!org) {
     return (

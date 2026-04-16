@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
-  Plus, Mail, Settings, LogOut,
+  Plus, Mail, Settings, LogOut, Users, Building2, ScrollText, UserPlus,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
@@ -33,6 +33,13 @@ const MAIL_NAV = [
   { icon: <Trash2 className="h-4 w-4" />, label: 'Trash', href: ROUTES.TRASH },
 ]
 
+const ADMIN_NAV = [
+  { icon: <Users className="h-4 w-4" />, label: 'Users', href: '/admin/members' },
+  { icon: <Building2 className="h-4 w-4" />, label: 'Organization', href: '/admin/organization' },
+  { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
+  { icon: <ScrollText className="h-4 w-4" />, label: 'Audit Log', href: '/admin/audit-logs' },
+]
+
 const DEFAULT_LABELS = [
   { name: 'Primary', color: 'var(--color-wm-accent)' },
   { name: 'Updates', color: 'var(--color-wm-info)' },
@@ -45,6 +52,7 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
   const router = useRouter()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const isAdmin = user.role === 'owner' || user.role === 'admin'
+  const isOnAdmin = pathname.startsWith('/admin') || pathname.startsWith('/settings')
   const displayLabels = labels && labels.length > 0 ? labels : DEFAULT_LABELS
 
   async function handleLogout() {
@@ -65,20 +73,26 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
 
         <div className="h-px w-8 bg-wm-border mb-1" />
 
-        {/* Mail — always active */}
+        {/* Mail icon */}
         <Link
           href={ROUTES.INBOX}
           className="flex h-12 w-14 items-center justify-center"
           title="Mail"
         >
-          <div className="flex h-9 w-10 items-center justify-center bg-wm-accent/15">
-            <Mail className="h-5 w-5 text-wm-accent" />
+          <div className={cn(
+            'flex h-9 w-10 items-center justify-center',
+            !isOnAdmin ? 'bg-wm-accent/15' : 'hover:bg-wm-surface-hover',
+          )}>
+            <Mail className={cn(
+              'h-5 w-5',
+              !isOnAdmin ? 'text-wm-accent' : 'text-wm-text-muted',
+            )} />
           </div>
         </Link>
 
         <div className="flex-1" />
 
-        {/* Settings — admin only */}
+        {/* Settings icon — admin only */}
         {isAdmin && (
           <Link
             href="/admin/members"
@@ -87,69 +101,44 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
           >
             <div className={cn(
               'flex h-9 w-10 items-center justify-center',
-              pathname.startsWith('/admin')
-                ? 'bg-wm-accent/15'
-                : 'hover:bg-wm-surface-hover',
+              isOnAdmin ? 'bg-wm-accent/15' : 'hover:bg-wm-surface-hover',
             )}>
               <Settings className={cn(
                 'h-5 w-5',
-                pathname.startsWith('/admin') ? 'text-wm-accent' : 'text-wm-text-muted',
+                isOnAdmin ? 'text-wm-accent' : 'text-wm-text-muted',
               )} />
             </div>
           </Link>
         )}
 
-        {/* User avatar with popup menu */}
+        {/* User avatar with popup */}
         <div className="relative">
-          <button
-            onClick={() => setShowUserMenu(!showUserMenu)}
-            className="cursor-pointer"
-          >
+          <button onClick={() => setShowUserMenu(!showUserMenu)} className="cursor-pointer">
             <Avatar name={user.name} src={user.avatarUrl} size="sm" />
           </button>
 
           {showUserMenu && (
             <>
-              {/* Backdrop */}
               <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-
-              {/* Menu */}
               <div className="absolute bottom-10 left-0 z-50 w-56 border border-wm-border bg-wm-surface shadow-lg">
-                {/* User info */}
                 <div className="border-b border-wm-border px-4 py-3">
                   <p className="text-sm font-medium text-wm-text-primary">{user.name}</p>
                   <p className="font-mono text-[10px] text-wm-text-muted">{user.email}</p>
                 </div>
-
-                {/* Links */}
                 <div className="flex flex-col py-1">
-                  <Link
-                    href="/settings/account"
-                    onClick={() => setShowUserMenu(false)}
-                    className="flex items-center gap-2 px-4 py-2 text-xs text-wm-text-secondary hover:bg-wm-surface-hover"
-                  >
+                  <Link href="/settings/account" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-4 py-2 text-xs text-wm-text-secondary hover:bg-wm-surface-hover">
                     <Settings className="h-3.5 w-3.5" />
                     Account Settings
                   </Link>
-
                   {isAdmin && (
-                    <Link
-                      href="/admin/members"
-                      onClick={() => setShowUserMenu(false)}
-                      className="flex items-center gap-2 px-4 py-2 text-xs text-wm-text-secondary hover:bg-wm-surface-hover"
-                    >
+                    <Link href="/admin/members" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-4 py-2 text-xs text-wm-text-secondary hover:bg-wm-surface-hover">
                       <Settings className="h-3.5 w-3.5 text-wm-accent" />
                       Admin Panel
                     </Link>
                   )}
                 </div>
-
-                {/* Logout */}
                 <div className="border-t border-wm-border py-1">
-                  <button
-                    onClick={handleLogout}
-                    className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-xs text-wm-error hover:bg-wm-surface-hover"
-                  >
+                  <button onClick={handleLogout} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-xs text-wm-error hover:bg-wm-surface-hover">
                     <LogOut className="h-3.5 w-3.5" />
                     Log out
                   </button>
@@ -162,51 +151,81 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
 
       {/* ── Detail Panel ── */}
       <div className="flex w-[180px] flex-col border-r border-wm-border bg-wm-surface">
-        {/* Compose button */}
-        <div className="px-3 pt-4 pb-2">
-          <Link
-            href="/compose"
-            className="flex w-full items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
-          >
-            <Plus className="h-4 w-4" />
-            Compose
-          </Link>
-        </div>
+        {isOnAdmin ? (
+          /* ── ADMIN MODE ── */
+          <>
+            {/* Invite User button */}
+            <div className="px-3 pt-4 pb-2">
+              <Link
+                href="/admin/members?create=true"
+                className="flex w-full items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
+              >
+                <UserPlus className="h-4 w-4" />
+                Invite User
+              </Link>
+            </div>
 
-        {/* MAIL section */}
-        <div className="px-4 pb-1 pt-3">
-          <span className="font-sans text-[10px] font-semibold tracking-[2px] text-wm-text-muted">MAIL</span>
-        </div>
+            <div className="px-4 pb-1 pt-3">
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">ADMIN</span>
+            </div>
 
-        <nav className="flex flex-col">
-          {MAIL_NAV.map((item) => (
-            <NavItem
-              key={item.href}
-              icon={item.icon}
-              label={item.label}
-              href={item.href}
-              active={pathname === item.href}
-              badge={item.countKey ? unreadCounts[item.countKey] : undefined}
-            />
-          ))}
-        </nav>
+            <nav className="flex flex-col">
+              {ADMIN_NAV.map((item) => (
+                <NavItem
+                  key={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  href={item.href}
+                  active={pathname === item.href || pathname.startsWith(item.href + '/')}
+                />
+              ))}
+            </nav>
+          </>
+        ) : (
+          /* ── MAIL MODE ── */
+          <>
+            {/* Compose button */}
+            <div className="px-3 pt-4 pb-2">
+              <Link
+                href="/compose"
+                className="flex w-full items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
+              >
+                <Plus className="h-4 w-4" />
+                Compose
+              </Link>
+            </div>
 
-        {/* LABELS section */}
-        <div className="flex items-center justify-between px-4 pb-1 pt-4">
-          <span className="font-sans text-[10px] font-semibold tracking-[2px] text-wm-text-muted">LABELS</span>
-          <Plus className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
-        </div>
+            <div className="px-4 pb-1 pt-3">
+              <span className="font-sans text-[10px] font-semibold tracking-[2px] text-wm-text-muted">MAIL</span>
+            </div>
 
-        <div className="flex flex-col">
-          {displayLabels.map((label) => (
-            <button
-              key={label.name}
-              className="flex items-center gap-2 px-5 py-1.5 text-left hover:bg-wm-surface-hover"
-            >
-              <LabelDot color={label.color} label={label.name} />
-            </button>
-          ))}
-        </div>
+            <nav className="flex flex-col">
+              {MAIL_NAV.map((item) => (
+                <NavItem
+                  key={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  href={item.href}
+                  active={pathname === item.href}
+                  badge={item.countKey ? unreadCounts[item.countKey] : undefined}
+                />
+              ))}
+            </nav>
+
+            {/* Labels */}
+            <div className="flex items-center justify-between px-4 pb-1 pt-4">
+              <span className="font-sans text-[10px] font-semibold tracking-[2px] text-wm-text-muted">LABELS</span>
+              <Plus className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
+            </div>
+            <div className="flex flex-col">
+              {displayLabels.map((label) => (
+                <button key={label.name} className="flex items-center gap-2 px-5 py-1.5 text-left hover:bg-wm-surface-hover">
+                  <LabelDot color={label.color} label={label.name} />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </aside>
   )
