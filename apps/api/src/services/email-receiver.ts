@@ -167,17 +167,19 @@ export class EmailReceiver {
     // Parse body based on content type
     const contentType = result.headers['content-type'] || 'text/plain'
 
+    // Get content-transfer-encoding from headers
+    const transferEncoding = result.headers['content-transfer-encoding'] || ''
+
     if (contentType.includes('multipart/')) {
-      // Extract boundary
       const boundaryMatch = contentType.match(/boundary="?([^";\s]+)"?/)
       if (boundaryMatch) {
         const boundary = boundaryMatch[1]
         this.parseMultipart(bodySection, boundary, result)
       }
     } else if (contentType.includes('text/html')) {
-      result.htmlBody = bodySection
+      result.htmlBody = this.decodeBody(bodySection, transferEncoding)
     } else {
-      result.textBody = bodySection
+      result.textBody = this.decodeBody(bodySection, transferEncoding)
     }
 
     return result
@@ -199,17 +201,34 @@ export class EmailReceiver {
       const partBody = part.substring(partHeaderEnd + 4).replace(/\r\n$/, '')
 
       if (partHeaders.includes('multipart/')) {
-        // Nested multipart
         const nestedBoundaryMatch = partHeaders.match(/boundary="?([^";\s]+)"?/)
         if (nestedBoundaryMatch) {
           this.parseMultipart(partBody, nestedBoundaryMatch[1], result)
         }
       } else if (partHeaders.includes('text/html')) {
-        result.htmlBody = partBody
+        result.htmlBody = this.decodeBody(partBody, partHeaders)
       } else if (partHeaders.includes('text/plain')) {
-        result.textBody = partBody
+        result.textBody = this.decodeBody(partBody, partHeaders)
       }
     }
+  }
+
+  /** Decode quoted-printable or base64 content based on transfer encoding */
+  private decodeBody(body: string, headers: string): string {
+    const lowerHeaders = headers.toLowerCase()
+    if (lowerHeaders.includes('quoted-printable')) {
+      return body
+        .replace(/=\r?\n/g, '') // soft line breaks
+        .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    }
+    if (lowerHeaders.includes('base64')) {
+      try {
+        return Buffer.from(body.replace(/\s/g, ''), 'base64').toString('utf-8')
+      } catch {
+        return body
+      }
+    }
+    return body
   }
 
   private extractEmailAddress(value: string): string {
