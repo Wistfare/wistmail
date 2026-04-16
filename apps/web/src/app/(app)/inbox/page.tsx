@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Search, ArrowUpDown, SlidersHorizontal, Star, Archive, Trash2, Tag, Reply, ReplyAll, Forward } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { useCompose } from '@/components/email/compose-provider'
 import { api } from '@/lib/api-client'
 import { cn, formatRelativeTime } from '@/lib/utils'
 
@@ -36,6 +37,7 @@ const FILTER_TABS = [
 export default function InboxPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { openCompose } = useCompose()
   const folderParam = searchParams.get('folder') || 'inbox'
   const [emails, setEmails] = useState<Email[]>([])
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
@@ -131,33 +133,30 @@ export default function InboxPage() {
 
   function handleReply() {
     if (!selectedEmail) return
-    const params = new URLSearchParams({
-      replyTo: selectedEmail.id,
-      to: selectedEmail.fromAddress,
+    openCompose({
+      to: [selectedEmail.fromAddress],
       subject: selectedEmail.subject.startsWith('Re:') ? selectedEmail.subject : `Re: ${selectedEmail.subject}`,
+      inReplyTo: selectedEmail.id,
     })
-    router.push(`/compose?${params.toString()}`)
   }
 
   function handleReplyAll() {
     if (!selectedEmail) return
     const allRecipients = [selectedEmail.fromAddress, ...(selectedEmail.toAddresses || []), ...(selectedEmail.cc || [])]
     const unique = [...new Set(allRecipients)]
-    const params = new URLSearchParams({
-      replyTo: selectedEmail.id,
-      to: unique.join(','),
+    openCompose({
+      to: unique,
       subject: selectedEmail.subject.startsWith('Re:') ? selectedEmail.subject : `Re: ${selectedEmail.subject}`,
+      inReplyTo: selectedEmail.id,
     })
-    router.push(`/compose?${params.toString()}`)
   }
 
   function handleForward() {
     if (!selectedEmail) return
-    const params = new URLSearchParams({
-      forward: selectedEmail.id,
+    openCompose({
       subject: selectedEmail.subject.startsWith('Fwd:') ? selectedEmail.subject : `Fwd: ${selectedEmail.subject}`,
+      body: `\n\n---------- Forwarded message ----------\nFrom: ${selectedEmail.fromAddress}\nDate: ${new Date(selectedEmail.createdAt).toLocaleString()}\nSubject: ${selectedEmail.subject}\n\n${selectedEmail.textBody || ''}`,
     })
-    router.push(`/compose?${params.toString()}`)
   }
 
   function renderEmailBody(email: Email) {

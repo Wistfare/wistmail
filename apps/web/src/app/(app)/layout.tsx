@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Sidebar } from '@/components/layout/sidebar'
+import { ComposeProvider } from '@/components/email/compose-provider'
 import { api } from '@/lib/api-client'
 
 type SessionUser = {
@@ -29,7 +30,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         }
         setUser(res.user)
 
-        // Force setup wizard if not complete (unless already on /setup)
         if (!res.user.setupComplete && !pathname.startsWith('/setup')) {
           router.replace('/setup')
         }
@@ -48,19 +48,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // Setup wizard pages don't show the sidebar
   if (pathname.startsWith('/setup')) {
     return <>{children}</>
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? undefined, role: user.role }}
-        activeRoute={pathname}
-        unreadCounts={{ inbox: 0 }}
-      />
-      <main className="flex-1 overflow-y-auto">{children}</main>
-    </div>
+    <ComposeProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar
+          user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? undefined, role: user.role }}
+          activeRoute={pathname}
+          unreadCounts={{ inbox: 0 }}
+        />
+        <main className="flex-1 overflow-y-auto">{children}</main>
+      </div>
+    </ComposeProvider>
   )
 }

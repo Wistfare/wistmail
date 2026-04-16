@@ -12,6 +12,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { LabelDot } from '@/components/ui/label-dot'
 import { ROUTES } from '@/lib/constants'
 import { api } from '@/lib/api-client'
+import { useCompose } from '@/components/email/compose-provider'
 import { cn } from '@/lib/utils'
 
 export interface SidebarProps {
@@ -51,6 +52,7 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { openCompose } = useCompose()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const isAdmin = user.role === 'owner' || user.role === 'admin'
   const isOnAdmin = pathname.startsWith('/admin') || pathname.startsWith('/settings')
@@ -177,13 +179,13 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
           <>
             {/* Compose button */}
             <div className="px-3 pt-4 pb-2">
-              <Link
-                href="/compose"
-                className="flex w-full items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
+              <button
+                onClick={() => openCompose()}
+                className="flex w-full cursor-pointer items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
               >
                 <Plus className="h-4 w-4" />
                 Compose
-              </Link>
+              </button>
             </div>
 
             <div className="px-4 pb-1 pt-3">
