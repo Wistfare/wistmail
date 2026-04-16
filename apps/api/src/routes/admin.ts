@@ -330,7 +330,7 @@ adminRoutes.post('/users/create', async (c) => {
       body: JSON.stringify({
         from: `"${orgName}" <noreply@${domain.name}>`,
         to: [externalEmail],
-        subject: `You've been invited to ${orgName} on WistMail`,
+        subject: `You've been invited to ${orgName} on Wistfare Mail`,
         html,
         text,
       }),

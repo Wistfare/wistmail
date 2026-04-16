@@ -78,6 +78,35 @@ body {
 
 /* Suppress focus ring on inputs inside styled wrappers */
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
   outline: none;
+}
+
+/* ── Override browser autofill/autocomplete background ── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-wm-bg) inset !important;
+  -webkit-text-fill-color: var(--color-wm-text-primary) !important;
+  caret-color: var(--color-wm-text-primary) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Also handle it for surface-colored inputs */
+.bg-wm-surface input:-webkit-autofill,
+.bg-wm-surface input:-webkit-autofill:hover,
+.bg-wm-surface input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-wm-surface) inset !important;
+}
+
+/* Firefox autofill */
+input:autofill,
+textarea:autofill,
+select:autofill {
+  background-color: var(--color-wm-bg) !important;
+  color: var(--color-wm-text-primary) !important;
 }
