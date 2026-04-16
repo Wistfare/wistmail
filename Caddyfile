@@ -1,3 +1,8 @@
+# Reject requests to the bare IP or unknown hosts
+:80 {
+	respond "Not Found" 404
+}
+
 {$SITE_DOMAIN:mail.wistfare.com} {
 	# API — forward /api/* to the Hono API gateway
 	handle /api/* {
