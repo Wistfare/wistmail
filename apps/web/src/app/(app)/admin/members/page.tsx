@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Users, UserPlus, Trash2, X, Search, Shield, Clock, Mail as MailIcon } from 'lucide-react'
+import { Users, UserPlus, Trash2, X, Search, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
