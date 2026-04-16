@@ -294,37 +294,29 @@ export default function UserManagementPage() {
               <>
                 <div className="flex-1 overflow-y-auto px-6 py-5">
                   <div className="flex flex-col gap-5">
-                    {/* Avatar + status */}
-                    <div className="flex items-center gap-4">
-                      <Avatar name={selectedMember.name} size="lg" />
-                      <div>
-                        <p className="text-base font-semibold text-wm-text-primary">{selectedMember.name}</p>
-                        <p className="font-mono text-xs text-wm-text-muted">{selectedMember.email}</p>
-                        <Badge variant="info" className="mt-1">Active</Badge>
-                      </div>
+                    {/* Status badge */}
+                    <div className="flex items-center gap-2">
+                      <Badge variant="info">Active</Badge>
                     </div>
 
-                    {/* Info rows */}
-                    <div className="flex flex-col gap-3 border-t border-wm-border pt-4">
-                      <div className="flex items-center gap-3">
-                        <MailIcon className="h-3.5 w-3.5 text-wm-text-muted" />
-                        <span className="font-mono text-[10px] text-wm-text-muted w-20">Email</span>
+                    {/* Info grid */}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-start gap-2">
+                        <span className="w-24 shrink-0 font-mono text-[10px] text-wm-text-muted pt-0.5">Full Name</span>
+                        <span className="text-sm text-wm-text-primary">{selectedMember.name}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="w-24 shrink-0 font-mono text-[10px] text-wm-text-muted pt-0.5">Email</span>
                         <span className="font-mono text-xs text-wm-text-secondary">{selectedMember.email}</span>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <Shield className="h-3.5 w-3.5 text-wm-text-muted" />
-                        <span className="font-mono text-[10px] text-wm-text-muted w-20">Role</span>
+                      <div className="flex items-start gap-2">
+                        <span className="w-24 shrink-0 font-mono text-[10px] text-wm-text-muted pt-0.5">Role</span>
                         <Badge variant={selectedMember.role === 'owner' ? 'accent' : 'default'}>{selectedMember.role}</Badge>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Clock className="h-3.5 w-3.5 text-wm-text-muted" />
-                        <span className="font-mono text-[10px] text-wm-text-muted w-20">Joined</span>
-                        <span className="font-mono text-xs text-wm-text-secondary">{new Date(selectedMember.joinedAt).toLocaleDateString()}</span>
                       </div>
                     </div>
 
                     {/* Admin notice */}
-                    {selectedMember.role === 'owner' && (
+                    {(selectedMember.role === 'owner' || selectedMember.role === 'admin') && (
                       <div className="flex items-start gap-2 border border-wm-accent/20 bg-wm-accent/5 p-3">
                         <Shield className="mt-0.5 h-4 w-4 text-wm-accent" />
                         <div>
@@ -333,17 +325,33 @@ export default function UserManagementPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Stats */}
+                    <div className="flex flex-col gap-3 border-t border-wm-border pt-4">
+                      <div className="flex items-start gap-2">
+                        <span className="w-24 shrink-0 font-mono text-[10px] text-wm-text-muted pt-0.5">Last Login</span>
+                        <span className="font-mono text-xs text-wm-text-secondary">{formatRelativeTime(new Date(selectedMember.joinedAt))}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="w-24 shrink-0 font-mono text-[10px] text-wm-text-muted pt-0.5">Joined</span>
+                        <span className="font-mono text-xs text-wm-text-secondary">{new Date(selectedMember.joinedAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* Actions */}
-                {selectedMember.role !== 'owner' && (
-                  <div className="flex flex-col gap-2 border-t border-wm-border px-6 py-4">
-                    <Button variant="danger" size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => removeMember(selectedMember.id)}>
-                      Delete Account
-                    </Button>
-                  </div>
-                )}
+                <div className="flex flex-col gap-2 border-t border-wm-border px-6 py-4">
+                  <Button variant="secondary" size="sm">Reset Password</Button>
+                  {selectedMember.role !== 'owner' && (
+                    <>
+                      <Button variant="warning" size="sm">Suspend Account</Button>
+                      <Button variant="danger" size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => removeMember(selectedMember.id)}>
+                        Delete Account
+                      </Button>
+                    </>
+                  )}
+                </div>
               </>
             )}
           </div>

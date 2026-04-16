@@ -155,6 +155,8 @@ inboxRoutes.post('/compose', async (c) => {
     textBody: z.string().optional(),
     htmlBody: z.string().optional(),
     mailboxId: z.string(),
+    inReplyTo: z.string().optional(),
+    scheduledAt: z.string().optional(),
     send: z.boolean().default(false),
   })
 

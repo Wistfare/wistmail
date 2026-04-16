@@ -3,12 +3,30 @@
 import { useState, useEffect } from 'react'
 import {
   Send, Trash2, X, Minus, Maximize2, Minimize2,
-  Bold, Italic, Underline, Link2, Paperclip,
+  Bold, Italic, Underline, Link2, Paperclip, Clock, ChevronDown,
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 
 type Mailbox = { id: string; address: string; displayName: string }
+
+function getScheduleTime(dayOffset: number | 'monday', hour: number): string {
+  const d = new Date()
+  if (dayOffset === 'monday') {
+    const day = d.getDay()
+    const daysUntilMonday = day === 0 ? 1 : 8 - day
+    d.setDate(d.getDate() + daysUntilMonday)
+  } else {
+    d.setDate(d.getDate() + dayOffset)
+  }
+  d.setHours(hour, 0, 0, 0)
+  return d.toISOString().slice(0, 16)
+}
+
+function formatSchedulePreview(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+}
 
 export type ComposeData = {
   to?: string[]
@@ -38,6 +56,8 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
   const [inReplyTo] = useState(initialData?.inReplyTo || '')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [showSchedule, setShowSchedule] = useState(false)
+  const [scheduledAt, setScheduledAt] = useState('')
 
   useEffect(() => {
     api.get<{ data: Mailbox[] }>('/api/v1/setup/mailboxes').then((res) => {
@@ -88,7 +108,8 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
         textBody: body,
         mailboxId: fromMailboxId,
         inReplyTo: inReplyTo || undefined,
-        send: true,
+        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        send: !scheduledAt,
       })
       onSent?.()
       onClose()
@@ -252,6 +273,53 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
             <Trash2 className="h-4 w-4" />
           </button>
           <div className="h-4 w-px bg-wm-border" />
+
+          {/* Schedule */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSchedule(!showSchedule)}
+              className="flex cursor-pointer items-center gap-1 p-1.5 text-wm-text-muted hover:text-wm-text-secondary"
+            >
+              <Clock className="h-4 w-4" />
+              <ChevronDown className="h-3 w-3" />
+            </button>
+            {showSchedule && (
+              <>
+                <div className="fixed inset-0 z-50" onClick={() => setShowSchedule(false)} />
+                <div className="absolute bottom-8 right-0 z-50 w-56 border border-wm-border bg-wm-surface shadow-lg">
+                  <div className="px-3 py-2 border-b border-wm-border">
+                    <span className="font-mono text-[10px] font-semibold text-wm-text-muted">SCHEDULE SEND</span>
+                  </div>
+                  {[
+                    { label: 'Tomorrow morning', time: getScheduleTime(1, 9) },
+                    { label: 'Tomorrow afternoon', time: getScheduleTime(1, 13) },
+                    { label: 'Monday morning', time: getScheduleTime('monday', 9) },
+                  ].map((opt) => (
+                    <button
+                      key={opt.label}
+                      onClick={() => { setScheduledAt(opt.time); setShowSchedule(false) }}
+                      className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-wm-text-secondary hover:bg-wm-surface-hover"
+                    >
+                      <Clock className="h-3 w-3 text-wm-text-muted" />
+                      {opt.label}
+                      <span className="flex-1" />
+                      <span className="font-mono text-[10px] text-wm-text-muted">{formatSchedulePreview(opt.time)}</span>
+                    </button>
+                  ))}
+                  <div className="border-t border-wm-border px-3 py-2">
+                    <label className="font-mono text-[10px] text-wm-text-muted">Pick date & time</label>
+                    <input
+                      type="datetime-local"
+                      value={scheduledAt}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                      className="mt-1 w-full bg-wm-bg border border-wm-border px-2 py-1.5 font-mono text-xs text-wm-text-primary outline-none"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           <button
             onClick={handleSend}
             disabled={sending}
@@ -261,7 +329,7 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
             )}
           >
             <Send className="h-3.5 w-3.5" />
-            {sending ? 'Sending...' : 'Send'}
+            {sending ? 'Sending...' : scheduledAt ? 'Schedule' : 'Send'}
           </button>
         </div>
       </div>
