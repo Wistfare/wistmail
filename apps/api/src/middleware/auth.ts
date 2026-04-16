@@ -1,6 +1,9 @@
 import { createMiddleware } from 'hono/factory'
 import { createHash } from 'node:crypto'
+import { eq } from 'drizzle-orm'
 import { AuthenticationError, AuthorizationError } from '@wistmail/shared'
+import { apiKeys } from '@wistmail/db'
+import { getDb } from '../lib/db.js'
 import type { AppEnv } from '../app.js'
 
 /**
@@ -17,21 +20,43 @@ export const apiKeyAuth = createMiddleware<AppEnv>(async (c, next) => {
     throw new AuthenticationError('Invalid API key format')
   }
 
-  // Hash the key for database lookup
   const keyHash = hashApiKey(apiKey)
+  const db = getDb()
 
-  // TODO: Look up key in database
-  // For now, set placeholder values
-  c.set('userId', 'placeholder')
-  c.set('apiKeyId', keyHash)
-  c.set('scopes', ['emails:send', 'emails:read', 'domains:manage', 'templates:manage', 'contacts:manage', 'webhooks:manage', 'analytics:read'])
+  // Look up key in database by hash
+  const result = await db
+    .select()
+    .from(apiKeys)
+    .where(eq(apiKeys.keyHash, keyHash))
+    .limit(1)
+
+  if (result.length === 0) {
+    throw new AuthenticationError('Invalid API key')
+  }
+
+  const key = result[0]
+
+  // Check expiration
+  if (key.expiresAt && new Date() > key.expiresAt) {
+    throw new AuthenticationError('API key has expired')
+  }
+
+  // Set context
+  c.set('userId', key.userId)
+  c.set('apiKeyId', key.id)
+  c.set('scopes', (key.scopes as string[]) || [])
+
+  // Update lastUsedAt in background (don't block the request)
+  db.update(apiKeys)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(apiKeys.id, key.id))
+    .catch(() => {})
 
   await next()
 })
 
 /**
  * Scope check middleware factory.
- * Ensures the API key has the required scope.
  */
 export function requireScope(scope: string) {
   return createMiddleware<AppEnv>(async (c, next) => {

@@ -1,56 +1,78 @@
 import { Hono } from 'hono'
+import { eq, and } from 'drizzle-orm'
 import { generateId, generateApiKey, NotFoundError, ValidationError } from '@wistmail/shared'
-import { apiKeyAuth } from '../middleware/auth.js'
-import { createApiKeySchema } from '../lib/validation.js'
-import type { AppEnv } from '../app.js'
+import { apiKeys } from '@wistmail/db'
+import { hashApiKey } from '../middleware/auth.js'
+import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
+import { getDb } from '../lib/db.js'
 
-export const apiKeyRoutes = new Hono<AppEnv>()
+export const apiKeyRoutes = new Hono<SessionEnv>()
 
-apiKeyRoutes.use('*', apiKeyAuth)
+// API key management is done via session auth (settings UI)
+apiKeyRoutes.use('*', sessionAuth)
 
 /**
  * POST /api/v1/api-keys
- * Create a new API key.
+ * Create a new API key. Returns the full key ONCE.
  */
 apiKeyRoutes.post('/', async (c) => {
   const body = await c.req.json()
-  const parsed = createApiKeySchema.safeParse(body)
+  const name = body.name?.trim()
+  const scopes = body.scopes || ['emails:send', 'emails:read']
 
-  if (!parsed.success) {
-    throw new ValidationError('Invalid request body', {
-      errors: parsed.error.flatten().fieldErrors,
-    })
+  if (!name || name.length < 1) {
+    throw new ValidationError('Name is required')
   }
 
-  const { name, scopes, domainId, expiresAt } = parsed.data
   const { key, prefix } = generateApiKey()
   const keyId = generateId('key')
-  // TODO: Store in database — will need keyHash:
-  // const keyHash = hashApiKey(key)
-  // The full key is only returned once — never stored in plain text
+  const keyHash = hashApiKey(key)
+  const userId = c.get('userId')
+  const now = new Date()
 
-  return c.json(
-    {
-      id: keyId,
-      key, // Only returned on creation
-      name,
-      keyPrefix: prefix,
-      scopes,
-      domainId: domainId || null,
-      expiresAt: expiresAt || null,
-      createdAt: new Date().toISOString(),
-    },
-    201,
-  )
+  const db = getDb()
+  await db.insert(apiKeys).values({
+    id: keyId,
+    keyHash,
+    keyPrefix: prefix,
+    name,
+    scopes,
+    userId,
+    createdAt: now,
+  })
+
+  return c.json({
+    id: keyId,
+    key, // Full key — only returned on creation, never stored
+    name,
+    keyPrefix: prefix,
+    scopes,
+    createdAt: now.toISOString(),
+  }, 201)
 })
 
 /**
  * GET /api/v1/api-keys
- * List API keys (without the full key).
+ * List API keys (prefix only, never the full key).
  */
 apiKeyRoutes.get('/', async (c) => {
-  // TODO: Fetch from database
-  return c.json({ data: [], total: 0, page: 1, pageSize: 25, hasMore: false })
+  const db = getDb()
+  const userId = c.get('userId')
+
+  const keys = await db
+    .select({
+      id: apiKeys.id,
+      keyPrefix: apiKeys.keyPrefix,
+      name: apiKeys.name,
+      scopes: apiKeys.scopes,
+      lastUsedAt: apiKeys.lastUsedAt,
+      expiresAt: apiKeys.expiresAt,
+      createdAt: apiKeys.createdAt,
+    })
+    .from(apiKeys)
+    .where(eq(apiKeys.userId, userId))
+
+  return c.json({ data: keys })
 })
 
 /**
@@ -59,6 +81,12 @@ apiKeyRoutes.get('/', async (c) => {
  */
 apiKeyRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id')
-  // TODO: Delete from database
-  throw new NotFoundError('API Key', id)
+  const userId = c.get('userId')
+  const db = getDb()
+
+  const result = await db
+    .delete(apiKeys)
+    .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, userId)))
+
+  return c.json({ ok: true })
 })

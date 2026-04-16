@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { ValidationError } from '@wistmail/shared'
 import { EmailReceiver } from '../services/email-receiver.js'
+import { WebhookDispatcher } from '../services/webhook-dispatcher.js'
 import { getDb } from '../lib/db.js'
 
 export const inboundRoutes = new Hono()
@@ -38,6 +39,14 @@ inboundRoutes.post('/inbound', async (c) => {
   const result = await receiver.processInbound(parsed.data)
 
   if (result.stored) {
+    // Fire email.received webhook
+    const dispatcher = new WebhookDispatcher(db)
+    dispatcher.dispatch('email.received', {
+      emailId: result.emailId,
+      from: parsed.data.from,
+      to: parsed.data.to,
+    }).catch((err) => console.error('Webhook dispatch error:', err))
+
     return c.json({ stored: true, emailId: result.emailId }, 201)
   }
 

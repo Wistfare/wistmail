@@ -1,18 +1,24 @@
 import { Hono } from 'hono'
+import { eq } from 'drizzle-orm'
 import { generateId, ValidationError, NotFoundError } from '@wistmail/shared'
+import { sendingLogs, domains } from '@wistmail/db'
 import { apiKeyAuth, requireScope } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
 import { sendEmailSchema, batchSendSchema } from '../lib/validation.js'
+import { WebhookDispatcher } from '../services/webhook-dispatcher.js'
+import { getDb } from '../lib/db.js'
 import type { AppEnv } from '../app.js'
+
+const MAIL_ENGINE_URL = process.env.MAIL_ENGINE_URL || 'http://mail-engine:8025'
+const INBOUND_SECRET = process.env.INBOUND_SECRET || ''
 
 export const emailRoutes = new Hono<AppEnv>()
 
-// All email routes require auth
 emailRoutes.use('*', apiKeyAuth)
 
 /**
  * POST /api/v1/emails
- * Send a single email.
+ * Send a single email via the transactional API.
  */
 emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
   const body = await c.req.json()
@@ -24,53 +30,97 @@ emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
     })
   }
 
-  // TODO: Use input when queue worker is implemented
-  void parsed.data
+  const input = parsed.data
+  const db = getDb()
   const emailId = generateId('eml')
+  const logId = generateId('slog')
 
-  // Check idempotency
-  const idempotencyKey = c.req.header('Idempotency-Key')
-  if (idempotencyKey) {
-    // TODO: Check Redis for existing idempotency key
-    // If found, return the cached response
+  // Validate from address domain is verified
+  const fromDomain = input.from.split('@')[1]
+  if (fromDomain) {
+    const domainResult = await db.select().from(domains).where(eq(domains.name, fromDomain)).limit(1)
+    if (domainResult.length === 0 || !domainResult[0].verified) {
+      throw new ValidationError(`Domain '${fromDomain}' is not verified. Add and verify it in settings.`)
+    }
   }
 
-  // TODO: Normalize recipients when queue worker is implemented
-  // const to = toArray(input.to)
-  // const cc = input.cc ? toArray(input.cc) : []
-  // const bcc = input.bcc ? toArray(input.bcc) : []
+  // Normalize recipients
+  const to = Array.isArray(input.to) ? input.to : [input.to]
+  const cc = input.cc ? (Array.isArray(input.cc) ? input.cc : [input.cc]) : []
+  const bcc = input.bcc ? (Array.isArray(input.bcc) ? input.bcc : [input.bcc]) : []
 
-  // TODO: Validate from address matches a verified domain
+  // Create sending log
+  await db.insert(sendingLogs).values({
+    id: logId,
+    emailId,
+    apiKeyId: c.get('apiKeyId'),
+    status: 'queued',
+    metadata: { from: input.from, to, subject: input.subject },
+    createdAt: new Date(),
+  })
 
-  // TODO: If templateId is set, render template with variables
+  // Send via mail engine
+  let sendStatus: 'sent' | 'failed' = 'failed'
+  let sendError: string | undefined
 
-  // TODO: Queue the email for sending via BullMQ
-  // The queue worker will:
-  // 1. Build the MIME message
-  // 2. Sign with DKIM
-  // 3. Send via SMTP client
-  // 4. Update sending log
-  // 5. Trigger webhooks
+  try {
+    const response = await fetch(`${MAIL_ENGINE_URL}/api/v1/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Inbound-Secret': INBOUND_SECRET,
+      },
+      body: JSON.stringify({
+        from: input.from,
+        to,
+        cc: cc.length > 0 ? cc : undefined,
+        bcc: bcc.length > 0 ? bcc : undefined,
+        subject: input.subject || '',
+        html: input.html,
+        text: input.text,
+        replyTo: input.replyTo,
+        headers: input.headers,
+      }),
+    })
 
-  // TODO: Store sending log in database
-  // const sendingLog = {
-  //   id: generateId('slog'),
-  //   emailId,
-  //   status: input.scheduledAt ? 'scheduled' : 'queued',
-  //   from: input.from,
-  //   to,
-  //   cc,
-  //   bcc,
-  //   subject: input.subject || '',
-  //   createdAt: new Date().toISOString(),
-  // }
+    const data = await response.json() as { status?: string; error?: string }
 
-  return c.json({ id: emailId }, 201)
+    if (response.ok) {
+      sendStatus = 'sent'
+    } else {
+      sendError = data.error || `Mail engine error: ${response.status}`
+    }
+  } catch (err) {
+    sendError = err instanceof Error ? err.message : String(err)
+  }
+
+  // Update sending log
+  await db
+    .update(sendingLogs)
+    .set({ status: sendStatus, metadata: sendError ? { error: sendError } : {} })
+    .where(eq(sendingLogs.id, logId))
+
+  // Fire webhook
+  const dispatcher = new WebhookDispatcher(db)
+  dispatcher.dispatch(sendStatus === 'sent' ? 'email.sent' : 'email.failed', {
+    emailId,
+    from: input.from,
+    to,
+    subject: input.subject || '',
+    status: sendStatus,
+    error: sendError,
+  }).catch((err) => console.error('Webhook dispatch error:', err))
+
+  if (sendError) {
+    return c.json({ id: emailId, status: 'failed', error: sendError }, 500)
+  }
+
+  return c.json({ id: emailId, status: 'sent' }, 201)
 })
 
 /**
  * POST /api/v1/emails/batch
- * Send multiple emails in a single request.
+ * Send multiple emails.
  */
 emailRoutes.post('/batch', requireScope('emails:send'), rateLimit(5), async (c) => {
   const body = await c.req.json()
@@ -82,35 +132,61 @@ emailRoutes.post('/batch', requireScope('emails:send'), rateLimit(5), async (c) 
     })
   }
 
-  const ids: string[] = []
-  for (const _email of parsed.data.emails) {
+  const db = getDb()
+  const results: Array<{ id: string; status: string }> = []
+
+  for (const email of parsed.data.emails) {
     const emailId = generateId('eml')
-    ids.push(emailId)
-    // TODO: Queue each email for sending
+    const to = Array.isArray(email.to) ? email.to : [email.to]
+
+    try {
+      const response = await fetch(`${MAIL_ENGINE_URL}/api/v1/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Inbound-Secret': INBOUND_SECRET,
+        },
+        body: JSON.stringify({
+          from: email.from,
+          to,
+          subject: email.subject || '',
+          html: email.html,
+          text: email.text,
+        }),
+      })
+
+      results.push({ id: emailId, status: response.ok ? 'sent' : 'failed' })
+    } catch {
+      results.push({ id: emailId, status: 'failed' })
+    }
   }
 
-  return c.json({ ids }, 201)
+  return c.json({ data: results }, 201)
 })
 
 /**
  * GET /api/v1/emails/:id
- * Get email status and details.
+ * Get email sending status.
  */
 emailRoutes.get('/:id', requireScope('emails:read'), async (c) => {
   const id = c.req.param('id')
+  const db = getDb()
 
-  // TODO: Look up email in database
-  // For now, return a mock response
-  throw new NotFoundError('Email', id)
-})
+  const result = await db
+    .select()
+    .from(sendingLogs)
+    .where(eq(sendingLogs.emailId, id))
+    .limit(1)
 
-/**
- * PATCH /api/v1/emails/:id/cancel
- * Cancel a scheduled email.
- */
-emailRoutes.patch('/:id/cancel', requireScope('emails:send'), async (c) => {
-  const id = c.req.param('id')
+  if (result.length === 0) throw new NotFoundError('Email', id)
 
-  // TODO: Check if email is scheduled and cancel it
-  throw new NotFoundError('Email', id)
+  const log = result[0]
+  return c.json({
+    id: log.emailId,
+    status: log.status,
+    createdAt: log.createdAt,
+    deliveredAt: log.deliveredAt,
+    openedAt: log.openedAt,
+    bouncedAt: log.bouncedAt,
+  })
 })

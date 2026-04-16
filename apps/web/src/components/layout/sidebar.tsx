@@ -6,6 +6,7 @@ import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
   Plus, Mail, Settings, LogOut, Users, Building2, ScrollText,
+  User, Globe, Key, Webhook, PenLine,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
@@ -39,6 +40,14 @@ const ADMIN_NAV = [
   { icon: <Building2 className="h-4 w-4" />, label: 'Organization', href: '/admin/organization' },
   { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
   { icon: <ScrollText className="h-4 w-4" />, label: 'Audit Log', href: '/admin/audit-logs' },
+]
+
+const SETTINGS_NAV = [
+  { icon: <User className="h-4 w-4" />, label: 'Account', href: '/settings/account' },
+  { icon: <Globe className="h-4 w-4" />, label: 'Domains', href: '/settings/domains' },
+  { icon: <Key className="h-4 w-4" />, label: 'API Keys', href: '/settings/api-keys' },
+  { icon: <Webhook className="h-4 w-4" />, label: 'Webhooks', href: '/settings/webhooks' },
+  { icon: <PenLine className="h-4 w-4" />, label: 'Signatures', href: '/settings/signatures' },
 ]
 
 const DEFAULT_LABELS = [
@@ -156,24 +165,32 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
       {/* ── Detail Panel ── */}
       <div className="flex w-[180px] flex-col border-r border-wm-border bg-wm-surface">
         {isOnAdmin ? (
-          /* ── ADMIN MODE ── */
-          <>
+          /* ── ADMIN / SETTINGS MODE ── */
+          <div className="flex flex-col overflow-y-auto">
+            {/* Settings section */}
             <div className="px-4 pb-1 pt-4">
-              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">ADMIN</span>
+              <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">SETTINGS</span>
             </div>
-
             <nav className="flex flex-col">
-              {ADMIN_NAV.map((item) => (
-                <NavItem
-                  key={item.href}
-                  icon={item.icon}
-                  label={item.label}
-                  href={item.href}
-                  active={pathname === item.href || pathname.startsWith(item.href + '/')}
-                />
+              {SETTINGS_NAV.map((item) => (
+                <NavItem key={item.href} icon={item.icon} label={item.label} href={item.href} active={pathname === item.href || pathname.startsWith(item.href + '/')} />
               ))}
             </nav>
-          </>
+
+            {/* Admin section (admin/owner only) */}
+            {isAdmin && (
+              <>
+                <div className="px-4 pb-1 pt-4">
+                  <span className="font-mono text-[10px] font-semibold tracking-[1px] text-wm-text-muted">ADMIN</span>
+                </div>
+                <nav className="flex flex-col">
+                  {ADMIN_NAV.map((item) => (
+                    <NavItem key={item.href} icon={item.icon} label={item.label} href={item.href} active={pathname === item.href || pathname.startsWith(item.href + '/')} />
+                  ))}
+                </nav>
+              </>
+            )}
+          </div>
         ) : (
           /* ── MAIL MODE ── */
           <>
