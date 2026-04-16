@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
-import { generateId, ValidationError, NotFoundError } from '@wistmail/shared'
+import { generateId, ValidationError } from '@wistmail/shared'
 import { sendingLogs, domains } from '@wistmail/db'
 import { apiKeyAuth, requireScope } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
@@ -49,15 +49,8 @@ emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
   const cc = input.cc ? (Array.isArray(input.cc) ? input.cc : [input.cc]) : []
   const bcc = input.bcc ? (Array.isArray(input.bcc) ? input.bcc : [input.bcc]) : []
 
-  // Create sending log
-  await db.insert(sendingLogs).values({
-    id: logId,
-    emailId,
-    apiKeyId: c.get('apiKeyId'),
-    status: 'queued',
-    metadata: { from: input.from, to, subject: input.subject },
-    createdAt: new Date(),
-  })
+  // Note: sending_logs has FK to emails table. For API sends, we track
+  // status in the response and fire webhooks directly.
 
   // Send via mail engine
   let sendStatus: 'sent' | 'failed' = 'failed'
@@ -93,12 +86,6 @@ emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
   } catch (err) {
     sendError = err instanceof Error ? err.message : String(err)
   }
-
-  // Update sending log
-  await db
-    .update(sendingLogs)
-    .set({ status: sendStatus, metadata: sendError ? { error: sendError } : {} })
-    .where(eq(sendingLogs.id, logId))
 
   // Fire webhook
   const dispatcher = new WebhookDispatcher(db)
