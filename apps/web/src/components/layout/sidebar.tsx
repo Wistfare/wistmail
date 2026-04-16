@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
@@ -23,14 +23,14 @@ export interface SidebarProps {
 }
 
 const MAIL_NAV = [
-  { icon: <Inbox className="h-4 w-4" />, label: 'Inbox', href: ROUTES.INBOX, countKey: 'inbox' },
-  { icon: <Star className="h-4 w-4" />, label: 'Starred', href: ROUTES.STARRED },
-  { icon: <Clock className="h-4 w-4" />, label: 'Snoozed', href: ROUTES.SNOOZED },
-  { icon: <Send className="h-4 w-4" />, label: 'Sent', href: ROUTES.SENT },
-  { icon: <FileText className="h-4 w-4" />, label: 'Drafts', href: ROUTES.DRAFTS, countKey: 'drafts' },
-  { icon: <CalendarClock className="h-4 w-4" />, label: 'Scheduled', href: ROUTES.SCHEDULED, countKey: 'scheduled' },
-  { icon: <ShieldAlert className="h-4 w-4" />, label: 'Spam', href: ROUTES.SPAM },
-  { icon: <Trash2 className="h-4 w-4" />, label: 'Trash', href: ROUTES.TRASH },
+  { icon: <Inbox className="h-4 w-4" />, label: 'Inbox', href: '/inbox', folder: 'inbox', countKey: 'inbox' },
+  { icon: <Star className="h-4 w-4" />, label: 'Starred', href: '/inbox?folder=starred', folder: 'starred' },
+  { icon: <Clock className="h-4 w-4" />, label: 'Snoozed', href: '/inbox?folder=snoozed', folder: 'snoozed' },
+  { icon: <Send className="h-4 w-4" />, label: 'Sent', href: '/inbox?folder=sent', folder: 'sent' },
+  { icon: <FileText className="h-4 w-4" />, label: 'Drafts', href: '/inbox?folder=drafts', folder: 'drafts', countKey: 'drafts' },
+  { icon: <CalendarClock className="h-4 w-4" />, label: 'Scheduled', href: '/inbox?folder=scheduled', folder: 'scheduled', countKey: 'scheduled' },
+  { icon: <ShieldAlert className="h-4 w-4" />, label: 'Spam', href: '/inbox?folder=spam', folder: 'spam' },
+  { icon: <Trash2 className="h-4 w-4" />, label: 'Trash', href: '/inbox?folder=trash', folder: 'trash' },
 ]
 
 const ADMIN_NAV = [
@@ -49,10 +49,12 @@ const DEFAULT_LABELS = [
 
 export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const isAdmin = user.role === 'owner' || user.role === 'admin'
   const isOnAdmin = pathname.startsWith('/admin') || pathname.startsWith('/settings')
+  const currentFolder = searchParams.get('folder') || (pathname === '/inbox' ? 'inbox' : '')
   const displayLabels = labels && labels.length > 0 ? labels : DEFAULT_LABELS
 
   async function handleLogout() {
@@ -191,11 +193,11 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
             <nav className="flex flex-col">
               {MAIL_NAV.map((item) => (
                 <NavItem
-                  key={item.href}
+                  key={item.folder}
                   icon={item.icon}
                   label={item.label}
                   href={item.href}
-                  active={pathname === item.href}
+                  active={currentFolder === item.folder}
                   badge={item.countKey ? unreadCounts[item.countKey] : undefined}
                 />
               ))}

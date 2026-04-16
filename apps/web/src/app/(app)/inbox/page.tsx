@@ -29,6 +29,8 @@ type Email = {
 const FILTER_TABS = [
   { id: 'all', label: 'All' },
   { id: 'unread', label: 'Unread' },
+  { id: 'primary', label: 'Primary' },
+  { id: 'updates', label: 'Updates' },
 ]
 
 export default function InboxPage() {
@@ -103,9 +105,21 @@ export default function InboxPage() {
     if (!email.isRead) handleMarkRead(email.id)
   }
 
-  function extractSenderName(address: string): string {
+  function extractDisplayName(address: string): string {
     if (address.includes('<')) return address.split('<')[0].trim().replace(/"/g, '')
-    return address.split('@')[0]
+    const local = address.split('@')[0]
+    // Capitalize and format: john.doe → John Doe
+    return local.split(/[._-]/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  }
+
+  /** For sent folder, show recipient name. For others, show sender name. */
+  function getEmailDisplayName(email: Email): string {
+    if (folderParam === 'sent' || folderParam === 'drafts') {
+      const to = email.toAddresses?.[0]
+      if (to) return extractDisplayName(to)
+      return '(no recipient)'
+    }
+    return extractDisplayName(email.fromAddress)
   }
 
   function extractPreview(email: Email): string {
@@ -189,8 +203,8 @@ export default function InboxPage() {
     <div className="flex h-full">
       {/* ── Email list pane ── */}
       <div className="flex w-[380px] shrink-0 flex-col border-r border-wm-border">
-        {/* Search */}
-        <div className="flex items-center gap-2 border-b border-wm-border px-5 py-2.5">
+        {/* Row 1: Search */}
+        <div className="flex items-center gap-2 border-b border-wm-border bg-wm-surface px-5 py-2.5">
           <Search className="h-4 w-4 text-wm-text-muted" />
           <input
             type="text"
@@ -201,15 +215,22 @@ export default function InboxPage() {
           />
         </div>
 
-        {/* Folder title + filter tabs */}
+        {/* Row 2: Folder title + sort/filter icons */}
+        <div className="flex items-center border-b border-wm-border px-5 py-3">
+          <span className="text-sm font-semibold text-wm-text-primary">{folderName}</span>
+          <div className="flex-1" />
+          <ArrowUpDown className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
+          <SlidersHorizontal className="ml-3 h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
+        </div>
+
+        {/* Row 3: Filter tabs */}
         <div className="flex items-center border-b border-wm-border px-5">
-          <span className="mr-4 py-2.5 text-sm font-semibold text-wm-text-primary">{folderName}</span>
           {FILTER_TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveFilter(tab.id)}
               className={cn(
-                'cursor-pointer px-3 py-2.5 text-xs transition-colors',
+                'cursor-pointer px-3 py-2.5 font-mono text-[11px] transition-colors',
                 activeFilter === tab.id
                   ? 'border-b-2 border-wm-accent font-medium text-wm-accent'
                   : 'text-wm-text-muted hover:text-wm-text-secondary',
@@ -218,9 +239,6 @@ export default function InboxPage() {
               {tab.label}
             </button>
           ))}
-          <div className="flex-1" />
-          <ArrowUpDown className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
-          <SlidersHorizontal className="ml-2 h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
         </div>
 
         {/* Email list */}
@@ -261,7 +279,7 @@ export default function InboxPage() {
                     ? 'font-semibold text-wm-text-primary'
                     : 'font-normal text-wm-text-secondary',
                 )}>
-                  {extractSenderName(email.fromAddress)}
+                  {getEmailDisplayName(email)}
                 </span>
                 <Star
                   className={cn(
@@ -322,9 +340,9 @@ export default function InboxPage() {
 
             {/* Sender + reply buttons */}
             <div className="flex items-center gap-3 border-b border-wm-border px-6 py-3">
-              <Avatar name={extractSenderName(selectedEmail.fromAddress)} size="md" />
+              <Avatar name={extractDisplayName(selectedEmail.fromAddress)} size="md" />
               <div className="flex-1">
-                <p className="text-sm font-semibold text-wm-text-primary">{extractSenderName(selectedEmail.fromAddress)}</p>
+                <p className="text-sm font-semibold text-wm-text-primary">{extractDisplayName(selectedEmail.fromAddress)}</p>
                 <p className="font-mono text-[10px] text-wm-text-muted">
                   {selectedEmail.fromAddress} · {new Date(selectedEmail.createdAt).toLocaleString()}
                 </p>
