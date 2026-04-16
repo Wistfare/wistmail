@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { Search, ArrowUpDown, SlidersHorizontal, Star, Archive, Trash2, Tag, Reply, ReplyAll, Forward } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -36,7 +36,6 @@ const FILTER_TABS = [
 
 export default function InboxPage() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const { openCompose } = useCompose()
   const folderParam = searchParams.get('folder') || 'inbox'
   const [emails, setEmails] = useState<Email[]>([])
