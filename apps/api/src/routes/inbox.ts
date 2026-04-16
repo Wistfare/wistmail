@@ -197,7 +197,7 @@ inboxRoutes.post('/compose', async (c) => {
       mailboxId: parsed.data.mailboxId,
     })
 
-    // Deduct credit and send via Resend in the background
+    // Deduct credit and send via mail engine in the background
     const sender = new EmailSender(db)
     const sendAndDeduct = async () => {
       const sendResult = await sender.sendEmail(result.id)
