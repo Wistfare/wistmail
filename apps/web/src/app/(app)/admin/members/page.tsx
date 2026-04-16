@@ -345,7 +345,7 @@ export default function UserManagementPage() {
                   <Button variant="secondary" size="sm">Reset Password</Button>
                   {selectedMember.role !== 'owner' && (
                     <>
-                      <Button variant="warning" size="sm">Suspend Account</Button>
+                      <Button variant="secondary" size="sm">Suspend Account</Button>
                       <Button variant="danger" size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => removeMember(selectedMember.id)}>
                         Delete Account
                       </Button>
