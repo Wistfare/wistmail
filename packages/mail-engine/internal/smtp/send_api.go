@@ -96,7 +96,10 @@ func StartSendAPI(hostname string, port int, client *Client, dkimLookup DkimLook
 		recipients = append(recipients, req.Cc...)
 		recipients = append(recipients, req.Bcc...)
 
-		result, err := client.Send(r.Context(), req.From, recipients, data)
+		// SMTP envelope MAIL FROM requires a bare email address (RFC 5321),
+		// not the display name format used in the From header.
+		envelopeFrom := extractAddress(req.From)
+		result, err := client.Send(r.Context(), envelopeFrom, recipients, data)
 		if err != nil {
 			log.Printf("send_api: smtp error: %v", err)
 			sendAPIJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -127,6 +130,16 @@ func sendAPIJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
+}
+
+// extractAddress pulls the bare email address from "Name <addr>" or plain addr format.
+func extractAddress(from string) string {
+	addr := from
+	if idx := strings.LastIndex(addr, "<"); idx >= 0 {
+		addr = addr[idx+1:]
+		addr = strings.TrimSuffix(addr, ">")
+	}
+	return strings.TrimSpace(addr)
 }
 
 // extractDomain pulls the domain part from an email address or "Name <addr>" format.
