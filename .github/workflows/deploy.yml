@@ -216,5 +216,8 @@ jobs:
               done
             fi
 
+            # Reload Caddy config (mounted file changes don't restart the container)
+            docker exec wistmail-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+
             docker image prune -f
           "
