@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
-import { generateId, ValidationError } from '@wistmail/shared'
+import { generateId, ValidationError, NotFoundError } from '@wistmail/shared'
 import { sendingLogs, domains } from '@wistmail/db'
 import { apiKeyAuth, requireScope } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
@@ -33,7 +33,6 @@ emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
   const input = parsed.data
   const db = getDb()
   const emailId = generateId('eml')
-  const logId = generateId('slog')
 
   // Validate from address domain is verified
   const fromDomain = input.from.split('@')[1]
