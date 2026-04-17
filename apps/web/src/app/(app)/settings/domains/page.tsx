@@ -53,7 +53,6 @@ export default function DomainsSettingsPage() {
   function openAdd() {
     setNewDomain('')
     setAddedDomain(null)
-    setMethod(null)
     setCfToken('')
     setWizardError('')
     setWizardStep('enter-name')
