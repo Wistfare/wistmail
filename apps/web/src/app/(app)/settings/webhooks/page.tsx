@@ -133,17 +133,16 @@ export default function WebhooksPage() {
   return (
     <div className="flex h-full">
       <div className="flex flex-1 flex-col overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 border-b border-wm-border bg-wm-surface px-8 py-4">
-          <h1 className="text-lg font-semibold text-wm-text-primary">Webhooks</h1>
-          <span className="font-mono text-xs text-wm-text-muted">Receive real-time notifications for email events</span>
+        {/* Consistent page header pattern */}
+        <div className="flex items-center gap-3 px-8 py-6">
+          <h1 className="text-2xl font-semibold text-wm-text-primary">Webhooks</h1>
           <div className="flex-1" />
-          <Button variant="primary" size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={openCreate}>
+          <Button variant="primary" size="sm" icon={<Plus className="h-4 w-4" />} onClick={openCreate}>
             Add Endpoint
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 overflow-y-auto px-8 pb-8">
           <div className="border border-wm-border">
             <div className="flex items-center border-b border-wm-border bg-wm-surface px-4 py-2">
               <span className="w-[50px]" />

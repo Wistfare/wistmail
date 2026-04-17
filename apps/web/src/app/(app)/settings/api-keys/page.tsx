@@ -95,17 +95,16 @@ export default function ApiKeysPage() {
   return (
     <div className="flex h-full">
       <div className="flex flex-1 flex-col overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 border-b border-wm-border bg-wm-surface px-8 py-4">
-          <h1 className="text-lg font-semibold text-wm-text-primary">API Keys</h1>
-          <span className="font-mono text-xs text-wm-text-muted">Manage API keys for the transactional email API</span>
+        {/* Consistent page header pattern */}
+        <div className="flex items-center gap-3 px-8 py-6">
+          <h1 className="text-2xl font-semibold text-wm-text-primary">API Keys</h1>
           <div className="flex-1" />
-          <Button variant="primary" size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={openCreate}>
+          <Button variant="primary" size="sm" icon={<Plus className="h-4 w-4" />} onClick={openCreate}>
             Create Key
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 overflow-y-auto px-8 pb-8">
           {/* Security warning */}
           <div className="mb-6 flex items-start gap-3 border border-wm-accent/20 bg-wm-accent/5 p-4">
             <Shield className="mt-0.5 h-4 w-4 text-wm-accent" />
