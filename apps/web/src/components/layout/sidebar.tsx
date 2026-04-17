@@ -38,7 +38,6 @@ const MAIL_NAV = [
 const ADMIN_NAV = [
   { icon: <Users className="h-4 w-4" />, label: 'Users', href: '/admin/members' },
   { icon: <Building2 className="h-4 w-4" />, label: 'Organization', href: '/admin/organization' },
-  { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
   { icon: <ScrollText className="h-4 w-4" />, label: 'Audit Log', href: '/admin/audit-logs' },
 ]
 
