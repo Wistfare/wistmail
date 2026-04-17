@@ -19,7 +19,7 @@ Wistfare Mail provides a simple REST API to send transactional emails from your 
 Wistfare Mail is self-hosted. Use your instance's base URL in all requests:
 
 ```
-https://mail.yourdomain.com/api/v1
+https://mail.wistfare.com/api/v1
 ```
 
 ## Quick Example
@@ -31,11 +31,11 @@ import { WistMail } from 'wistmail'
 
 const wm = new WistMail({
   apiKey: 'wm_your_api_key',
-  baseUrl: 'https://mail.yourdomain.com',
+  baseUrl: 'https://mail.wistfare.com',
 })
 
 await wm.emails.send({
-  from: 'hello@yourdomain.com',
+  from: 'hello@wistfare.com',
   to: 'user@example.com',
   subject: 'Welcome!',
   html: '<h1>Welcome to our platform</h1>',
@@ -48,11 +48,11 @@ from wistmail import WistMail
 
 wm = WistMail(
     api_key="wm_your_api_key",
-    base_url="https://mail.yourdomain.com",
+    base_url="https://mail.wistfare.com",
 )
 
 wm.emails.send(
-    from_address="hello@yourdomain.com",
+    from_address="hello@wistfare.com",
     to="user@example.com",
     subject="Welcome!",
     html="<h1>Welcome to our platform</h1>",
@@ -61,11 +61,11 @@ wm.emails.send(
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://mail.yourdomain.com/api/v1/emails \
+curl -X POST https://mail.wistfare.com/api/v1/emails \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
-    "from": "hello@yourdomain.com",
+    "from": "hello@wistfare.com",
     "to": "user@example.com",
     "subject": "Welcome!",
     "html": "<h1>Welcome to our platform</h1>"

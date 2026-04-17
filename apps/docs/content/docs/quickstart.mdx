@@ -34,11 +34,11 @@ import { WistMail } from 'wistmail'
 
 const wm = new WistMail({
   apiKey: 'wm_your_api_key',
-  baseUrl: 'https://your-wistfare.com',
+  baseUrl: 'https://mail.wistfare.com',
 })
 
 const { id } = await wm.emails.send({
-  from: 'hello@yourdomain.com',
+  from: 'hello@wistfare.com',
   to: 'recipient@example.com',
   subject: 'Hello from Wistfare Mail!',
   html: '<h1>It works!</h1><p>Your email infrastructure is live.</p>',
@@ -53,11 +53,11 @@ from wistmail import WistMail
 
 wm = WistMail(
     api_key="wm_your_api_key",
-    base_url="https://your-wistfare.com",
+    base_url="https://mail.wistfare.com",
 )
 
 result = wm.emails.send(
-    from_address="hello@yourdomain.com",
+    from_address="hello@wistfare.com",
     to="recipient@example.com",
     subject="Hello from Wistfare Mail!",
     html="<h1>It works!</h1><p>Your email infrastructure is live.</p>",
@@ -68,11 +68,11 @@ print("Email sent:", result["id"])  # eml_abc123...
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://your-wistfare.com/api/v1/emails \
+curl -X POST https://mail.wistfare.com/api/v1/emails \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
-    "from": "hello@yourdomain.com",
+    "from": "hello@wistfare.com",
     "to": "recipient@example.com",
     "subject": "Hello from Wistfare Mail!",
     "html": "<h1>It works!</h1><p>Your email infrastructure is live.</p>"
@@ -100,7 +100,7 @@ print(status["deliveredAt"])  # '2026-03-28T12:00:00Z'
 </Tab>
 <Tab value="cURL">
 ```bash
-curl https://your-wistfare.com/api/v1/emails/eml_abc123 \
+curl https://mail.wistfare.com/api/v1/emails/eml_abc123 \
   -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
@@ -133,7 +133,7 @@ print(webhook["secret"])  # whsec_... — use this to verify signatures
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://your-wistfare.com/api/v1/webhooks \
+curl -X POST https://mail.wistfare.com/api/v1/webhooks \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{

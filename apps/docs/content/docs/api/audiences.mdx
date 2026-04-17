@@ -30,7 +30,7 @@ print(audience["id"])  # aud_abc123
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://your-wistmail.com/api/v1/audiences \
+curl -X POST https://mail.wistfare.com/api/v1/audiences \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"name": "Newsletter Subscribers"}'
@@ -73,7 +73,7 @@ for a in audiences:
 </Tab>
 <Tab value="cURL">
 ```bash
-curl https://your-wistmail.com/api/v1/audiences \
+curl https://mail.wistfare.com/api/v1/audiences \
   -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
@@ -117,7 +117,7 @@ print(audience["name"], audience["contactCount"])
 </Tab>
 <Tab value="cURL">
 ```bash
-curl https://your-wistmail.com/api/v1/audiences/aud_abc123 \
+curl https://mail.wistfare.com/api/v1/audiences/aud_abc123 \
   -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
@@ -144,7 +144,7 @@ wm.audiences.delete("aud_abc123")
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X DELETE https://your-wistmail.com/api/v1/audiences/aud_abc123 \
+curl -X DELETE https://mail.wistfare.com/api/v1/audiences/aud_abc123 \
   -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
@@ -197,7 +197,7 @@ print(contact["id"])  # con_abc123
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://your-wistmail.com/api/v1/audiences/aud_abc123/contacts \
+curl -X POST https://mail.wistfare.com/api/v1/audiences/aud_abc123/contacts \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -254,7 +254,7 @@ for c in result["data"]:
 </Tab>
 <Tab value="cURL">
 ```bash
-curl "https://your-wistmail.com/api/v1/audiences/aud_abc123/contacts?page=1&pageSize=25" \
+curl "https://mail.wistfare.com/api/v1/audiences/aud_abc123/contacts?page=1&pageSize=25" \
   -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
@@ -316,7 +316,7 @@ updated = wm.audiences.update_contact(
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X PATCH https://your-wistmail.com/api/v1/contacts/con_abc123 \
+curl -X PATCH https://mail.wistfare.com/api/v1/contacts/con_abc123 \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -348,7 +348,7 @@ wm.audiences.delete_contact("con_abc123")
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X DELETE https://your-wistmail.com/api/v1/contacts/con_abc123 \
+curl -X DELETE https://mail.wistfare.com/api/v1/contacts/con_abc123 \
   -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>

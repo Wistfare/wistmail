@@ -44,7 +44,7 @@ Each attachment has:
 <Tab value="Node.js">
 ```typescript
 const { id } = await wm.emails.send({
-  from: 'notifications@yourdomain.com',
+  from: 'notifications@wistfare.com',
   to: ['user@example.com'],
   subject: 'Your order has shipped',
   html: `
@@ -58,7 +58,7 @@ const { id } = await wm.emails.send({
 <Tab value="Python">
 ```python
 result = wm.emails.send(
-    from_address="notifications@yourdomain.com",
+    from_address="notifications@wistfare.com",
     to=["user@example.com"],
     subject="Your order has shipped",
     html="""
@@ -71,11 +71,11 @@ result = wm.emails.send(
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://your-wistmail.com/api/v1/emails \
+curl -X POST https://mail.wistfare.com/api/v1/emails \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
-    "from": "notifications@yourdomain.com",
+    "from": "notifications@wistfare.com",
     "to": ["user@example.com"],
     "subject": "Your order has shipped",
     "html": "<h1>Order Shipped!</h1><p>Your order #1234 is on its way.</p>",
@@ -106,13 +106,13 @@ Send up to 100 emails in a single request.
 ```typescript
 const { ids } = await wm.emails.batchSend([
   {
-    from: 'hello@yourdomain.com',
+    from: 'hello@wistfare.com',
     to: 'alice@example.com',
     subject: 'Welcome, Alice!',
     html: '<p>Welcome!</p>',
   },
   {
-    from: 'hello@yourdomain.com',
+    from: 'hello@wistfare.com',
     to: 'bob@example.com',
     subject: 'Welcome, Bob!',
     html: '<p>Welcome!</p>',
@@ -126,13 +126,13 @@ console.log(ids) // ['eml_xxx', 'eml_yyy']
 ```python
 result = wm.emails.batch_send([
     {
-        "from": "hello@yourdomain.com",
+        "from": "hello@wistfare.com",
         "to": ["alice@example.com"],
         "subject": "Welcome, Alice!",
         "html": "<p>Welcome!</p>",
     },
     {
-        "from": "hello@yourdomain.com",
+        "from": "hello@wistfare.com",
         "to": ["bob@example.com"],
         "subject": "Welcome, Bob!",
         "html": "<p>Welcome!</p>",
@@ -144,19 +144,19 @@ print(result["ids"])  # ['eml_xxx', 'eml_yyy']
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X POST https://your-wistmail.com/api/v1/emails/batch \
+curl -X POST https://mail.wistfare.com/api/v1/emails/batch \
   -H "X-API-Key: wm_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "emails": [
       {
-        "from": "hello@yourdomain.com",
+        "from": "hello@wistfare.com",
         "to": "alice@example.com",
         "subject": "Welcome, Alice!",
         "html": "<p>Welcome!</p>"
       },
       {
-        "from": "hello@yourdomain.com",
+        "from": "hello@wistfare.com",
         "to": "bob@example.com",
         "subject": "Welcome, Bob!",
         "html": "<p>Welcome!</p>"
@@ -190,7 +190,7 @@ print(email["status"])  # 'delivered' | 'bounced' | 'sent' | ...
 </Tab>
 <Tab value="cURL">
 ```bash
-curl https://your-wistmail.com/api/v1/emails/eml_abc123 \
+curl https://mail.wistfare.com/api/v1/emails/eml_abc123 \
   -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
@@ -202,7 +202,7 @@ curl https://your-wistmail.com/api/v1/emails/eml_abc123 \
 {
   "id": "eml_abc123",
   "status": "delivered",
-  "from": "hello@yourdomain.com",
+  "from": "hello@wistfare.com",
   "to": ["user@example.com"],
   "subject": "Welcome!",
   "createdAt": "2026-03-28T12:00:00Z",
@@ -246,7 +246,7 @@ wm.emails.cancel("eml_abc123")
 </Tab>
 <Tab value="cURL">
 ```bash
-curl -X PATCH https://your-wistmail.com/api/v1/emails/eml_abc123/cancel \
+curl -X PATCH https://mail.wistfare.com/api/v1/emails/eml_abc123/cancel \
   -H "X-API-Key: wm_your_api_key"
 ```
 </Tab>
