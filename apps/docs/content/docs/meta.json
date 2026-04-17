@@ -7,6 +7,7 @@
     "api/sending",
     "api/webhooks",
     "api/audiences",
+    "api/domains",
     "webhook-signatures"
   ]
 }

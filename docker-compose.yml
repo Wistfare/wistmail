@@ -104,6 +104,7 @@ services:
     restart: unless-stopped
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN:-mail.wistfare.com}
+      DOCS_DOMAIN: ${DOCS_DOMAIN:-docs.mail.wistfare.com}
     ports:
       - "80:80"
       - "443:443"
@@ -115,6 +116,7 @@ services:
     depends_on:
       - web
       - api
+      - docs
 
   # ── API Gateway (Hono / Node.js) ───────────────────────────────────────────
   api:

@@ -4,16 +4,22 @@
 	auto_https disable_redirects
 }
 
-# HTTP — redirect the real domain to HTTPS, block everything else
+# HTTP — redirect known domains to HTTPS, block everything else
 :80 {
-	@domain host {$SITE_DOMAIN:mail.wistfare.com}
-	handle @domain {
+	@mail host {$SITE_DOMAIN:mail.wistfare.com}
+	handle @mail {
 		redir https://{$SITE_DOMAIN:mail.wistfare.com}{uri} permanent
 	}
+
+	@docs host {$DOCS_DOMAIN:docs.mail.wistfare.com}
+	handle @docs {
+		redir https://{$DOCS_DOMAIN:docs.mail.wistfare.com}{uri} permanent
+	}
+
 	respond "Not Found" 404
 }
 
-# HTTPS — serve the application
+# HTTPS — main app
 {$SITE_DOMAIN:mail.wistfare.com} {
 	handle /api/* {
 		reverse_proxy api:3001
@@ -22,4 +28,9 @@
 	handle {
 		reverse_proxy web:3000
 	}
+}
+
+# HTTPS — docs
+{$DOCS_DOMAIN:docs.mail.wistfare.com} {
+	reverse_proxy docs:3002
 }

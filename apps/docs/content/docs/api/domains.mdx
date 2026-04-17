@@ -1,0 +1,158 @@
+---
+title: Domains
+description: Add and verify sending domains programmatically.
+---
+
+Before you can send email from a domain, you must add it and publish DNS records that prove ownership (MX, SPF, DKIM, DMARC).
+
+## List Domains
+
+`GET /api/v1/domains`
+
+**Scope**: `domains:manage`
+
+<Tabs items={["Node.js", "Python", "cURL"]}>
+<Tab value="Node.js">
+```typescript
+const { data } = await wm.request('GET', '/domains')
+console.log(data)
+```
+</Tab>
+<Tab value="Python">
+```python
+res = wm._request("GET", "/domains")
+print(res["data"])
+```
+</Tab>
+<Tab value="cURL">
+```bash
+curl https://mail.yourdomain.com/api/v1/domains \
+  -H "X-API-Key: wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "dom_abc123",
+      "name": "yourdomain.com",
+      "status": "verified",
+      "verified": true,
+      "records": [
+        { "type": "MX",  "name": "yourdomain.com", "value": "mail.yourdomain.com", "priority": 10, "verified": true },
+        { "type": "TXT", "name": "yourdomain.com", "value": "v=spf1 a mx ip4:1.2.3.4 ~all", "verified": true },
+        { "type": "TXT", "name": "wistmail._domainkey.yourdomain.com", "value": "v=DKIM1; k=rsa; p=...", "verified": true },
+        { "type": "TXT", "name": "_dmarc.yourdomain.com", "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com", "verified": true }
+      ],
+      "createdAt": "2026-04-01T00:00:00.000Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 1,
+  "hasMore": false
+}
+```
+
+---
+
+## Add a Domain
+
+`POST /api/v1/domains`
+
+**Scope**: `domains:manage`
+
+Adds a new domain and returns the DNS records to publish. DKIM keys are generated server-side.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Domain name (e.g., `yourdomain.com`) |
+
+<Tabs items={["cURL"]}>
+<Tab value="cURL">
+```bash
+curl -X POST https://mail.yourdomain.com/api/v1/domains \
+  -H "X-API-Key: wm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "yourdomain.com"}'
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "id": "dom_abc123",
+  "name": "yourdomain.com",
+  "status": "pending",
+  "verified": false,
+  "records": [
+    { "type": "MX",  "name": "yourdomain.com", "value": "mail.yourdomain.com", "priority": 10, "verified": false },
+    { "type": "TXT", "name": "yourdomain.com", "value": "v=spf1 a mx ip4:1.2.3.4 ~all", "verified": false },
+    { "type": "TXT", "name": "wistmail._domainkey.yourdomain.com", "value": "v=DKIM1; k=rsa; p=...", "verified": false },
+    { "type": "TXT", "name": "_dmarc.yourdomain.com", "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com", "verified": false }
+  ]
+}
+```
+
+Publish each record in your DNS provider, then call the verify endpoint.
+
+---
+
+## Verify DNS Records
+
+`POST /api/v1/domains/:id/verify`
+
+**Scope**: `domains:manage`
+
+Triggers a DNS lookup and updates the `mx_verified`, `spf_verified`, `dkim_verified`, `dmarc_verified` flags. When all pass, the domain's `verified` becomes `true`.
+
+<Tabs items={["cURL"]}>
+<Tab value="cURL">
+```bash
+curl -X POST https://mail.yourdomain.com/api/v1/domains/dom_abc123/verify \
+  -H "X-API-Key: wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "id": "dom_abc123",
+  "verified": true,
+  "mxVerified": true,
+  "spfVerified": true,
+  "dkimVerified": true,
+  "dmarcVerified": true
+}
+```
+
+---
+
+## Delete a Domain
+
+`DELETE /api/v1/domains/:id`
+
+**Scope**: `domains:manage`
+
+Removes the domain and cascades delete to all mailboxes under it. This is irreversible.
+
+<Tabs items={["cURL"]}>
+<Tab value="cURL">
+```bash
+curl -X DELETE https://mail.yourdomain.com/api/v1/domains/dom_abc123 \
+  -H "X-API-Key: wm_your_api_key"
+```
+</Tab>
+</Tabs>
+
+Returns `{ "ok": true }`.
