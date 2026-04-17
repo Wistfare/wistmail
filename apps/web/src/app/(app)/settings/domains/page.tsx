@@ -33,7 +33,6 @@ export default function DomainsSettingsPage() {
   const [wizardStep, setWizardStep] = useState<WizardStep>('enter-name')
   const [newDomain, setNewDomain] = useState('')
   const [addedDomain, setAddedDomain] = useState<Domain | null>(null)
-  const [method, setMethod] = useState<'cloudflare' | 'manual' | null>(null)
   const [cfToken, setCfToken] = useState('')
   const [wizardLoading, setWizardLoading] = useState(false)
   const [wizardError, setWizardError] = useState('')
@@ -255,7 +254,7 @@ export default function DomainsSettingsPage() {
                       </div>
 
                       <button
-                        onClick={() => { setMethod('cloudflare'); setWizardStep('cloudflare-token') }}
+                        onClick={() => { setWizardStep('cloudflare-token') }}
                         className="flex items-start gap-3 border border-wm-border bg-wm-bg p-4 text-left hover:border-wm-accent transition-colors"
                       >
                         <Cloud className="mt-0.5 h-5 w-5 text-wm-accent" />
@@ -266,7 +265,7 @@ export default function DomainsSettingsPage() {
                       </button>
 
                       <button
-                        onClick={() => { setMethod('manual'); setWizardStep('manual-records') }}
+                        onClick={() => { setWizardStep('manual-records') }}
                         className="flex items-start gap-3 border border-wm-border bg-wm-bg p-4 text-left hover:border-wm-accent transition-colors"
                       >
                         <Terminal className="mt-0.5 h-5 w-5 text-wm-text-secondary" />

@@ -5,7 +5,6 @@ import { Plus, Pencil, Trash2, X, Image as ImageIcon, Type, AlertTriangle, Check
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
 
 type Signature = {
   id: string
