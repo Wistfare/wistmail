@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "866414439480",
+    "project_id": "wistfare-1756656058858",
+    "storage_bucket": "wistfare-1756656058858.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:866414439480:android:7ba360dfa652633b618acd",
+        "android_client_info": {
+          "package_name": "com.wistfare.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "866414439480-iitnlckmg7jtbvd2jnh1f9hknlvb4b46.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wistfare.app",
+            "certificate_hash": "0eb6dcd746e32b8aafe8ac921410f6ae0c88f78d"
+          }
+        },
+        {
+          "client_id": "866414439480-jka4d9v8qgv07rk2f8c3kvqa889mrs4h.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMN9mK3VZFBzmDiqInZS3Pq6EG1D6ORqU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "866414439480-jka4d9v8qgv07rk2f8c3kvqa889mrs4h.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "866414439480-lkk31p0tmeqomha3o9mbgukcl6p8p50o.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.wistfare.app"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:866414439480:android:fa6d14c7fd23f5f5618acd",
+        "android_client_info": {
+          "package_name": "com.wistfare.wistmail"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "866414439480-jka4d9v8qgv07rk2f8c3kvqa889mrs4h.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMN9mK3VZFBzmDiqInZS3Pq6EG1D6ORqU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "866414439480-jka4d9v8qgv07rk2f8c3kvqa889mrs4h.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "866414439480-lkk31p0tmeqomha3o9mbgukcl6p8p50o.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.wistfare.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
