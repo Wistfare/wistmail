@@ -388,7 +388,7 @@ setupRoutes.post('/cloudflare/create-records', async (c) => {
   })
 
   const recordInputs = dnsRecords.map((r) => ({
-    type: r.type as 'MX' | 'TXT',
+    type: r.type as 'A' | 'MX' | 'TXT',
     name: r.name,
     content: r.value,
     priority: r.priority,

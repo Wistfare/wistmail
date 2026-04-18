@@ -227,6 +227,15 @@ export class DomainService {
 
   getDnsRecords(domainName: string, dkimPublicKey: string, serverIp?: string) {
     return [
+      // A record for the MX target. MUST be unproxied (DNS-only) — if this
+      // sits behind Cloudflare's orange cloud, inbound port 25 is silently
+      // dropped and no external mail can be delivered.
+      {
+        type: 'A' as const,
+        name: `mail.${domainName}`,
+        value: serverIp || 'YOUR_SERVER_IP',
+        verified: false,
+      },
       {
         type: 'MX' as const,
         name: domainName,
