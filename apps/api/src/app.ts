@@ -17,6 +17,10 @@ import { adminRoutes } from './routes/admin.js'
 import { inboxRoutes } from './routes/inbox.js'
 import { inboundRoutes } from './routes/inbound.js'
 import { userRoutes } from './routes/user.js'
+import { chatRoutes } from './routes/chat.js'
+import { labelRoutes } from './routes/labels.js'
+import { calendarRoutes } from './routes/calendar.js'
+import { projectRoutes } from './routes/projects.js'
 import { domains as domainsTable } from '@wistmail/db'
 
 export type AppEnv = {
@@ -100,5 +104,9 @@ v1.route('/admin', adminRoutes)
 v1.route('/inbox', inboxRoutes)
 v1.route('/internal', inboundRoutes)
 v1.route('/user', userRoutes)
+v1.route('/chat', chatRoutes)
+v1.route('/labels', labelRoutes)
+v1.route('/calendar', calendarRoutes)
+v1.route('/projects', projectRoutes)
 
 app.route('/api/v1', v1)

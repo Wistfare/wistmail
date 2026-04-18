@@ -6,6 +6,14 @@ import type { AppEnv } from '../app.js'
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
 
 /**
+ * Test-only helper: clear all rate-limit counters. Used by vitest hooks so
+ * tests don't interact with each other via shared module state.
+ */
+export function _resetRateLimitForTests(): void {
+  rateLimitStore.clear()
+}
+
+/**
  * Rate limiting middleware.
  * Limits requests per second per API key.
  */

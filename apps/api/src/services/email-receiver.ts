@@ -2,6 +2,8 @@ import { eq } from 'drizzle-orm'
 import { emails, mailboxes, domains } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
+import { eventBus } from '../events/bus.js'
+import { sendEmailNotification } from './fcm.js'
 
 interface InboundEmail {
   from: string
@@ -67,13 +69,16 @@ export class EmailReceiver {
 
       // Store the email
       const emailId = generateId('eml')
+      const subject = parsed.subject || '(no subject)'
+      const fromAddress = parsed.from || inbound.from
+      const createdAt = parsed.date || new Date()
       await this.db.insert(emails).values({
         id: emailId,
         messageId: parsed.messageId || `${emailId}@inbound`,
-        fromAddress: parsed.from || inbound.from,
+        fromAddress,
         toAddresses: parsed.to.length > 0 ? parsed.to : inbound.to,
         cc: parsed.cc,
-        subject: parsed.subject || '(no subject)',
+        subject,
         textBody: parsed.textBody,
         htmlBody: parsed.htmlBody,
         mailboxId: mailbox.id,
@@ -85,7 +90,32 @@ export class EmailReceiver {
         references: parsed.references,
         headers: parsed.headers,
         sizeBytes: inbound.rawData.length,
-        createdAt: parsed.date || new Date(),
+        createdAt,
+      })
+
+      const preview = (parsed.textBody ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)
+
+      eventBus.publish({
+        type: 'email.new',
+        userId: mailbox.userId,
+        emailId,
+        mailboxId: mailbox.id,
+        folder: 'inbox',
+        fromAddress,
+        subject,
+        preview,
+        createdAt: createdAt.toISOString(),
+      })
+
+      // Push notification (fire-and-forget; no-op if FCM not configured)
+      sendEmailNotification({
+        userId: mailbox.userId,
+        emailId,
+        fromAddress,
+        subject,
+        preview,
+      }).catch((err) => {
+        console.error('[email-receiver] FCM push failed:', err)
       })
 
       return { stored: true, emailId }

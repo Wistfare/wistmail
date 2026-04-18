@@ -176,6 +176,8 @@ jobs:
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_PROJECT_ID: wistfare-1756656058858
           CHANGED_API:    ${{ needs.detect-changes.outputs.api }}
           CHANGED_WEB:    ${{ needs.detect-changes.outputs.web }}
           CHANGED_DOCS:   ${{ needs.detect-changes.outputs.docs }}
@@ -198,6 +200,27 @@ jobs:
           # Always sync compose + Caddyfile
           scp -i ~/.ssh/deploy_key docker-compose.yml Caddyfile \
             root@"$DEPLOY_HOST":/opt/wistmail/
+
+          # Sync Firebase service account JSON to server. Docker compose
+          # bind-mounts /opt/wistmail/.secrets/firebase-service-account.json into
+          # the api container, so the file must exist even if the secret hasn't
+          # been set yet — we write an empty JSON placeholder in that case and
+          # the FCM sender treats bad credentials as a silent no-op.
+          ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" \
+            "mkdir -p /opt/wistmail/.secrets && chmod 700 /opt/wistmail/.secrets"
+          if [ -n "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "$FIREBASE_SERVICE_ACCOUNT_JSON" > /tmp/firebase-sa.json
+          else
+            echo '{}' > /tmp/firebase-sa.json
+          fi
+          scp -i ~/.ssh/deploy_key /tmp/firebase-sa.json \
+            root@"$DEPLOY_HOST":/opt/wistmail/.secrets/firebase-service-account.json.new
+          ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" "
+            chmod 600 /opt/wistmail/.secrets/firebase-service-account.json.new
+            mv /opt/wistmail/.secrets/firebase-service-account.json.new \
+               /opt/wistmail/.secrets/firebase-service-account.json
+          "
+          rm -f /tmp/firebase-sa.json
 
           # Deploy only what changed
           ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" "

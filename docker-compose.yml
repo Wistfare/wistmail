@@ -137,6 +137,12 @@ services:
       ALLOW_SKIP_DNS: ${ALLOW_SKIP_DNS:-false}
       INBOUND_SECRET: ${INBOUND_SECRET}
       MAIL_ENGINE_URL: http://mail-engine:8025
+      # Firebase Admin SDK reads the service account from this path.
+      # The file is written by the deploy workflow to ./.secrets/ on the host.
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-service-account.json
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-wistfare-1756656058858}
+    volumes:
+      - ./.secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
     depends_on:
       postgres:
         condition: service_healthy

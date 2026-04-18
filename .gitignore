@@ -13,6 +13,13 @@ out/
 .env.local
 .env.*.local
 
+# Secrets — never commit service account keys or private credentials
+.secrets/
+*firebase-adminsdk*.json
+*service-account*.json
+*.p8
+*.p12
+
 # IDE
 .vscode/
 .idea/

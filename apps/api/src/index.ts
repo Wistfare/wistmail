@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { sql } from 'drizzle-orm'
 import { app } from './app.js'
 import { getDb } from './lib/db.js'
+import { attachWebSocketServer } from './ws/server.js'
 
 const port = parseInt(process.env.API_PORT || '3001', 10)
 
@@ -166,6 +167,67 @@ async function ensureSchema() {
       description text, email_id varchar(64),
       created_at timestamptz NOT NULL DEFAULT now()
     )`,
+    `CREATE TABLE IF NOT EXISTS device_tokens (
+      id varchar(64) PRIMARY KEY,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token text NOT NULL UNIQUE,
+      platform varchar(16) NOT NULL,
+      locale varchar(16),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS conversations (
+      id varchar(64) PRIMARY KEY,
+      kind varchar(16) NOT NULL DEFAULT 'direct',
+      title varchar(255),
+      created_by varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      last_message_at timestamptz NOT NULL DEFAULT now(),
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS conversation_participants (
+      conversation_id varchar(64) NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      last_read_at timestamptz,
+      unread_count integer NOT NULL DEFAULT 0,
+      joined_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (conversation_id, user_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS chat_messages (
+      id varchar(64) PRIMARY KEY,
+      conversation_id varchar(64) NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      sender_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS calendar_events (
+      id varchar(64) PRIMARY KEY,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title varchar(255) NOT NULL,
+      description text,
+      location varchar(255),
+      attendees jsonb NOT NULL DEFAULT '[]',
+      start_at timestamptz NOT NULL,
+      end_at timestamptz NOT NULL,
+      color varchar(7) NOT NULL DEFAULT '#C5F135',
+      meeting_link text,
+      has_waiting_room boolean NOT NULL DEFAULT false,
+      reminder_minutes jsonb NOT NULL DEFAULT '[15]',
+      notes text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS projects (
+      id varchar(64) PRIMARY KEY,
+      owner_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name varchar(255) NOT NULL,
+      description text,
+      status varchar(20) NOT NULL DEFAULT 'active',
+      progress integer NOT NULL DEFAULT 0,
+      member_user_ids jsonb NOT NULL DEFAULT '[]',
+      due_date timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
   ]
 
   for (const stmt of createStatements) {
@@ -185,12 +247,15 @@ async function ensureSchema() {
 async function start() {
   await ensureSchema()
 
-  serve({
+  const server = serve({
     fetch: app.fetch,
     port,
   })
 
+  attachWebSocketServer(server as unknown as import('node:http').Server)
+
   console.log(`Wistfare Mail API running on http://localhost:${port}`)
+  console.log(`WebSocket stream at ws://localhost:${port}/api/v1/stream`)
 }
 
 start()

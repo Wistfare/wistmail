@@ -8,6 +8,7 @@ import { EmailService } from '../services/email.js'
 import { EmailSender } from '../services/email-sender.js'
 import { BillingService } from '../services/billing.js'
 import { getDb } from '../lib/db.js'
+import { eventBus } from '../events/bus.js'
 
 export const inboxRoutes = new Hono<SessionEnv>()
 
@@ -49,9 +50,16 @@ inboxRoutes.get('/emails/:id', async (c) => {
  */
 inboxRoutes.post('/emails/:id/read', async (c) => {
   const emailId = c.req.param('id')
+  const userId = c.get('userId')
   const db = getDb()
   const emailService = new EmailService(db)
-  await emailService.markRead(emailId, c.get('userId'))
+  await emailService.markRead(emailId, userId)
+  eventBus.publish({
+    type: 'email.updated',
+    userId,
+    emailId,
+    changes: { isRead: true },
+  })
   return c.json({ ok: true })
 })
 
@@ -60,9 +68,16 @@ inboxRoutes.post('/emails/:id/read', async (c) => {
  */
 inboxRoutes.post('/emails/:id/unread', async (c) => {
   const emailId = c.req.param('id')
+  const userId = c.get('userId')
   const db = getDb()
   const emailService = new EmailService(db)
-  await emailService.markUnread(emailId, c.get('userId'))
+  await emailService.markUnread(emailId, userId)
+  eventBus.publish({
+    type: 'email.updated',
+    userId,
+    emailId,
+    changes: { isRead: false },
+  })
   return c.json({ ok: true })
 })
 
@@ -71,9 +86,16 @@ inboxRoutes.post('/emails/:id/unread', async (c) => {
  */
 inboxRoutes.post('/emails/:id/star', async (c) => {
   const emailId = c.req.param('id')
+  const userId = c.get('userId')
   const db = getDb()
   const emailService = new EmailService(db)
-  const starred = await emailService.toggleStar(emailId, c.get('userId'))
+  const starred = await emailService.toggleStar(emailId, userId)
+  eventBus.publish({
+    type: 'email.updated',
+    userId,
+    emailId,
+    changes: { isStarred: starred ?? false },
+  })
   return c.json({ starred })
 })
 
@@ -82,9 +104,16 @@ inboxRoutes.post('/emails/:id/star', async (c) => {
  */
 inboxRoutes.post('/emails/:id/archive', async (c) => {
   const emailId = c.req.param('id')
+  const userId = c.get('userId')
   const db = getDb()
   const emailService = new EmailService(db)
-  await emailService.archive(emailId, c.get('userId'))
+  await emailService.archive(emailId, userId)
+  eventBus.publish({
+    type: 'email.updated',
+    userId,
+    emailId,
+    changes: { folder: 'archive' },
+  })
   return c.json({ ok: true })
 })
 
@@ -93,9 +122,15 @@ inboxRoutes.post('/emails/:id/archive', async (c) => {
  */
 inboxRoutes.post('/emails/:id/delete', async (c) => {
   const emailId = c.req.param('id')
+  const userId = c.get('userId')
   const db = getDb()
   const emailService = new EmailService(db)
-  await emailService.delete(emailId, c.get('userId'))
+  await emailService.delete(emailId, userId)
+  eventBus.publish({
+    type: 'email.deleted',
+    userId,
+    emailId,
+  })
   return c.json({ ok: true })
 })
 
