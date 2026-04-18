@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { User, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { User, Mail, Lock, Eye, EyeOff, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api-client'
 
@@ -12,6 +12,7 @@ interface StepAccountProps {
 
 export function StepAccount({ domain, onNext }: StepAccountProps) {
   const [displayName, setDisplayName] = useState('')
+  const [orgName, setOrgName] = useState('')
   const [emailLocal, setEmailLocal] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -31,6 +32,7 @@ export function StepAccount({ domain, onNext }: StepAccountProps) {
     try {
       await api.post('/api/v1/setup/account', {
         displayName,
+        orgName: orgName.trim() || undefined,
         emailLocal,
         password,
       })
@@ -50,6 +52,22 @@ export function StepAccount({ domain, onNext }: StepAccountProps) {
       </p>
 
       <div className="flex flex-col gap-2">
+        <label className="font-mono text-sm font-medium text-wm-text-secondary">Organization name</label>
+        <div className="flex items-center border border-wm-border bg-wm-surface px-4 py-3 focus-within:border-wm-accent">
+          <Building2 className="mr-3 h-4 w-4 text-wm-text-muted" />
+          <input
+            type="text"
+            value={orgName}
+            onChange={(e) => setOrgName(e.target.value)}
+            placeholder="Acme Inc."
+            className="min-w-0 flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+            autoFocus
+          />
+        </div>
+        <p className="font-mono text-[10px] text-wm-text-muted">Shown in invitation emails and sender names.</p>
+      </div>
+
+      <div className="flex flex-col gap-2">
         <label className="font-mono text-sm font-medium text-wm-text-secondary">Display name</label>
         <div className="flex items-center border border-wm-border bg-wm-surface px-4 py-3 focus-within:border-wm-accent">
           <User className="mr-3 h-4 w-4 text-wm-text-muted" />
@@ -58,8 +76,7 @@ export function StepAccount({ domain, onNext }: StepAccountProps) {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Your Name"
-            className="flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-            autoFocus
+            className="min-w-0 flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
           />
         </div>
       </div>

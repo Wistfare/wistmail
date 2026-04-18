@@ -43,8 +43,8 @@ export default function UserManagementPage() {
     api.get<{ data: Member[] }>('/api/v1/admin/members').then((res) => {
       setMembers(res.data)
     }).catch(() => {})
-    api.get<{ data: Array<{ name: string }> }>('/api/v1/setup/domains').then((res) => {
-      if (res.data.length > 0) setDomain(res.data[0].name)
+    api.get<{ domain: { name: string } | null }>('/api/v1/admin/organization/domain').then((res) => {
+      if (res.domain) setDomain(res.domain.name)
     }).catch(() => {})
   }, [])
 
@@ -261,9 +261,14 @@ export default function UserManagementPage() {
                           value={newEmailLocal}
                           onChange={(e) => setNewEmailLocal(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
                           placeholder="john.doe"
-                          className="flex-1 bg-transparent px-3 py-2.5 font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+                          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
                         />
-                        <span className="shrink-0 pr-3 font-mono text-sm text-wm-text-muted">@{domain || 'wistfare.com'}</span>
+                        <span
+                          title={`@${domain || 'wistfare.com'}`}
+                          className="max-w-[45%] shrink-0 truncate pr-3 font-mono text-sm text-wm-text-muted"
+                        >
+                          @{domain || 'wistfare.com'}
+                        </span>
                       </div>
                     </div>
 

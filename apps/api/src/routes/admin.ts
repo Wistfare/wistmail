@@ -115,6 +115,38 @@ adminRoutes.get('/organization', async (c) => {
 })
 
 /**
+ * GET /api/v1/admin/organization/domain
+ * Returns the primary domain associated with the authenticated user's organization.
+ */
+adminRoutes.get('/organization/domain', async (c) => {
+  const db = getDb()
+  const userId = c.get('userId')
+
+  const orgResult = await db
+    .select({ ownerId: organizations.ownerId })
+    .from(organizations)
+    .innerJoin(orgMembers, eq(organizations.id, orgMembers.orgId))
+    .where(eq(orgMembers.userId, userId))
+    .limit(1)
+
+  if (orgResult.length === 0) {
+    return c.json({ domain: null })
+  }
+
+  const domainResult = await db
+    .select({ id: domains.id, name: domains.name, verified: domains.verified })
+    .from(domains)
+    .where(eq(domains.userId, orgResult[0].ownerId))
+    .limit(1)
+
+  if (domainResult.length === 0) {
+    return c.json({ domain: null })
+  }
+
+  return c.json({ domain: domainResult[0] })
+})
+
+/**
  * PATCH /api/v1/admin/organization/:id
  */
 adminRoutes.patch('/organization/:id', async (c) => {
@@ -196,11 +228,30 @@ adminRoutes.patch('/members/:id/role', async (c) => {
 
 /**
  * DELETE /api/v1/admin/members/:id
+ * Removes the member from the organization AND hard-deletes the underlying
+ * user record so the email address can be reused. The org owner cannot be
+ * removed via this route.
  */
 adminRoutes.delete('/members/:id', async (c) => {
   const memberId = c.req.param('id')
   const db = getDb()
-  await db.delete(orgMembers).where(eq(orgMembers.id, memberId))
+
+  const member = await db
+    .select({ userId: orgMembers.userId, role: orgMembers.role, email: users.email })
+    .from(orgMembers)
+    .innerJoin(users, eq(orgMembers.userId, users.id))
+    .where(eq(orgMembers.id, memberId))
+    .limit(1)
+
+  if (member.length === 0) {
+    throw new ValidationError('Member not found')
+  }
+  if (member[0].role === 'owner') {
+    throw new ValidationError('Cannot remove the organization owner')
+  }
+
+  // Hard delete the user — cascades drop orgMembers, mailboxes, sessions, etc.
+  await db.delete(users).where(eq(users.id, member[0].userId))
 
   const audit = new AuditService(db)
   await audit.log({
@@ -208,6 +259,7 @@ adminRoutes.delete('/members/:id', async (c) => {
     action: 'member.removed',
     resource: 'member',
     resourceId: memberId,
+    details: { email: member[0].email, deletedUserId: member[0].userId },
   })
 
   return c.json({ ok: true })
@@ -238,9 +290,13 @@ adminRoutes.post('/users/create', async (c) => {
   const adminUserId = c.get('userId')
   const { firstName, lastName, externalEmail, emailLocal, displayName } = parsed.data
 
-  // Get admin's org
+  // Get admin's org (and its owner, which is how domains are linked)
   const orgResult = await db
-    .select({ orgId: orgMembers.orgId, orgName: organizations.name })
+    .select({
+      orgId: orgMembers.orgId,
+      orgName: organizations.name,
+      ownerId: organizations.ownerId,
+    })
     .from(orgMembers)
     .innerJoin(organizations, eq(orgMembers.orgId, organizations.id))
     .where(eq(orgMembers.userId, adminUserId))
@@ -250,12 +306,12 @@ adminRoutes.post('/users/create', async (c) => {
     throw new ValidationError('No organization found')
   }
 
-  const { orgId, orgName } = orgResult[0]
+  const { orgId, orgName, ownerId } = orgResult[0]
 
-  // Get the domain
-  const domainResult = await db.select().from(domains).limit(1)
+  // Get the org's domain (domains are linked to the org owner via userId)
+  const domainResult = await db.select().from(domains).where(eq(domains.userId, ownerId)).limit(1)
   if (domainResult.length === 0) {
-    throw new ValidationError('No domain configured')
+    throw new ValidationError('No domain configured for this organization')
   }
   const domain = domainResult[0]
   const fullEmail = `${emailLocal.toLowerCase()}@${domain.name}`

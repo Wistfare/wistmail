@@ -16,6 +16,11 @@ import { generateDomainConnectUrl, verifyDomainConnectCallback } from '../lib/do
 // Simple IP-based rate limiting for setup endpoints
 const setupRateLimit = new Map<string, { count: number; resetAt: number }>()
 function checkSetupRateLimit(ip: string, maxRequests = 10, windowMs = 60000): boolean {
+  // Disable in tests so assertions about validation errors aren't masked by
+  // 429s from counters that leak across test cases.
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true') {
+    return true
+  }
   const now = Date.now()
   const entry = setupRateLimit.get(ip)
   if (!entry || now > entry.resetAt) {
@@ -25,6 +30,13 @@ function checkSetupRateLimit(ip: string, maxRequests = 10, windowMs = 60000): bo
   if (entry.count >= maxRequests) return false
   entry.count++
   return true
+}
+
+/**
+ * Test-only helper: clear all setup rate-limit counters.
+ */
+export function _resetSetupRateLimitForTests(): void {
+  setupRateLimit.clear()
 }
 
 const SETUP_COOKIE = 'wm_setup_token'
@@ -205,13 +217,15 @@ setupRoutes.get('/domain/records', async (c) => {
 })
 
 setupRoutes.post('/skip-dns', async (c) => {
-  if (process.env.ALLOW_SKIP_DNS !== 'true') {
-    throw new ValidationError('DNS verification is required. Please configure your DNS records to continue.')
-  }
-
+  // Authenticate the setup session before surfacing feature-flag errors so
+  // unauthenticated callers can't probe the flag state.
   const setupToken = await getSetupToken(c)
   if (!setupToken) {
     throw new ValidationError('Invalid or expired setup session.')
+  }
+
+  if (process.env.ALLOW_SKIP_DNS !== 'true') {
+    throw new ValidationError('DNS verification is required. Please configure your DNS records to continue.')
   }
 
   const db = getDb()
@@ -399,6 +413,7 @@ setupRoutes.post('/cloudflare/create-records', async (c) => {
 const accountSchema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters').max(255),
   emailLocal: z.string().min(1, 'Email address is required').max(64).regex(/^[a-zA-Z0-9._%+-]+$/, 'Invalid email characters'),
+  orgName: z.string().min(2, 'Organization name must be at least 2 characters').max(255).optional(),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -469,10 +484,14 @@ setupRoutes.post('/account', async (c) => {
   })
 
   const orgId = generateId('org')
-  const orgSlug = domain.name.replace(/\./g, '-')
+  const orgName = parsed.data.orgName?.trim() || domain.name
+  const orgSlug = orgName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || domain.name.replace(/\./g, '-')
   await db.insert(organizations).values({
     id: orgId,
-    name: domain.name,
+    name: orgName,
     slug: orgSlug,
     ownerId: userId,
     createdAt: now,
@@ -539,7 +558,7 @@ setupRoutes.post('/account', async (c) => {
     },
     organization: {
       id: orgId,
-      name: domain.name,
+      name: orgName,
     },
   }, 201)
 })
