@@ -34,13 +34,17 @@ emailRoutes.post('/', requireScope('emails:send'), rateLimit(10), async (c) => {
   const db = getDb()
   const emailId = generateId('eml')
 
-  // Validate from address domain is verified
-  const fromDomain = input.from.split('@')[1]
-  if (fromDomain) {
-    const domainResult = await db.select().from(domains).where(eq(domains.name, fromDomain)).limit(1)
-    if (domainResult.length === 0 || !domainResult[0].verified) {
-      throw new ValidationError(`Domain '${fromDomain}' is not verified. Add and verify it in settings.`)
-    }
+  // Validate from address domain is verified. `from` may be either a bare
+  // address ("a@b.com") or RFC 5322 display form ("Name <a@b.com>").
+  const fromAddrMatch = input.from.match(/<([^>]+)>/)
+  const fromAddress = (fromAddrMatch ? fromAddrMatch[1] : input.from).trim()
+  const fromDomain = fromAddress.split('@')[1]?.toLowerCase()
+  if (!fromDomain) {
+    throw new ValidationError(`Invalid 'from' address: '${input.from}'`)
+  }
+  const domainResult = await db.select().from(domains).where(eq(domains.name, fromDomain)).limit(1)
+  if (domainResult.length === 0 || !domainResult[0].verified) {
+    throw new ValidationError(`Domain '${fromDomain}' is not verified. Add and verify it in settings.`)
   }
 
   // Normalize recipients
