@@ -180,37 +180,6 @@ async function ensureSchema() {
   }
 
   console.log('Database schema verified')
-
-  await runDataBackfills(db)
-}
-
-/**
- * Idempotent one-shot data backfills. Each statement must be safe to re-run.
- */
-async function runDataBackfills(db: ReturnType<typeof getDb>) {
-  // Older orgs were created with `name = domain.name` (e.g. "thememorials.net")
-  // because the setup wizard didn't ask for a friendly org name. Rename those
-  // to a sensible titlecased default so invitation emails read "Welcome to
-  // Thememorials" instead of "Welcome to thememorials.net". Idempotent: once
-  // a user edits their org name, the WHERE clause stops matching.
-  try {
-    const result = await db.execute(sql`
-      UPDATE organizations o
-      SET name = INITCAP(SPLIT_PART(d.name, '.', 1)),
-          updated_at = now()
-      FROM domains d
-      WHERE d.user_id = o.owner_id
-        AND o.name = d.name
-    `)
-    const rows = (result as unknown as { count?: number; rowCount?: number }).count
-      ?? (result as unknown as { rowCount?: number }).rowCount
-      ?? 0
-    if (rows > 0) {
-      console.log(`Backfill: renamed ${rows} organization(s) from domain → titlecased default`)
-    }
-  } catch (err) {
-    console.error('Org-name backfill failed:', String(err).substring(0, 300))
-  }
 }
 
 async function start() {
