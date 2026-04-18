@@ -1,4 +1,4 @@
-export { users } from './users'
+export { users, passwordResetTokens } from './users'
 export { domains } from './domains'
 export { mailboxes } from './mailboxes'
 export { emails, threads, attachments } from './emails'

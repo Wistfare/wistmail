@@ -16,9 +16,21 @@ async function ensureSchema() {
     `CREATE TABLE IF NOT EXISTS users (
       id varchar(64) PRIMARY KEY, email varchar(255) NOT NULL UNIQUE,
       name varchar(255) NOT NULL, password_hash text NOT NULL,
-      avatar_url text, setup_complete boolean NOT NULL DEFAULT false,
+      avatar_url text, external_email varchar(255),
+      setup_complete boolean NOT NULL DEFAULT false,
       setup_step varchar(20) DEFAULT 'domain',
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    // Idempotent column add for existing user tables created before
+    // external_email was introduced.
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS external_email varchar(255)`,
+    `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id varchar(64) PRIMARY KEY,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash varchar(128) NOT NULL UNIQUE,
+      expires_at timestamptz NOT NULL,
+      used_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE TABLE IF NOT EXISTS domains (
       id varchar(64) PRIMARY KEY, name varchar(255) NOT NULL UNIQUE,

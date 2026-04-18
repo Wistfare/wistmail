@@ -329,12 +329,14 @@ adminRoutes.post('/users/create', async (c) => {
   const userId = generateId('usr')
   const now = new Date()
 
-  // Create user
+  // Create user — persist the externalEmail (if provided) so the user has a
+  // recovery address for password reset later.
   await db.insert(users).values({
     id: userId,
     email: fullEmail,
     name: `${firstName} ${lastName}`.trim(),
     passwordHash,
+    externalEmail: externalEmail ? externalEmail.trim().toLowerCase() : null,
     setupComplete: true,
     setupStep: 'done',
     createdAt: now,
