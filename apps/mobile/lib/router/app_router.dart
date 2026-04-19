@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/screens/sign_in_screen.dart';
 import '../features/auth/presentation/screens/forgot_password_screen.dart';
@@ -22,8 +21,6 @@ import '../features/calls/presentation/screens/voice_call_screen.dart';
 import '../features/calls/presentation/screens/video_call_screen.dart';
 import '../features/shell/presentation/screens/main_shell.dart';
 
-final _shellNavKey = GlobalKey<NavigatorState>(debugLabel: 'shell-root');
-
 final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
@@ -41,7 +38,6 @@ final appRouter = GoRouter(
     // own state (scroll position, nested navigation) when the user switches
     // tabs, so the bottom nav and the tab body don't rebuild.
     StatefulShellRoute.indexedStack(
-      parentNavigatorKey: _shellNavKey,
       builder: (context, state, navigationShell) =>
           MainShell(navigationShell: navigationShell),
       branches: [
