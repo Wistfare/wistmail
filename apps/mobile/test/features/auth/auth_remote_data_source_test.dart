@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wistmail/core/network/api_exception.dart';
 import 'package:wistmail/features/auth/data/auth_remote_data_source.dart';
+import 'package:wistmail/features/auth/domain/mfa.dart';
+import 'package:wistmail/features/auth/domain/user.dart';
 
 import '../../helpers/fake_api_client.dart';
 
@@ -18,8 +20,10 @@ void main() {
         });
 
       final ds = AuthRemoteDataSource(builder.build());
-      final user = await ds.login(email: 'alex@x.com', password: 'secret');
+      final result = await ds.login(email: 'alex@x.com', password: 'secret');
 
+      expect(result, isA<LoginCompleted>());
+      final user = (result as LoginCompleted).user as User;
       expect(user.id, 'u_1');
       expect(user.email, 'alex@x.com');
       final req = builder.capturedRequests.single;

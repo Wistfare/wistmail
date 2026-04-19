@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../auth/presentation/providers/auth_controller.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_list_item.dart';
 import '../widgets/email_list_skeleton.dart';
@@ -17,6 +18,8 @@ class InboxScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final inbox = ref.watch(inboxControllerProvider);
     final unreadCount = inbox.emails.where((e) => !e.isRead).length;
+    final user = ref.watch(authControllerProvider).user;
+    final showMfaBanner = user?.needsMfaSetup ?? false;
 
     // Auth gating happens in the router's redirect — no listener needed here.
 
@@ -26,6 +29,7 @@ class InboxScreen extends ConsumerWidget {
       body: Column(
         children: [
           _TopBar(unreadCount: unreadCount),
+          if (showMfaBanner) const _MfaBanner(),
           Expanded(child: _InboxBody(inbox: inbox)),
         ],
       ),
@@ -104,6 +108,48 @@ class _TopBar extends StatelessWidget {
               onPressed: () {},
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MfaBanner extends StatelessWidget {
+  const _MfaBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.accentDim,
+      child: InkWell(
+        onTap: () => context.push('/auth/mfa/setup'),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: const BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: AppColors.border, width: 1),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.shield_outlined,
+                  size: 16, color: AppColors.accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Set up two-factor authentication',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  size: 16, color: AppColors.accent),
+            ],
+          ),
         ),
       ),
     );

@@ -37,10 +37,18 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         .read(authControllerProvider.notifier)
         .login(email: email, password: password);
     if (!mounted) return;
-    // Router's auth-aware redirect would navigate here on its own, but the
-    // explicit go keeps test routers (which don't include the redirect)
-    // working and makes the post-login flow obvious.
-    if (success) context.go('/inbox');
+    if (success) {
+      context.go('/inbox');
+    } else {
+      // Either MFA is now pending OR an error was set. The router's
+      // redirect pins users with `awaitingMfa` to the challenge screen
+      // automatically, but go there explicitly so test routers (which
+      // don't include the redirect) follow the same flow.
+      final state = ref.read(authControllerProvider);
+      if (state.awaitingMfa) {
+        context.go('/auth/mfa/challenge');
+      }
+    }
   }
 
   @override

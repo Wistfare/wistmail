@@ -21,6 +21,13 @@ import '../features/projects/presentation/screens/projects_screen.dart';
 import '../features/projects/presentation/screens/create_project_screen.dart';
 import '../features/calls/presentation/screens/voice_call_screen.dart';
 import '../features/calls/presentation/screens/video_call_screen.dart';
+import '../features/mfa/presentation/screens/mfa_challenge_screen.dart';
+import '../features/mfa/presentation/screens/mfa_backup_code_screen.dart';
+import '../features/mfa/presentation/screens/mfa_setup_chooser_screen.dart';
+import '../features/mfa/presentation/screens/mfa_totp_setup_screen.dart';
+import '../features/mfa/presentation/screens/mfa_email_setup_screen.dart';
+import '../features/mfa/presentation/screens/mfa_backup_codes_screen.dart';
+import '../features/mfa/presentation/screens/mfa_methods_settings_screen.dart';
 import '../features/shell/presentation/screens/main_shell.dart';
 
 /// Root router. Built as a Riverpod provider so its `redirect` callback can
@@ -39,18 +46,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
-
-      // Don't redirect while we're still figuring out the saved session —
-      // the inbox skeleton covers this window.
       if (auth.isRestoring) return null;
 
       final loc = state.matchedLocation;
       final onAuthRoute = loc.startsWith('/auth/');
+      final onMfaChallenge = loc == '/auth/mfa/challenge' ||
+          loc == '/auth/mfa/backup-code';
+
+      // Step 2 of login: a pending MFA challenge is in progress. Trap the
+      // user on the challenge screens until they complete or cancel.
+      if (auth.awaitingMfa) {
+        return onMfaChallenge ? null : '/auth/mfa/challenge';
+      }
 
       if (!auth.isAuthenticated && !onAuthRoute) {
         return '/auth/sign-in';
       }
-      if (auth.isAuthenticated && onAuthRoute) {
+      // After login, the MFA enrollment routes are valid auth-protected
+      // pages — don't bounce them back to the inbox.
+      if (auth.isAuthenticated &&
+          onAuthRoute &&
+          !loc.startsWith('/auth/mfa/')) {
         return '/inbox';
       }
       return null;
@@ -64,6 +80,43 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/auth/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+
+      // MFA login challenge (after step 1 password). The router redirect
+      // pins users here while `awaitingMfa` is true.
+      GoRoute(
+        path: '/auth/mfa/challenge',
+        builder: (context, state) => const MfaChallengeScreen(),
+      ),
+      GoRoute(
+        path: '/auth/mfa/backup-code',
+        builder: (context, state) => const MfaBackupCodeScreen(),
+      ),
+
+      // MFA enrollment (post-login). Reachable from the inbox banner or
+      // the settings screen.
+      GoRoute(
+        path: '/auth/mfa/setup',
+        builder: (context, state) => const MfaSetupChooserScreen(),
+      ),
+      GoRoute(
+        path: '/auth/mfa/setup/totp',
+        builder: (context, state) => const MfaTotpSetupScreen(),
+      ),
+      GoRoute(
+        path: '/auth/mfa/setup/email',
+        builder: (context, state) => const MfaEmailSetupScreen(),
+      ),
+      GoRoute(
+        path: '/auth/mfa/setup/backup-codes',
+        builder: (context, state) {
+          final codes = (state.extra as List<String>?) ?? const <String>[];
+          return MfaBackupCodesScreen(codes: codes);
+        },
+      ),
+      GoRoute(
+        path: '/auth/mfa/methods',
+        builder: (context, state) => const MfaMethodsSettingsScreen(),
       ),
 
       // Main shell — five tabs as IndexedStack branches. Each branch keeps

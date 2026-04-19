@@ -6,6 +6,8 @@ class User {
     this.avatarUrl,
     this.setupComplete = false,
     this.setupStep,
+    this.mfaRequired = true,
+    this.mfaSetupComplete = false,
   });
 
   final String id;
@@ -14,6 +16,11 @@ class User {
   final String? avatarUrl;
   final bool setupComplete;
   final String? setupStep;
+  final bool mfaRequired;
+  final bool mfaSetupComplete;
+
+  /// True when the app should nudge the user to enroll in MFA.
+  bool get needsMfaSetup => mfaRequired && !mfaSetupComplete;
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
@@ -23,6 +30,8 @@ class User {
       avatarUrl: json['avatarUrl'] as String?,
       setupComplete: (json['setupComplete'] as bool?) ?? false,
       setupStep: json['setupStep'] as String?,
+      mfaRequired: (json['mfaRequired'] as bool?) ?? true,
+      mfaSetupComplete: (json['mfaSetupComplete'] as bool?) ?? false,
     );
   }
 
@@ -33,6 +42,8 @@ class User {
         'avatarUrl': avatarUrl,
         'setupComplete': setupComplete,
         'setupStep': setupStep,
+        'mfaRequired': mfaRequired,
+        'mfaSetupComplete': mfaSetupComplete,
       };
 
   String get initials {

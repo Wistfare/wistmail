@@ -65,6 +65,15 @@ class AppDrawer extends ConsumerWidget {
           const Spacer(),
           const Divider(color: AppColors.border, height: 1),
           _BottomAction(
+            icon: Icons.shield_outlined,
+            label: 'Two-factor auth',
+            color: AppColors.textPrimary,
+            onTap: () {
+              Navigator.of(context).pop();
+              context.push('/auth/mfa/methods');
+            },
+          ),
+          _BottomAction(
             icon: Icons.logout,
             label: 'Sign out',
             color: AppColors.textPrimary,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wistmail/core/theme/app_theme.dart';
 import 'package:wistmail/features/auth/data/auth_repository.dart';
+import 'package:wistmail/features/auth/domain/mfa.dart';
 import 'package:wistmail/features/auth/domain/user.dart';
 import 'package:wistmail/features/auth/presentation/providers/auth_controller.dart';
 import 'package:wistmail/features/mail/data/mail_repository.dart';
@@ -55,11 +56,27 @@ class FakeAuthRepository implements AuthRepository {
   int logoutCalls = 0;
 
   @override
-  Future<User> login({required String email, required String password}) async {
+  Future<LoginResult> login({
+    required String email,
+    required String password,
+  }) async {
     loginCalls++;
+    if (loginError != null) throw loginError!;
+    final user = loginUser ?? (throw StateError('no loginUser set'));
+    return LoginCompleted(user);
+  }
+
+  @override
+  Future<User> verifyLogin({
+    required String pendingToken,
+    required String code,
+  }) async {
     if (loginError != null) throw loginError!;
     return loginUser ?? (throw StateError('no loginUser set'));
   }
+
+  @override
+  Future<void> requestLoginEmailCode(String pendingToken) async {}
 
   @override
   Future<User?> restoreSession() async => sessionUser;
@@ -73,6 +90,43 @@ class FakeAuthRepository implements AuthRepository {
   Future<void> deleteAccount({required String password}) async {
     // Fake: no-op by default.
   }
+
+  @override
+  Future<MfaMethodsListing> listMfaMethods() async => const MfaMethodsListing(
+        methods: [],
+        backupTotal: 0,
+        backupRemaining: 0,
+      );
+
+  @override
+  Future<void> deleteMfaMethod(String methodId) async {}
+
+  @override
+  Future<TotpSetupChallenge> beginTotpSetup() async => const TotpSetupChallenge(
+        methodId: 'mfa_test',
+        secret: 'JBSWY3DPEHPK3PXP',
+        otpauthUrl: 'otpauth://totp/test',
+      );
+
+  @override
+  Future<MfaVerifySuccess> verifyTotpSetup({
+    required String methodId,
+    required String code,
+  }) async =>
+      const MfaVerifySuccess();
+
+  @override
+  Future<String> beginEmailSetup(String address) async => 'mfa_test';
+
+  @override
+  Future<MfaVerifySuccess> verifyEmailSetup({
+    required String methodId,
+    required String code,
+  }) async =>
+      const MfaVerifySuccess();
+
+  @override
+  Future<List<String>> regenerateBackupCodes() async => const [];
 }
 
 /// A fake MailRepository returning in-memory data.
