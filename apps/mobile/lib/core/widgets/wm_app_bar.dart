@@ -3,8 +3,13 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
 /// Top bar matching the design's `topBar` pattern: back arrow on the left,
-/// optional title (Inter 16/600), action icons on the right. Sits flush
-/// against the status bar with a 1px hairline at the bottom (optional).
+/// optional title (Inter 16/600), action icons on the right.
+///
+/// Status-bar safe by design — content is wrapped in `SafeArea(top: true)` so
+/// the back button and actions clear the notch / status bar on physical
+/// devices. The reported `preferredSize` is just the visible bar height (56);
+/// Scaffold adds `MediaQuery.padding.top` on top of that automatically when
+/// positioning the body.
 class WmAppBar extends StatelessWidget implements PreferredSizeWidget {
   const WmAppBar({
     super.key,
@@ -42,30 +47,34 @@ class WmAppBar extends StatelessWidget implements PreferredSizeWidget {
               )
             : null);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        border: divider
-            ? const Border(bottom: BorderSide(color: AppColors.border, width: 1))
-            : null,
-      ),
-      child: SizedBox(
-        height: 56,
-        child: Row(
-          children: [
-            if (leadingWidget != null)
-              SizedBox(width: 56, child: Center(child: leadingWidget))
-            else
-              const SizedBox(width: 20),
-            Expanded(
-              child: titleWidget ??
-                  (title != null
-                      ? Text(title!, style: AppTextStyles.titleMedium)
-                      : const SizedBox.shrink()),
-            ),
-            ...actions,
-            const SizedBox(width: 8),
-          ],
+    return Material(
+      color: AppColors.background,
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 56,
+          decoration: BoxDecoration(
+            border: divider
+                ? const Border(
+                    bottom: BorderSide(color: AppColors.border, width: 1))
+                : null,
+          ),
+          child: Row(
+            children: [
+              if (leadingWidget != null)
+                SizedBox(width: 56, child: Center(child: leadingWidget))
+              else
+                const SizedBox(width: 20),
+              Expanded(
+                child: titleWidget ??
+                    (title != null
+                        ? Text(title!, style: AppTextStyles.titleMedium)
+                        : const SizedBox.shrink()),
+              ),
+              ...actions,
+              const SizedBox(width: 8),
+            ],
+          ),
         ),
       ),
     );
