@@ -6,6 +6,8 @@ import '../../data/auth_remote_data_source.dart';
 import '../../data/auth_repository.dart';
 import '../../domain/user.dart';
 
+const _sessionCookieName = 'wm_session';
+
 final authRepositoryProvider = FutureProvider<AuthRepository>((ref) async {
   final client = await ref.watch(apiClientProvider.future);
   return AuthRepositoryImpl(AuthRemoteDataSource(client));
@@ -54,14 +56,38 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> _restore() async {
     try {
+      // Skip the HTTP validation entirely when there's no session cookie
+      // stored locally. This lets the router redirect first-time / signed-out
+      // users straight to /auth/sign-in without flashing the inbox skeleton.
+      final hasCookie = await _hasSessionCookie();
+      if (!hasCookie) {
+        state = state.copyWith(isRestoring: false, clearUser: true);
+        return;
+      }
+
       final repo = await _repo;
       final user = await repo.restoreSession();
-      state = state.copyWith(user: user, isRestoring: false, clearUser: user == null);
+      state = state.copyWith(
+        user: user,
+        isRestoring: false,
+        clearUser: user == null,
+      );
       if (user != null) {
         unawaited(_registerPush());
       }
     } catch (_) {
       state = state.copyWith(isRestoring: false);
+    }
+  }
+
+  Future<bool> _hasSessionCookie() async {
+    try {
+      final jar = await _ref.read(cookieJarProvider.future);
+      final config = _ref.read(appConfigProvider);
+      final cookies = await jar.loadForRequest(Uri.parse(config.apiBaseUrl));
+      return cookies.any((c) => c.name == _sessionCookieName);
+    } catch (_) {
+      return false;
     }
   }
 
