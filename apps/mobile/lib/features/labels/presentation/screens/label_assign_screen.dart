@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/wm_app_bar.dart';
 import '../providers/labels_providers.dart';
 
+/// Mobile/LabelAssign — design.lib.pen node `W1H6e`. Sharp checkbox is a
+/// 20x20 lime square with black tick when selected.
 class LabelAssignScreen extends ConsumerStatefulWidget {
   const LabelAssignScreen({super.key, required this.emailId});
 
@@ -25,27 +29,17 @@ class _LabelAssignScreenState extends ConsumerState<LabelAssignScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: Text(
-          'Assign Label',
-          style: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
-        ),
+      appBar: WmAppBar(
+        title: 'Assign Label',
         actions: [
           IconButton(
+            splashRadius: 22,
             icon: _saving
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.accent),
                   )
                 : const Icon(Icons.check, color: AppColors.accent),
             onPressed: _saving ? null : _save,
@@ -63,22 +57,10 @@ class _LabelAssignScreenState extends ConsumerState<LabelAssignScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'No labels yet',
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
+                      Text('No labels yet', style: AppTextStyles.titleMedium),
                       const SizedBox(height: 12),
-                      Text(
-                        'Create a label to start organizing.',
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
+                      Text('Create a label to start organizing.',
+                          style: AppTextStyles.bodySmall),
                     ],
                   ),
                 ),
@@ -86,45 +68,43 @@ class _LabelAssignScreenState extends ConsumerState<LabelAssignScreen> {
             }
             return ListView.separated(
               itemCount: labels.length + 1,
-              separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.border),
+              separatorBuilder: (_, __) =>
+                  const Divider(height: 1, color: AppColors.border),
               itemBuilder: (context, index) {
-                if (index == labels.length) return _CreateLabelTile();
+                if (index == labels.length) return const _CreateLabelTile();
                 final label = labels[index];
                 final isSelected = _selected!.contains(label.id);
-                return InkWell(
-                  onTap: () {
-                    setState(() {
-                      if (isSelected) {
-                        _selected!.remove(label.id);
-                      } else {
-                        _selected!.add(label.id);
-                      }
-                    });
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: label.swatch,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            label.name,
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              color: AppColors.textPrimary,
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      setState(() {
+                        if (isSelected) {
+                          _selected!.remove(label.id);
+                        } else {
+                          _selected!.add(label.id);
+                        }
+                      });
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      child: Row(
+                        children: [
+                          Container(width: 14, height: 14, color: label.swatch),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              label.name,
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ),
-                        ),
-                        _Checkbox(checked: isSelected),
-                      ],
+                          _Check(checked: isSelected),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -156,8 +136,8 @@ class _LabelAssignScreenState extends ConsumerState<LabelAssignScreen> {
   }
 }
 
-class _Checkbox extends StatelessWidget {
-  const _Checkbox({required this.checked});
+class _Check extends StatelessWidget {
+  const _Check({required this.checked});
   final bool checked;
 
   @override
@@ -168,9 +148,9 @@ class _Checkbox extends StatelessWidget {
       decoration: BoxDecoration(
         color: checked ? AppColors.accent : Colors.transparent,
         border: Border.all(
-          color: checked ? AppColors.accent : AppColors.textTertiary,
+          color: checked ? AppColors.accent : AppColors.borderStrong,
+          width: 1,
         ),
-        borderRadius: BorderRadius.circular(4),
       ),
       child: checked
           ? const Icon(Icons.check, size: 14, color: AppColors.background)
@@ -180,6 +160,8 @@ class _Checkbox extends StatelessWidget {
 }
 
 class _CreateLabelTile extends StatelessWidget {
+  const _CreateLabelTile();
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -207,9 +189,10 @@ class _Loading extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Center(
         child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: AppColors.accent),
         ),
       );
 }
@@ -221,11 +204,9 @@ class _ErrorView extends StatelessWidget {
   Widget build(BuildContext context) => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text(
-            message,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 13),
-          ),
+          child: Text(message,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodySmall),
         ),
       );
 }

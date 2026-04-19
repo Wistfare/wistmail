@@ -3,8 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/wm_app_bar.dart';
+import '../../../../core/widgets/wm_avatar.dart';
+import '../../../../core/widgets/wm_primary_button.dart';
 import '../providers/chat_providers.dart';
 
+/// Mobile/NewChat — design.lib.pen node `5yCVj`. Group-chat row at top
+/// (lime icon + lime text), then "CONTACTS" section with people rows.
 class NewChatScreen extends ConsumerStatefulWidget {
   const NewChatScreen({super.key});
 
@@ -23,8 +29,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
     super.dispose();
   }
 
-  Future<void> _createDirect() async {
-    final email = _emailController.text.trim();
+  Future<void> _createDirect([String? overrideEmail]) async {
+    final email = (overrideEmail ?? _emailController.text).trim();
     if (email.isEmpty) {
       setState(() => _error = "Enter the person's email");
       return;
@@ -37,7 +43,6 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
     try {
       final repo = await ref.read(chatRepositoryProvider.future);
       final id = await repo.createDirectConversation(email);
-      // Refresh the list so the new conversation shows up if we come back.
       ref.invalidate(chatListControllerProvider);
       if (!mounted) return;
       context.pushReplacement('/conversation/$id');
@@ -52,103 +57,207 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
 
   String _format(Object error) {
     final msg = error.toString();
-    final match = RegExp(r'ApiException\([^)]*\):\s*(.*)$').firstMatch(msg);
-    return match != null ? match.group(1)! : 'Could not create chat.';
+    final m = RegExp(r'ApiException\([^)]*\):\s*(.*)$').firstMatch(msg);
+    return m != null ? m.group(1)! : 'Could not create chat.';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: Text(
-          'New Chat',
-          style: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ),
+      appBar: const WmAppBar(title: 'New Chat'),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
+            _GroupChatTile(onTap: () {}),
+            const Divider(color: AppColors.border, height: 1),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child:
+                  Text('CONTACTS', style: AppTextStyles.sectionLabel),
+            ),
+            const SizedBox(height: 4),
+            _ContactRow(
+              name: 'Alex Chen',
+              email: 'alex.chen@wistfare.com',
+              onTap: () => _createDirect('alex.chen@wistfare.com'),
+            ),
+            const Divider(color: AppColors.border, height: 1),
+            _ContactRow(
+              name: 'Sarah Miller',
+              email: 'sarah.miller@wistfare.com',
+              onTap: () => _createDirect('sarah.miller@wistfare.com'),
+            ),
+            const Divider(color: AppColors.border, height: 1),
+            _ContactRow(
+              name: 'Jordan Park',
+              email: 'jordan.park@wistfare.com',
+              onTap: () => _createDirect('jordan.park@wistfare.com'),
+            ),
+            const Divider(color: AppColors.border, height: 1),
+            _ContactRow(
+              name: 'Lisa Wang',
+              email: 'lisa.wang@wistfare.com',
+              onTap: () => _createDirect('lisa.wang@wistfare.com'),
+            ),
+            const Divider(color: AppColors.border, height: 1),
+            const SizedBox(height: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.group_outlined, color: AppColors.accent),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Create Group Chat',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.accent,
+                  Text('OR ENTER AN ADDRESS',
+                      style: AppTextStyles.sectionLabel),
+                  const SizedBox(height: 10),
+                  Container(
+                    decoration: const BoxDecoration(
+                      color: AppColors.surface,
+                      border: Border.fromBorderSide(
+                        BorderSide(color: AppColors.border, width: 1),
                       ),
                     ),
+                    child: Row(
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(left: 14, right: 8),
+                          child: Icon(Icons.alternate_email,
+                              size: 16, color: AppColors.textTertiary),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            key: const Key('new-chat-email'),
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            cursorColor: AppColors.accent,
+                            style: AppTextStyles.monoSmall.copyWith(
+                              color: AppColors.textPrimary,
+                              fontSize: 13,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: 'colleague@wistfare.com',
+                              hintStyle: AppTextStyles.monoSmall.copyWith(
+                                color: AppColors.textTertiary,
+                                fontSize: 13,
+                              ),
+                              border: InputBorder.none,
+                              isCollapsed: true,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            onSubmitted: (_) => _createDirect(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.danger),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  WmPrimaryButton(
+                    key: const Key('new-chat-submit'),
+                    label: _creating ? 'Creating…' : 'Start chat',
+                    loading: _creating,
+                    onPressed: _createDirect,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-            Text(
-              "START A DIRECT CHAT",
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-                letterSpacing: 0.8,
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupChatTile extends StatelessWidget {
+  const _GroupChatTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                color: AppColors.accentDim,
+                alignment: Alignment.center,
+                child: const Icon(Icons.group_outlined,
+                    color: AppColors.accent, size: 18),
               ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              key: const Key('new-chat-email'),
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              style: GoogleFonts.inter(fontSize: 14, color: AppColors.textPrimary),
-              decoration: const InputDecoration(
-                hintText: 'colleague@wistfare.com',
-                prefixIcon: Icon(Icons.alternate_email, size: 18, color: AppColors.textTertiary),
-              ),
-              onSubmitted: (_) => _createDirect(),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(width: 14),
               Text(
-                _error!,
-                style: GoogleFonts.inter(fontSize: 13, color: AppColors.badgeRed),
+                'Create Group Chat',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.accent,
+                ),
               ),
             ],
-            const SizedBox(height: 16),
-            ElevatedButton(
-              key: const Key('new-chat-submit'),
-              onPressed: _creating ? null : _createDirect,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                foregroundColor: AppColors.background,
-                elevation: 0,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ContactRow extends StatelessWidget {
+  const _ContactRow({
+    required this.name,
+    required this.email,
+    required this.onTap,
+  });
+  final String name;
+  final String email;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        splashColor: AppColors.surface,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
+            children: [
+              WmAvatar(name: name, size: 36),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        )),
+                    const SizedBox(height: 2),
+                    Text(email, style: AppTextStyles.monoSmall),
+                  ],
+                ),
               ),
-              child: Text(
-                _creating ? 'Creating…' : 'Start chat',
-                style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

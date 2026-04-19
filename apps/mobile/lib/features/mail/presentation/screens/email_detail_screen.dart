@@ -3,9 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/wm_app_bar.dart';
+import '../../../../core/widgets/wm_avatar.dart';
+import '../../../../core/widgets/wm_tag.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
 
+/// Mobile/EmailDetail — design.lib.pen node `aZAGV`.
 class EmailDetailScreen extends ConsumerWidget {
   const EmailDetailScreen({super.key, required this.emailId});
 
@@ -17,32 +22,24 @@ class EmailDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-          onPressed: () => context.pop(),
-        ),
+      appBar: WmAppBar(
+        divider: false,
         actions: emailAsync.when(
           data: (email) => [
-            IconButton(
-              icon: Icon(
-                email.isStarred ? Icons.star : Icons.star_outline,
-                color: email.isStarred ? AppColors.accent : AppColors.textSecondary,
-                size: 20,
-              ),
-              onPressed: () async {
-                final repo = await ref.read(mailRepositoryProvider.future);
-                final starred = await repo.toggleStar(email.id);
-                ref.read(inboxControllerProvider.notifier).applyLocal(
-                      email.copyWith(isStarred: starred),
-                    );
-                ref.invalidate(emailDetailProvider(email.id));
-              },
+            _IconAction(
+              icon: Icons.reply,
+              onPressed: () {},
             ),
-            IconButton(
-              icon: const Icon(Icons.archive_outlined, color: AppColors.textSecondary, size: 20),
+            _IconAction(
+              icon: Icons.reply_all,
+              onPressed: () {},
+            ),
+            _IconAction(
+              icon: Icons.forward,
+              onPressed: () {},
+            ),
+            _IconAction(
+              icon: Icons.archive_outlined,
               onPressed: () async {
                 final repo = await ref.read(mailRepositoryProvider.future);
                 await repo.archive(email.id);
@@ -50,8 +47,8 @@ class EmailDetailScreen extends ConsumerWidget {
                 if (context.mounted) context.pop();
               },
             ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: AppColors.textSecondary, size: 20),
+            _IconAction(
+              icon: Icons.delete_outline,
               onPressed: () async {
                 final repo = await ref.read(mailRepositoryProvider.future);
                 await repo.delete(email.id);
@@ -59,31 +56,39 @@ class EmailDetailScreen extends ConsumerWidget {
                 if (context.mounted) context.pop();
               },
             ),
-            IconButton(
-              icon: const Icon(Icons.label_outline, color: AppColors.textSecondary, size: 20),
-              onPressed: () => context.push('/email/${email.id}/labels'),
+            _IconAction(
+              icon: Icons.more_vert,
+              onPressed: () {},
             ),
           ],
           loading: () => const [SizedBox.shrink()],
-          error: (err, stack) => const [SizedBox.shrink()],
+          error: (_, __) => const [SizedBox.shrink()],
         ),
       ),
       body: emailAsync.when(
-        data: (email) => _EmailBody(email: email),
+        data: (email) => _Body(
+          email: email,
+          onToggleStar: () async {
+            final repo = await ref.read(mailRepositoryProvider.future);
+            final starred = await repo.toggleStar(email.id);
+            ref.read(inboxControllerProvider.notifier).applyLocal(
+                  email.copyWith(isStarred: starred),
+                );
+            ref.invalidate(emailDetailProvider(email.id));
+          },
+        ),
         loading: () => const Center(
           child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: AppColors.accent),
           ),
         ),
         error: (err, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
-            child: Text(
-              err.toString(),
-              style: GoogleFonts.inter(color: AppColors.textSecondary),
-            ),
+            child: Text(err.toString(), style: AppTextStyles.bodySmall),
           ),
         ),
       ),
@@ -91,50 +96,78 @@ class EmailDetailScreen extends ConsumerWidget {
   }
 }
 
-class _EmailBody extends StatelessWidget {
-  const _EmailBody({required this.email});
+class _IconAction extends StatelessWidget {
+  const _IconAction({required this.icon, required this.onPressed});
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      splashRadius: 20,
+      icon: Icon(icon, size: 20),
+      color: AppColors.textSecondary,
+      onPressed: onPressed,
+    );
+  }
+}
+
+class _Body extends StatelessWidget {
+  const _Body({required this.email, required this.onToggleStar});
   final Email email;
+  final VoidCallback onToggleStar;
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            email.subject.isEmpty ? '(no subject)' : email.subject,
-            style: GoogleFonts.inter(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
+          // Subject row + star
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  email.subject.isEmpty ? '(no subject)' : email.subject,
+                  style: GoogleFonts.inter(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+              IconButton(
+                splashRadius: 20,
+                onPressed: onToggleStar,
+                icon: Icon(
+                  email.isStarred ? Icons.star : Icons.star_outline,
+                  color: email.isStarred
+                      ? AppColors.accent
+                      : AppColors.textTertiary,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Tags row (heuristic until backend returns labels)
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _tagsFor(email),
           ),
           const SizedBox(height: 16),
           const Divider(color: AppColors.border, height: 1),
           const SizedBox(height: 16),
+          // Sender row
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: email.senderAvatarColor,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    email.senderInitials,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
+              WmAvatar(name: email.senderName, size: 36),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,12 +180,12 @@ class _EmailBody extends StatelessWidget {
                         color: AppColors.textPrimary,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
-                      '${email.senderEmail} · ${email.timeAgo}',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                      '${email.senderEmail}  ·  ${email.timeAgo}',
+                      style: AppTextStyles.monoSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -163,25 +196,33 @@ class _EmailBody extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'To: ${email.toAddresses.join(', ')}',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
+              style: AppTextStyles.monoSmall.copyWith(fontSize: 11),
             ),
           ],
           const SizedBox(height: 20),
           const Divider(color: AppColors.border, height: 1),
           const SizedBox(height: 20),
-          Text(
+          // Body — JetBrains Mono, gray, generous line-height (matches design)
+          SelectableText(
             email.textBody ?? '',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              color: AppColors.textPrimary,
-              height: 1.7,
+            style: AppTextStyles.monoMedium.copyWith(
+              color: AppColors.textSecondary,
             ),
           ),
         ],
       ),
     );
+  }
+
+  List<Widget> _tagsFor(Email e) {
+    final s = e.subject.toLowerCase();
+    final tags = <Widget>[];
+    if (s.contains('priority') || s.contains('urgent')) {
+      tags.add(const WmTag(label: 'Priority', color: AppColors.tagPriority));
+    }
+    if (s.contains('work') || s.contains('roadmap')) {
+      tags.add(const WmTag(label: 'Work', color: AppColors.tagWork));
+    }
+    return tags;
   }
 }

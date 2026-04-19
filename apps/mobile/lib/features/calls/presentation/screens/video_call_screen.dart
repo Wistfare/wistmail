@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/wm_avatar.dart';
 
-/// Placeholder video-call UI — no real WebRTC yet. See docs/ROADMAP-CALLS.md.
+/// Mobile/VideoCall — design.lib.pen node `Ze4AQ`. Sharp 2x2 tiles with
+/// subtle distinct hues per participant, "You" tile carries an accent
+/// outline + central lime avatar.
 class VideoCallScreen extends StatelessWidget {
   const VideoCallScreen({super.key, required this.meetingId});
   final String meetingId;
@@ -33,32 +36,46 @@ class VideoCallScreen extends StatelessWidget {
                         ),
                         Text(
                           '12:34',
-                          style: GoogleFonts.inter(fontSize: 12, color: AppColors.accent),
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 12,
+                            color: AppColors.accent,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.people_outline, color: AppColors.textSecondary, size: 18),
-                  const SizedBox(width: 4),
+                  const Icon(Icons.people_outline,
+                      color: AppColors.textSecondary, size: 18),
+                  const SizedBox(width: 6),
                   Text(
                     '5',
-                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
             ),
             Expanded(
-              child: GridView.count(
+              child: Padding(
                 padding: const EdgeInsets.all(8),
-                crossAxisCount: 2,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                children: const [
-                  _Tile(name: 'Alex Chen', color: Color(0xFF1C2E14)),
-                  _Tile(name: 'Sarah Miller', color: Color(0xFF1E1A2E)),
-                  _Tile(name: 'Jordan Park', color: Color(0xFF2E1A1A)),
-                  _Tile(name: 'You', color: Color(0xFF142E24), isYou: true),
-                ],
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 4,
+                  crossAxisSpacing: 4,
+                  children: const [
+                    _Tile(name: 'Alex Chen', tint: Color(0xFF1E2614)),
+                    _Tile(name: 'Sarah Miller', tint: Color(0xFF1A1626)),
+                    _Tile(name: 'Jordan Park', tint: Color(0xFF26161A)),
+                    _Tile(
+                      name: 'You',
+                      tint: Color(0xFF152620),
+                      isYou: true,
+                      youInitial: 'V',
+                    ),
+                  ],
+                ),
               ),
             ),
             Padding(
@@ -72,7 +89,7 @@ class VideoCallScreen extends StatelessWidget {
                   _Ctrl(icon: Icons.chat_bubble_outline, onTap: () {}),
                   _Ctrl(
                     icon: Icons.call_end,
-                    bg: AppColors.badgeRed,
+                    bg: AppColors.danger,
                     iconColor: Colors.white,
                     onTap: () => context.pop(),
                   ),
@@ -87,77 +104,87 @@ class VideoCallScreen extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.name, required this.color, this.isYou = false});
+  const _Tile({
+    required this.name,
+    required this.tint,
+    this.isYou = false,
+    this.youInitial = '?',
+  });
   final String name;
-  final Color color;
+  final Color tint;
   final bool isYou;
+  final String youInitial;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(10),
-        border: isYou ? Border.all(color: AppColors.accent, width: 2) : null,
-      ),
-      alignment: Alignment.bottomLeft,
-      padding: const EdgeInsets.all(8),
-      child: isYou
-          ? Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      color: tint,
+      padding: const EdgeInsets.all(10),
+      child: Stack(
+        children: [
+          if (isYou)
+            Center(
+              child: WmAvatar(
+                name: youInitial,
+                size: 56,
+                color: AppColors.accent,
+              ),
+            ),
+          Align(
+            alignment: Alignment.bottomLeft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColors.accent,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      'V',
-                      style: GoogleFonts.inter(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.background,
-                      ),
-                    ),
+                if (isYou)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 2),
+                    child: Text(''),
+                  ),
+                Text(
+                  name,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-                Text(name, style: _label()),
               ],
-            )
-          : Text(name, style: _label()),
+            ),
+          ),
+        ],
+      ),
     );
   }
-
-  TextStyle _label() => GoogleFonts.inter(
-        fontSize: 12,
-        color: AppColors.textPrimary,
-      );
 }
 
 class _Ctrl extends StatelessWidget {
-  const _Ctrl({required this.icon, required this.onTap, this.bg, this.iconColor});
+  const _Ctrl({
+    required this.icon,
+    required this.onTap,
+    this.bg,
+    this.iconColor,
+  });
   final IconData icon;
   final VoidCallback onTap;
   final Color? bg;
   final Color? iconColor;
+
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: bg ?? AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
+    return Material(
+      color: bg ?? AppColors.surface,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Icon(
+            icon,
+            color: iconColor ?? AppColors.textPrimary,
+            size: 22,
+          ),
         ),
-        child: Icon(icon, color: iconColor ?? AppColors.textPrimary, size: 20),
       ),
     );
   }

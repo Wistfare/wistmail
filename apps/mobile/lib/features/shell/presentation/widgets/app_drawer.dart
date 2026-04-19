@@ -3,117 +3,115 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/wm_avatar.dart';
+import '../../../../core/widgets/wm_logo.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 
+/// Mobile/Drawer — design.lib.pen node `poQbm`. 300px wide, sharp corners.
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).user;
+    final route = GoRouterState.of(context).uri.path;
 
     return Drawer(
       backgroundColor: AppColors.drawerBackground,
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _DrawerHeader(),
-            _UserTile(
-              name: user?.name ?? 'Signed out',
-              email: user?.email ?? '',
-              initials: user?.initials ?? '?',
-              onClose: () => Navigator.of(context).pop(),
-            ),
-            const SizedBox(height: 20),
-            _SectionLabel('FOLDERS'),
-            const SizedBox(height: 4),
-            _FolderItem(icon: Icons.inbox_outlined, label: 'Inbox', isActive: true),
-            _FolderItem(icon: Icons.star_outline, label: 'Starred'),
-            _FolderItem(icon: Icons.send_outlined, label: 'Sent'),
-            _FolderItem(icon: Icons.edit_outlined, label: 'Drafts'),
-            _FolderItem(icon: Icons.delete_outline, label: 'Trash'),
-            _FolderItem(icon: Icons.security_outlined, label: 'Spam'),
-            const SizedBox(height: 20),
-            _SectionLabel('LABELS'),
-            const SizedBox(height: 4),
-            _LabelItem(color: AppColors.labelDotPriority, label: 'Priority'),
-            _LabelItem(color: AppColors.labelDotWork, label: 'Work'),
-            _LabelItem(color: AppColors.labelDotNewsletters, label: 'Newsletters'),
-            const SizedBox(height: 8),
-            _CreateLabelButton(),
-            const Spacer(),
-            const Divider(color: AppColors.border, height: 1),
-            ListTile(
-              leading: const Icon(Icons.logout, color: AppColors.textSecondary, size: 20),
-              title: Text(
-                'Sign out',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              onTap: () async {
-                await ref.read(authControllerProvider.notifier).logout();
-                if (context.mounted) context.go('/auth/sign-in');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline, color: AppColors.badgeRed, size: 20),
-              title: Text(
-                'Delete account',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: AppColors.badgeRed,
-                ),
-              ),
-              onTap: () {
-                Navigator.of(context).pop();
-                context.push('/settings/delete-account');
-              },
-            ),
-          ],
-        ),
+      width: 300,
+      shape: const RoundedRectangleBorder(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _Header(),
+          _UserTile(
+            name: user?.name ?? 'Signed out',
+            email: user?.email ?? '',
+            onClose: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(height: 8),
+          const Divider(color: AppColors.border, height: 1),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text('FOLDERS', style: AppTextStyles.sectionLabel),
+          ),
+          const SizedBox(height: 4),
+          _FolderItem(
+            icon: Icons.inbox_outlined,
+            label: 'Inbox',
+            isActive: route.startsWith('/inbox'),
+            badge: 12,
+          ),
+          const _FolderItem(icon: Icons.star_outline, label: 'Starred'),
+          const _FolderItem(icon: Icons.send_outlined, label: 'Sent'),
+          const _FolderItem(icon: Icons.edit_outlined, label: 'Drafts', badge: 4),
+          const _FolderItem(icon: Icons.delete_outline, label: 'Trash'),
+          const _FolderItem(icon: Icons.shield_outlined, label: 'Spam'),
+          const SizedBox(height: 16),
+          const Divider(color: AppColors.border, height: 1),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text('LABELS', style: AppTextStyles.sectionLabel),
+          ),
+          const SizedBox(height: 4),
+          const _LabelItem(color: AppColors.labelYellow, label: 'Priority'),
+          const _LabelItem(color: AppColors.labelBlue, label: 'Work'),
+          const _LabelItem(color: AppColors.labelOrange, label: 'Newsletters'),
+          const SizedBox(height: 6),
+          _CreateLabelButton(onTap: () {}),
+          const Spacer(),
+          const Divider(color: AppColors.border, height: 1),
+          _BottomAction(
+            icon: Icons.logout,
+            label: 'Sign out',
+            color: AppColors.textPrimary,
+            onTap: () async {
+              await ref.read(authControllerProvider.notifier).logout();
+              if (context.mounted) context.go('/auth/sign-in');
+            },
+          ),
+          _BottomAction(
+            icon: Icons.delete_outline,
+            label: 'Delete account',
+            color: AppColors.danger,
+            onTap: () {
+              Navigator.of(context).pop();
+              context.push('/settings/delete-account');
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
       ),
     );
   }
 }
 
-class _DrawerHeader extends StatelessWidget {
+class _Header extends StatelessWidget {
+  const _Header();
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: AppColors.accent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Center(
-              child: Text(
-                'W',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.background,
-                ),
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
+        child: Row(
+          children: [
+            const WmLogo(size: 28),
+            const SizedBox(width: 10),
+            Text(
+              'Wistfare Mail',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            'Wistfare Mail',
-            style: GoogleFonts.inter(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -123,91 +121,51 @@ class _UserTile extends StatelessWidget {
   const _UserTile({
     required this.name,
     required this.email,
-    required this.initials,
     required this.onClose,
   });
-
   final String name;
   final String email;
-  final String initials;
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: const Color(0xFF4A2D6A),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Center(
-                child: Text(
-                  initials,
+      padding: const EdgeInsets.fromLTRB(20, 4, 16, 16),
+      child: Row(
+        children: [
+          WmAvatar(name: name, size: 36, color: AppColors.accent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
                   style: GoogleFonts.inter(
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
+                const SizedBox(height: 2),
+                Text(
+                  email,
+                  style: AppTextStyles.monoSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  Text(
-                    email,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            GestureDetector(
-              onTap: onClose,
-              child: const Icon(Icons.close, color: AppColors.textSecondary, size: 18),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Text(
-        text,
-        style: GoogleFonts.inter(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textTertiary,
-          letterSpacing: 0.8,
-        ),
+          ),
+          IconButton(
+            splashRadius: 18,
+            onPressed: onClose,
+            icon: const Icon(Icons.close, size: 18),
+            color: AppColors.textTertiary,
+          ),
+        ],
       ),
     );
   }
@@ -218,36 +176,47 @@ class _FolderItem extends StatelessWidget {
     required this.icon,
     required this.label,
     this.isActive = false,
+    this.badge,
   });
-
   final IconData icon;
   final String label;
   final bool isActive;
+  final int? badge;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-      decoration: BoxDecoration(
-        color: isActive ? AppColors.accent.withValues(alpha: 0.12) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: ListTile(
-        dense: true,
-        leading: Icon(
-          icon,
-          size: 20,
-          color: isActive ? AppColors.accent : AppColors.textSecondary,
-        ),
-        title: Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-            color: isActive ? AppColors.accent : AppColors.textPrimary,
+    final fg = isActive ? AppColors.accent : AppColors.textPrimary;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {},
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+          color: isActive ? AppColors.accentDim : Colors.transparent,
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: fg),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                    color: fg,
+                  ),
+                ),
+              ),
+              if (badge != null)
+                Text(
+                  '$badge',
+                  style: AppTextStyles.monoSmall.copyWith(
+                    color: isActive ? AppColors.accent : AppColors.textTertiary,
+                  ),
+                ),
+            ],
           ),
         ),
-        onTap: () {},
       ),
     );
   }
@@ -260,46 +229,94 @@ class _LabelItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {},
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+          child: Row(
+            children: [
+              Container(width: 10, height: 10, color: color),
+              const SizedBox(width: 14),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _CreateLabelButton extends StatelessWidget {
+  const _CreateLabelButton({required this.onTap});
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-      child: Row(
-        children: [
-          const Icon(Icons.add, size: 16, color: AppColors.textTertiary),
-          const SizedBox(width: 10),
-          Text(
-            'Create Label',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              color: AppColors.textTertiary,
-            ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+          child: Row(
+            children: [
+              const Icon(Icons.add, size: 14, color: AppColors.accent),
+              const SizedBox(width: 10),
+              Text(
+                'Create Label',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.accent,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomAction extends StatelessWidget {
+  const _BottomAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 14),
+              Text(
+                label,
+                style: GoogleFonts.inter(fontSize: 14, color: color),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

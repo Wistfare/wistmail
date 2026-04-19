@@ -1,46 +1,71 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_bottom_nav.dart';
 import '../providers/chat_providers.dart';
 import '../widgets/conversation_list_item.dart';
 
+/// Mobile/ChatList — design.lib.pen node `0o9r5`.
 class ChatListScreen extends ConsumerWidget {
   const ChatListScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chat = ref.watch(chatListControllerProvider);
+    final unread =
+        chat.conversations.fold<int>(0, (a, c) => a + c.unreadCount);
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        automaticallyImplyLeading: false,
-        titleSpacing: 16,
-        title: Text(
-          'Chat',
-          style: GoogleFonts.inter(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+      body: Column(
+        children: [
+          _TopBar(
+            onSearch: () {},
+            onNew: () => context.push('/chat/new'),
           ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search, color: AppColors.textSecondary),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.add, color: AppColors.textSecondary),
-            onPressed: () => context.push('/chat/new'),
-          ),
+          Expanded(child: _Body(chat: chat)),
         ],
       ),
-      body: _Body(chat: chat),
-      bottomNavigationBar: const WmBottomNav(currentIndex: 1),
+      bottomNavigationBar: WmBottomNav(currentIndex: 1, chatBadge: unread),
+    );
+  }
+}
+
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.onSearch, required this.onNew});
+  final VoidCallback onSearch;
+  final VoidCallback onNew;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 8, 8, 12),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
+        ),
+        child: Row(
+          children: [
+            Text('Chat', style: AppTextStyles.titleLarge),
+            const Spacer(),
+            IconButton(
+              splashRadius: 22,
+              icon: const Icon(Icons.search, size: 22),
+              color: AppColors.textSecondary,
+              onPressed: onSearch,
+            ),
+            IconButton(
+              splashRadius: 22,
+              icon: const Icon(Icons.add, size: 22),
+              color: AppColors.textSecondary,
+              onPressed: onNew,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -54,9 +79,10 @@ class _Body extends ConsumerWidget {
     if (chat.isLoading && !chat.hasLoaded) {
       return const Center(
         child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: AppColors.accent),
         ),
       );
     }
@@ -68,27 +94,18 @@ class _Body extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: AppColors.badgeRed, size: 40),
+              const Icon(Icons.error_outline,
+                  color: AppColors.danger, size: 36),
               const SizedBox(height: 12),
-              Text(
-                chat.errorMessage!,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
-              ),
+              Text(chat.errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.bodySmall),
               const SizedBox(height: 12),
               TextButton(
                 onPressed: () =>
                     ref.read(chatListControllerProvider.notifier).refresh(),
-                child: Text(
-                  'Try again',
-                  style: GoogleFonts.inter(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: const Text('Try again',
+                    style: TextStyle(color: AppColors.accent)),
               ),
             ],
           ),
@@ -103,21 +120,14 @@ class _Body extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.chat_bubble_outline, color: AppColors.textTertiary, size: 48),
+              const Icon(Icons.chat_bubble_outline,
+                  color: AppColors.textTertiary, size: 40),
               const SizedBox(height: 16),
-              Text(
-                'No conversations yet',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
+              Text('No conversations yet',
+                  style: AppTextStyles.titleMedium),
               const SizedBox(height: 6),
-              Text(
-                'Start one with the + button above.',
-                style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
-              ),
+              Text('Start one with the + button above.',
+                  style: AppTextStyles.bodySmall),
             ],
           ),
         ),
@@ -131,7 +141,7 @@ class _Body extends ConsumerWidget {
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: chat.conversations.length,
-        separatorBuilder: (context, index) =>
+        separatorBuilder: (_, __) =>
             const Divider(height: 1, color: AppColors.border),
         itemBuilder: (context, index) =>
             ConversationListItem(conversation: chat.conversations[index]),

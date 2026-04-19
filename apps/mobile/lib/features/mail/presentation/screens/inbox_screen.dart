@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_bottom_nav.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_list_item.dart';
 import '../../../shell/presentation/widgets/app_drawer.dart';
 
+/// Mobile/Inbox — design.lib.pen node `DSAIy`.
 class InboxScreen extends ConsumerWidget {
   const InboxScreen({super.key});
 
@@ -26,67 +28,93 @@ class InboxScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       drawer: const AppDrawer(),
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        automaticallyImplyLeading: false,
-        titleSpacing: 0,
-        title: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Builder(
-                builder: (context) => GestureDetector(
-                  onTap: () => Scaffold.of(context).openDrawer(),
-                  child: const Icon(Icons.menu, color: AppColors.textPrimary, size: 24),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Inbox',
-                style: GoogleFonts.inter(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              if (unreadCount > 0) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$unreadCount',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.background,
-                    ),
-                  ),
-                ),
-              ],
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.search, color: AppColors.textSecondary),
-                onPressed: () => context.push('/search'),
-              ),
-              IconButton(
-                icon: const Icon(Icons.filter_list, color: AppColors.textSecondary),
-                onPressed: () {},
-              ),
-            ],
+      body: Column(
+        children: [
+          _TopBar(unreadCount: unreadCount),
+          Expanded(child: _InboxBody(inbox: inbox)),
+        ],
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: FloatingActionButton(
+            onPressed: () => context.push('/compose'),
+            backgroundColor: AppColors.accent,
+            elevation: 0,
+            highlightElevation: 0,
+            shape: const RoundedRectangleBorder(),
+            child: const Icon(Icons.edit_outlined,
+                color: AppColors.background, size: 22),
           ),
         ),
       ),
-      body: _InboxBody(inbox: inbox),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/compose'),
-        backgroundColor: AppColors.accent,
-        child: const Icon(Icons.edit_outlined, color: AppColors.background),
+      bottomNavigationBar: WmBottomNav(
+        currentIndex: 0,
+        mailBadge: unreadCount,
       ),
-      bottomNavigationBar: const WmBottomNav(currentIndex: 0),
+    );
+  }
+}
+
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.unreadCount});
+  final int unreadCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 4, 8, 12),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
+        ),
+        child: Row(
+          children: [
+            Builder(
+              builder: (context) => IconButton(
+                splashRadius: 22,
+                icon: const Icon(Icons.menu, size: 24),
+                color: AppColors.textPrimary,
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text('Inbox', style: AppTextStyles.titleLarge),
+            if (unreadCount > 0) ...[
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                color: AppColors.accent,
+                child: Text(
+                  '$unreadCount',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.background,
+                    height: 1.1,
+                  ),
+                ),
+              ),
+            ],
+            const Spacer(),
+            IconButton(
+              splashRadius: 22,
+              icon: const Icon(Icons.search, size: 22),
+              color: AppColors.textSecondary,
+              onPressed: () => context.push('/search'),
+            ),
+            IconButton(
+              splashRadius: 22,
+              icon: const Icon(Icons.tune, size: 20),
+              color: AppColors.textSecondary,
+              onPressed: () {},
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -100,9 +128,12 @@ class _InboxBody extends ConsumerWidget {
     if (inbox.isLoading && !inbox.hasLoaded) {
       return const Center(
         child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.accent,
+          ),
         ),
       );
     }
@@ -114,9 +145,7 @@ class _InboxBody extends ConsumerWidget {
       );
     }
 
-    if (inbox.emails.isEmpty) {
-      return const _EmptyState();
-    }
+    if (inbox.emails.isEmpty) return const _EmptyState();
 
     return RefreshIndicator(
       color: AppColors.accent,
@@ -125,7 +154,7 @@ class _InboxBody extends ConsumerWidget {
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: inbox.emails.length,
-        separatorBuilder: (context, index) =>
+        separatorBuilder: (_, __) =>
             const Divider(height: 1, color: AppColors.border),
         itemBuilder: (context, index) =>
             EmailListItem(email: inbox.emails[index]),
@@ -145,21 +174,13 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.inbox_outlined, color: AppColors.textTertiary, size: 48),
+            const Icon(Icons.inbox_outlined,
+                color: AppColors.textTertiary, size: 40),
             const SizedBox(height: 16),
-            Text(
-              'Your inbox is empty',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
+            Text('Your inbox is empty', style: AppTextStyles.titleMedium),
             const SizedBox(height: 6),
-            Text(
-              'New emails will appear here.',
-              style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
-            ),
+            Text('New emails will appear here.',
+                style: AppTextStyles.bodySmall),
           ],
         ),
       ),
@@ -180,19 +201,19 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: AppColors.badgeRed, size: 40),
+            const Icon(Icons.error_outline, color: AppColors.danger, size: 36),
             const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontSize: 14, color: AppColors.textSecondary),
-            ),
+            Text(message,
+                textAlign: TextAlign.center, style: AppTextStyles.bodySmall),
             const SizedBox(height: 16),
             TextButton(
               onPressed: onRetry,
               child: Text(
                 'Try again',
-                style: GoogleFonts.inter(color: AppColors.accent, fontWeight: FontWeight.w600),
+                style: GoogleFonts.inter(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],

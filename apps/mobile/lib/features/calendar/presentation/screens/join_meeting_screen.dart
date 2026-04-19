@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/wm_app_bar.dart';
+import '../../../../core/widgets/wm_primary_button.dart';
 
+/// Mobile/JoinMeeting — design.lib.pen node `CDfAx`. Centered glyph,
+/// title + subtitle, code input, lime "Join Meeting", "or" divider,
+/// outlined "Scan QR Code".
 class JoinMeetingScreen extends StatefulWidget {
   const JoinMeetingScreen({super.key});
 
@@ -29,13 +35,10 @@ class _JoinMeetingScreenState extends State<JoinMeetingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: AppColors.textPrimary),
-          onPressed: () => context.pop(),
-        ),
+      appBar: const WmAppBar(
+        divider: false,
+        showBack: false,
+        leading: _CloseLeading(),
       ),
       body: SafeArea(
         child: Padding(
@@ -44,82 +47,80 @@ class _JoinMeetingScreenState extends State<JoinMeetingScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.accentSubtle,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
-                ),
-                child: const Icon(Icons.videocam_outlined, color: AppColors.accent, size: 28),
+                width: 64,
+                height: 64,
+                color: AppColors.accentDim,
+                alignment: Alignment.center,
+                child: const Icon(Icons.videocam_outlined,
+                    color: AppColors.accent, size: 26),
               ),
               const SizedBox(height: 20),
-              Text(
-                'Join a Meeting',
-                style: GoogleFonts.inter(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 6),
+              Text('Join a Meeting', style: AppTextStyles.headlineMedium),
+              const SizedBox(height: 8),
               Text(
                 'Enter the meeting code to join',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppTextStyles.bodySmall,
               ),
               const SizedBox(height: 32),
-              TextField(
-                key: const Key('meeting-code'),
-                controller: _codeController,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(fontSize: 15, color: AppColors.textPrimary, letterSpacing: 2),
-                decoration: InputDecoration(
-                  hintText: '#  Enter meeting code…',
-                  hintStyle: GoogleFonts.inter(fontSize: 14, color: AppColors.textTertiary),
+              Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.fromBorderSide(
+                    BorderSide(color: AppColors.border, width: 1),
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: TextField(
+                  key: const Key('meeting-code'),
+                  controller: _codeController,
+                  textAlign: TextAlign.center,
+                  cursorColor: AppColors.accent,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                    letterSpacing: 1.2,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '#  Enter meeting code...',
+                    hintStyle: GoogleFonts.jetBrainsMono(
+                      fontSize: 13,
+                      color: AppColors.textTertiary,
+                    ),
+                    border: InputBorder.none,
+                    isCollapsed: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(vertical: 16),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _join,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accent,
-                  foregroundColor: AppColors.background,
-                  elevation: 0,
-                  minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: Text(
-                  'Join Meeting',
-                  style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-              ),
+              WmPrimaryButton(label: 'Join Meeting', onPressed: _join),
               const SizedBox(height: 16),
-              Text(
-                'or',
-                style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
-              ),
+              Text('or', style: AppTextStyles.bodySmall),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
+              WmSecondaryButton(
+                label: 'Scan QR Code',
+                icon: Icons.qr_code_scanner,
                 onPressed: () {},
-                icon: const Icon(Icons.qr_code_scanner, size: 18),
-                label: Text(
-                  'Scan QR Code',
-                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.textPrimary,
-                  side: const BorderSide(color: AppColors.border),
-                  minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CloseLeading extends StatelessWidget {
+  const _CloseLeading();
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      splashRadius: 22,
+      icon: const Icon(Icons.close, size: 22),
+      color: AppColors.textPrimary,
+      onPressed: () => Navigator.of(context).maybePop(),
     );
   }
 }
