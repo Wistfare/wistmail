@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
   Plus, Mail, Settings, LogOut, Users, Building2, ScrollText,
-  User, Globe, Key, Webhook, PenLine,
+  User, Globe, Key, Webhook, PenLine, ShieldCheck,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
@@ -43,6 +43,7 @@ const ADMIN_NAV = [
 
 const SETTINGS_NAV = [
   { icon: <User className="h-4 w-4" />, label: 'Account', href: '/settings/account' },
+  { icon: <ShieldCheck className="h-4 w-4" />, label: 'Two-factor', href: '/settings/two-factor' },
   { icon: <Globe className="h-4 w-4" />, label: 'Domains', href: '/settings/domains' },
   { icon: <Key className="h-4 w-4" />, label: 'API Keys', href: '/settings/api-keys' },
   { icon: <Webhook className="h-4 w-4" />, label: 'Webhooks', href: '/settings/webhooks' },

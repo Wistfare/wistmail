@@ -8,7 +8,7 @@ import '../../../auth/presentation/providers/auth_controller.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_list_item.dart';
 import '../widgets/email_list_skeleton.dart';
-import '../../../shell/presentation/widgets/app_drawer.dart';
+import '../../../shell/presentation/screens/main_shell.dart';
 
 /// Mobile/Inbox — design.lib.pen node `DSAIy`.
 class InboxScreen extends ConsumerWidget {
@@ -23,9 +23,11 @@ class InboxScreen extends ConsumerWidget {
 
     // Auth gating happens in the router's redirect — no listener needed here.
 
+    // Drawer lives on the MainShell scaffold so it overlays the bottom
+    // nav and the scrim covers the entire screen. The hamburger button
+    // walks up to that scaffold via Scaffold.of with the root context.
     return Scaffold(
       backgroundColor: AppColors.background,
-      drawer: const AppDrawer(),
       body: Column(
         children: [
           _TopBar(unreadCount: unreadCount),
@@ -68,13 +70,12 @@ class _TopBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Builder(
-              builder: (context) => IconButton(
-                splashRadius: 22,
-                icon: const Icon(Icons.menu, size: 24),
-                color: AppColors.textPrimary,
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              ),
+            // Open the shell-level drawer so it overlays the bottom nav.
+            IconButton(
+              splashRadius: 22,
+              icon: const Icon(Icons.menu, size: 24),
+              color: AppColors.textPrimary,
+              onPressed: () => shellScaffoldKey.currentState?.openDrawer(),
             ),
             const SizedBox(width: 4),
             Text('Inbox', style: AppTextStyles.titleLarge),

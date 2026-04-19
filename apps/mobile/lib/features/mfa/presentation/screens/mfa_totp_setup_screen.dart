@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_app_bar.dart';
@@ -232,15 +233,20 @@ class _QrSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // QR placeholder. A real QR rendering would use qr_flutter
-        // (not yet a dep) — the manual key path below covers users
-        // until we ship that.
+        // QR rendering of the otpauth:// URL — scannable by Google
+        // Authenticator, 1Password, Authy, etc.
         Container(
           width: 160,
           height: 160,
           color: Colors.white,
-          alignment: Alignment.center,
-          child: const _QrPlaceholder(),
+          padding: const EdgeInsets.all(8),
+          child: QrImageView(
+            data: challenge.otpauthUrl,
+            version: QrVersions.auto,
+            backgroundColor: Colors.white,
+            errorCorrectionLevel: QrErrorCorrectLevel.M,
+            padding: EdgeInsets.zero,
+          ),
         ),
         const SizedBox(height: 12),
         Text('Or enter this key manually',
@@ -316,17 +322,3 @@ class _QrSection extends StatelessWidget {
   }
 }
 
-/// Placeholder QR. Real QR rendering would use the `qr_flutter` package
-/// — for now we show a static glyph and rely on the manual-key copy
-/// path below.
-class _QrPlaceholder extends StatelessWidget {
-  const _QrPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(12),
-      child: Icon(Icons.qr_code_2, size: 100, color: Colors.black),
-    );
-  }
-}

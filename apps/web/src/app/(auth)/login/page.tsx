@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Mail, Lock, EyeOff, Eye, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import { writePendingMfa } from '@/lib/mfa-storage'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
 
@@ -40,7 +41,28 @@ export default function LoginPage() {
     setErrors({})
 
     try {
-      const res = await api.post<{ user: { setupComplete: boolean } }>('/api/v1/auth/login', { email, password })
+      type LoginResponse =
+        | {
+            user: { setupComplete: boolean }
+            mfaRequired?: undefined
+          }
+        | {
+            mfaRequired: true
+            pendingToken: string
+            methods: { type: string; label?: string | null }[]
+          }
+      const res = await api.post<LoginResponse>('/api/v1/auth/login', {
+        email,
+        password,
+      })
+      if ('mfaRequired' in res && res.mfaRequired) {
+        writePendingMfa({
+          pendingToken: res.pendingToken,
+          methods: res.methods,
+        })
+        router.push('/mfa/challenge')
+        return
+      }
       router.push(res.user.setupComplete ? '/inbox' : '/setup')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Invalid email or password'
