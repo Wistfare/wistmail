@@ -12,16 +12,17 @@ class WistMailApp extends StatelessWidget {
   }
 }
 
-class _Root extends StatelessWidget {
+class _Root extends ConsumerWidget {
   const _Root();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       title: 'Wistfare Mail',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
-      routerConfig: appRouter,
+      routerConfig: router,
     );
   }
 }

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../auth/presentation/providers/auth_controller.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_list_item.dart';
 import '../widgets/email_list_skeleton.dart';
@@ -19,11 +18,7 @@ class InboxScreen extends ConsumerWidget {
     final inbox = ref.watch(inboxControllerProvider);
     final unreadCount = inbox.emails.where((e) => !e.isRead).length;
 
-    ref.listen<AuthState>(authControllerProvider, (prev, next) {
-      if (!next.isAuthenticated && !next.isRestoring) {
-        context.go('/auth/sign-in');
-      }
-    });
+    // Auth gating happens in the router's redirect — no listener needed here.
 
     return Scaffold(
       backgroundColor: AppColors.background,

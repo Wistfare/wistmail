@@ -37,6 +37,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         .read(authControllerProvider.notifier)
         .login(email: email, password: password);
     if (!mounted) return;
+    // Router's auth-aware redirect would navigate here on its own, but the
+    // explicit go keeps test routers (which don't include the redirect)
+    // working and makes the post-login flow obvious.
     if (success) context.go('/inbox');
   }
 

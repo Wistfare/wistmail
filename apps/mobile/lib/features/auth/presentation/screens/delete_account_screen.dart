@@ -40,9 +40,9 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         .read(authControllerProvider.notifier)
         .deleteAccount(password: '');
     if (!mounted) return;
-    if (ok) {
-      context.go('/auth/sign-in');
-    } else {
+    // On success, the auth state flips to logged-out and the router
+    // redirects to /auth/sign-in automatically.
+    if (!ok) {
       final err = ref.read(authControllerProvider).errorMessage ??
           'Could not delete account.';
       setState(() {
