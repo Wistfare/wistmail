@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/wm_bottom_nav.dart';
 import '../providers/chat_providers.dart';
 import '../widgets/conversation_list_item.dart';
 
@@ -14,8 +13,6 @@ class ChatListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chat = ref.watch(chatListControllerProvider);
-    final unread =
-        chat.conversations.fold<int>(0, (a, c) => a + c.unreadCount);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -28,7 +25,6 @@ class ChatListScreen extends ConsumerWidget {
           Expanded(child: _Body(chat: chat)),
         ],
       ),
-      bottomNavigationBar: WmBottomNav(currentIndex: 1, chatBadge: unread),
     );
   }
 }
@@ -138,13 +134,18 @@ class _Body extends ConsumerWidget {
       color: AppColors.accent,
       backgroundColor: AppColors.surface,
       onRefresh: () => ref.read(chatListControllerProvider.notifier).refresh(),
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: chat.conversations.length,
-        separatorBuilder: (_, __) =>
-            const Divider(height: 1, color: AppColors.border),
-        itemBuilder: (context, index) =>
-            ConversationListItem(conversation: chat.conversations[index]),
+      child: MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: ListView.separated(
+          padding: EdgeInsets.zero,
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount: chat.conversations.length,
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, color: AppColors.border),
+          itemBuilder: (context, index) =>
+              ConversationListItem(conversation: chat.conversations[index]),
+        ),
       ),
     );
   }

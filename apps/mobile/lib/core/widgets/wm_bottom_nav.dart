@@ -12,20 +12,35 @@ import '../theme/app_colors.dart';
 ///   - 5 equal-width tabs flush against each other (no gaps)
 ///   - Active tab: solid lime fill, black icon
 ///   - Inactive tab: transparent (pill shows through), gray icon
-///   - Optional small lime / red marker at top-right of an inactive tab
+///   - Optional small red marker at top-right of an inactive tab
+///
+/// When [onTap] is provided we delegate selection back to the caller (used by
+/// the shell's IndexedStack to switch branches without a route rebuild). When
+/// [onTap] is null we fall back to `context.go(...)` — which is fine for
+/// non-shell contexts but causes the route to rebuild.
 class WmBottomNav extends StatelessWidget {
   const WmBottomNav({
     super.key,
     required this.currentIndex,
+    this.onTap,
     this.mailBadge,
     this.chatBadge,
   });
 
   final int currentIndex;
+  final ValueChanged<int>? onTap;
   final int? mailBadge;
   final int? chatBadge;
 
   static const _routes = ['/inbox', '/chat', '/calendar', '/meet', '/projects'];
+
+  void _select(BuildContext context, int index) {
+    if (onTap != null) {
+      onTap!(index);
+    } else {
+      context.go(_routes[index]);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,32 +65,32 @@ class WmBottomNav extends StatelessWidget {
                   index: 0,
                   currentIndex: currentIndex,
                   badge: mailBadge,
-                  onTap: () => context.go(_routes[0]),
+                  onTap: () => _select(context, 0),
                 ),
                 _Tab(
                   icon: Icons.chat_bubble_outline,
                   index: 1,
                   currentIndex: currentIndex,
                   badge: chatBadge,
-                  onTap: () => context.go(_routes[1]),
+                  onTap: () => _select(context, 1),
                 ),
                 _Tab(
                   icon: Icons.calendar_today_outlined,
                   index: 2,
                   currentIndex: currentIndex,
-                  onTap: () => context.go(_routes[2]),
+                  onTap: () => _select(context, 2),
                 ),
                 _Tab(
                   icon: Icons.videocam_outlined,
                   index: 3,
                   currentIndex: currentIndex,
-                  onTap: () => context.go(_routes[3]),
+                  onTap: () => _select(context, 3),
                 ),
                 _Tab(
                   icon: Icons.folder_outlined,
                   index: 4,
                   currentIndex: currentIndex,
-                  onTap: () => context.go(_routes[4]),
+                  onTap: () => _select(context, 4),
                 ),
               ],
             ),

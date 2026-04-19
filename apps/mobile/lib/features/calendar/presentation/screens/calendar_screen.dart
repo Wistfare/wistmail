@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/wm_bottom_nav.dart';
 import '../../domain/calendar_event.dart';
 import '../providers/calendar_providers.dart';
 
@@ -66,7 +65,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: const WmBottomNav(currentIndex: 2),
     );
   }
 }

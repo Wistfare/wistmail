@@ -4,10 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/wm_bottom_nav.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_list_item.dart';
+import '../widgets/email_list_skeleton.dart';
 import '../../../shell/presentation/widgets/app_drawer.dart';
 
 /// Mobile/Inbox — design.lib.pen node `DSAIy`.
@@ -50,10 +50,6 @@ class InboxScreen extends ConsumerWidget {
           ),
         ),
       ),
-      bottomNavigationBar: WmBottomNav(
-        currentIndex: 0,
-        mailBadge: unreadCount,
-      ),
     );
   }
 }
@@ -67,7 +63,7 @@ class _TopBar extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 4, 8, 12),
+        padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
         ),
@@ -126,15 +122,12 @@ class _InboxBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (inbox.isLoading && !inbox.hasLoaded) {
-      return const Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: AppColors.accent,
-          ),
-        ),
+      // Skeleton rows match real EmailListItem layout so the page doesn't
+      // jump when data arrives.
+      return MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: const EmailListSkeleton(),
       );
     }
 
@@ -151,13 +144,18 @@ class _InboxBody extends ConsumerWidget {
       color: AppColors.accent,
       backgroundColor: AppColors.surface,
       onRefresh: () => ref.read(inboxControllerProvider.notifier).refresh(),
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: inbox.emails.length,
-        separatorBuilder: (_, __) =>
-            const Divider(height: 1, color: AppColors.border),
-        itemBuilder: (context, index) =>
-            EmailListItem(email: inbox.emails[index]),
+      child: MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: ListView.separated(
+          padding: EdgeInsets.zero,
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount: inbox.emails.length,
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, color: AppColors.border),
+          itemBuilder: (context, index) =>
+              EmailListItem(email: inbox.emails[index]),
+        ),
       ),
     );
   }

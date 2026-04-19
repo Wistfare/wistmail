@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_avatar.dart';
-import '../../../../core/widgets/wm_bottom_nav.dart';
 import '../../../../core/widgets/wm_primary_button.dart';
 import '../../../../core/widgets/wm_tag.dart';
 import '../../domain/calendar_event.dart';
@@ -98,7 +97,6 @@ class MeetScreen extends ConsumerWidget {
           ),
         ],
       ),
-      bottomNavigationBar: const WmBottomNav(currentIndex: 3),
     );
   }
 }
