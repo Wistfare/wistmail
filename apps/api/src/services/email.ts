@@ -1,57 +1,139 @@
-import { eq, and, desc, sql, like, or } from 'drizzle-orm'
+import { eq, and, desc, ilike, or, sql, inArray } from 'drizzle-orm'
 import { emails, attachments, mailboxes } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 
+const PREVIEW_CHARS = 200
+
+/// Slim row returned by listByFolder/search — never includes the full
+/// text/html body. The detail view fetches the full record via getById.
+/// Keep the shape exactly aligned with the client `EmailListItem` types
+/// in apps/web (inbox/page.tsx) and apps/mobile (lib/features/mail/domain/email.dart).
+export interface EmailListItem {
+  id: string
+  mailboxId: string
+  fromAddress: string
+  toAddresses: string[]
+  cc: string[]
+  subject: string
+  snippet: string
+  folder: string
+  isRead: boolean
+  isStarred: boolean
+  isDraft: boolean
+  hasAttachments: boolean
+  sizeBytes: number
+  createdAt: string
+}
+
+export interface EmailListPage {
+  data: EmailListItem[]
+  total: number
+  page: number
+  pageSize: number
+  hasMore: boolean
+}
+
+/// Cleans common HTML noise out of the textBody substring so the snippet
+/// reads naturally. We don't strip everything (that's the renderer's job)
+/// — just collapse whitespace and chop off after PREVIEW_CHARS.
+function buildSnippet(textBody: string | null): string {
+  if (!textBody) return ''
+  const collapsed = textBody.replace(/\s+/g, ' ').trim()
+  if (collapsed.length <= PREVIEW_CHARS) return collapsed
+  return `${collapsed.slice(0, PREVIEW_CHARS)}…`
+}
+
 export class EmailService {
   constructor(private db: Database) {}
 
-  async listByFolder(userId: string, folder: string, page = 1, pageSize = 25) {
-    // Get user's mailbox IDs
-    const userMailboxes = await this.db
+  private async resolveMailboxIds(userId: string): Promise<string[]> {
+    const rows = await this.db
       .select({ id: mailboxes.id })
       .from(mailboxes)
       .where(eq(mailboxes.userId, userId))
+    return rows.map((m) => m.id)
+  }
 
-    if (userMailboxes.length === 0) {
+  async listByFolder(
+    userId: string,
+    folder: string,
+    page = 1,
+    pageSize = 25,
+  ): Promise<EmailListPage> {
+    const mailboxIds = await this.resolveMailboxIds(userId)
+    if (mailboxIds.length === 0) {
       return { data: [], total: 0, page, pageSize, hasMore: false }
     }
 
-    const mailboxIds = userMailboxes.map((m) => m.id)
-
     const offset = (page - 1) * pageSize
 
-    const emailList = await this.db
-      .select()
-      .from(emails)
-      .where(
-        and(
-          sql`${emails.mailboxId} IN ${mailboxIds}`,
-          eq(emails.folder, folder),
-        ),
-      )
-      .orderBy(desc(emails.createdAt))
-      .limit(pageSize)
-      .offset(offset)
+    // SQL substring keeps the wire payload small even for emails with
+    // multi-megabyte bodies. The DB does the slice; we never read the
+    // full body into Node memory just to throw it away.
+    const snippetExpr = sql<string>`coalesce(substring(${emails.textBody}, 1, ${
+      PREVIEW_CHARS * 4
+    }), '')`
+    const hasAttExpr = sql<boolean>`exists(select 1 from ${attachments} where ${attachments.emailId} = ${emails.id})`
 
-    const countResult = await this.db
-      .select({ count: sql<number>`count(*)` })
-      .from(emails)
-      .where(
-        and(
-          sql`${emails.mailboxId} IN ${mailboxIds}`,
-          eq(emails.folder, folder),
-        ),
-      )
+    const where = and(
+      inArray(emails.mailboxId, mailboxIds),
+      eq(emails.folder, folder),
+    )
 
-    const total = Number(countResult[0]?.count || 0)
+    const [rows, [{ count }]] = await Promise.all([
+      this.db
+        .select({
+          id: emails.id,
+          mailboxId: emails.mailboxId,
+          fromAddress: emails.fromAddress,
+          toAddresses: emails.toAddresses,
+          cc: emails.cc,
+          subject: emails.subject,
+          snippetRaw: snippetExpr,
+          folder: emails.folder,
+          isRead: emails.isRead,
+          isStarred: emails.isStarred,
+          isDraft: emails.isDraft,
+          hasAttachments: hasAttExpr,
+          sizeBytes: emails.sizeBytes,
+          createdAt: emails.createdAt,
+        })
+        .from(emails)
+        .where(where)
+        .orderBy(desc(emails.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(emails)
+        .where(where),
+    ])
 
+    const data: EmailListItem[] = rows.map((r) => ({
+      id: r.id,
+      mailboxId: r.mailboxId,
+      fromAddress: r.fromAddress,
+      toAddresses: r.toAddresses,
+      cc: r.cc,
+      subject: r.subject,
+      snippet: buildSnippet(r.snippetRaw),
+      folder: r.folder,
+      isRead: r.isRead,
+      isStarred: r.isStarred,
+      isDraft: r.isDraft,
+      hasAttachments: r.hasAttachments,
+      sizeBytes: r.sizeBytes,
+      createdAt: r.createdAt.toISOString(),
+    }))
+
+    const total = Number(count ?? 0)
     return {
-      data: emailList,
+      data,
       total,
       page,
       pageSize,
-      hasMore: offset + pageSize < total,
+      hasMore: offset + data.length < total,
     }
   }
 
@@ -72,6 +154,56 @@ export class EmailService {
       .where(eq(attachments.emailId, emailId))
 
     return { ...email, attachments: emailAttachments }
+  }
+
+  /// Build the slim list-row shape from a freshly inserted email — used by
+  /// the realtime publish path so subscribers don't have to re-fetch just
+  /// to render the inbox row.
+  async toListItem(emailId: string): Promise<EmailListItem | null> {
+    const rows = await this.db
+      .select({
+        id: emails.id,
+        mailboxId: emails.mailboxId,
+        fromAddress: emails.fromAddress,
+        toAddresses: emails.toAddresses,
+        cc: emails.cc,
+        subject: emails.subject,
+        textBody: emails.textBody,
+        folder: emails.folder,
+        isRead: emails.isRead,
+        isStarred: emails.isStarred,
+        isDraft: emails.isDraft,
+        sizeBytes: emails.sizeBytes,
+        createdAt: emails.createdAt,
+      })
+      .from(emails)
+      .where(eq(emails.id, emailId))
+      .limit(1)
+
+    if (rows.length === 0) return null
+    const r = rows[0]
+    const att = await this.db
+      .select({ id: attachments.id })
+      .from(attachments)
+      .where(eq(attachments.emailId, emailId))
+      .limit(1)
+
+    return {
+      id: r.id,
+      mailboxId: r.mailboxId,
+      fromAddress: r.fromAddress,
+      toAddresses: r.toAddresses,
+      cc: r.cc,
+      subject: r.subject,
+      snippet: buildSnippet(r.textBody),
+      folder: r.folder,
+      isRead: r.isRead,
+      isStarred: r.isStarred,
+      isDraft: r.isDraft,
+      hasAttachments: att.length > 0,
+      sizeBytes: r.sizeBytes,
+      createdAt: r.createdAt.toISOString(),
+    }
   }
 
   async markRead(emailId: string, userId: string) {
@@ -139,70 +271,101 @@ export class EmailService {
     return this.moveToFolder(emailId, userId, 'archive')
   }
 
-  async search(userId: string, query: string, page = 1, pageSize = 25) {
-    const userMailboxes = await this.db
-      .select({ id: mailboxes.id })
-      .from(mailboxes)
-      .where(eq(mailboxes.userId, userId))
-
-    if (userMailboxes.length === 0) {
+  /// SQL fallback search — subject + from only (uses indexed columns,
+  /// no body scan). Production search should go through SearchService /
+  /// MeiliSearch; this stays as the cheap fallback for cold deployments.
+  async search(
+    userId: string,
+    query: string,
+    page = 1,
+    pageSize = 25,
+  ): Promise<EmailListPage> {
+    const mailboxIds = await this.resolveMailboxIds(userId)
+    if (mailboxIds.length === 0) {
       return { data: [], total: 0, page, pageSize, hasMore: false }
     }
 
-    const mailboxIds = userMailboxes.map((m) => m.id)
-    const searchPattern = `%${query}%`
+    const pattern = `%${query.replace(/[%_]/g, (c) => `\\${c}`)}%`
     const offset = (page - 1) * pageSize
+    const where = and(
+      inArray(emails.mailboxId, mailboxIds),
+      or(ilike(emails.subject, pattern), ilike(emails.fromAddress, pattern)),
+    )
 
-    const results = await this.db
-      .select()
+    const snippetExpr = sql<string>`coalesce(substring(${emails.textBody}, 1, ${PREVIEW_CHARS * 4}), '')`
+    const hasAttExpr = sql<boolean>`exists(select 1 from ${attachments} where ${attachments.emailId} = ${emails.id})`
+
+    const rows = await this.db
+      .select({
+        id: emails.id,
+        mailboxId: emails.mailboxId,
+        fromAddress: emails.fromAddress,
+        toAddresses: emails.toAddresses,
+        cc: emails.cc,
+        subject: emails.subject,
+        snippetRaw: snippetExpr,
+        folder: emails.folder,
+        isRead: emails.isRead,
+        isStarred: emails.isStarred,
+        isDraft: emails.isDraft,
+        hasAttachments: hasAttExpr,
+        sizeBytes: emails.sizeBytes,
+        createdAt: emails.createdAt,
+      })
       .from(emails)
-      .where(
-        and(
-          sql`${emails.mailboxId} IN ${mailboxIds}`,
-          or(
-            like(emails.subject, searchPattern),
-            like(emails.fromAddress, searchPattern),
-            like(emails.textBody, searchPattern),
-          ),
-        ),
-      )
+      .where(where)
       .orderBy(desc(emails.createdAt))
       .limit(pageSize)
       .offset(offset)
 
-    return { data: results, total: results.length, page, pageSize, hasMore: false }
+    const data: EmailListItem[] = rows.map((r) => ({
+      id: r.id,
+      mailboxId: r.mailboxId,
+      fromAddress: r.fromAddress,
+      toAddresses: r.toAddresses,
+      cc: r.cc,
+      subject: r.subject,
+      snippet: buildSnippet(r.snippetRaw),
+      folder: r.folder,
+      isRead: r.isRead,
+      isStarred: r.isStarred,
+      isDraft: r.isDraft,
+      hasAttachments: r.hasAttachments,
+      sizeBytes: r.sizeBytes,
+      createdAt: r.createdAt.toISOString(),
+    }))
+
+    return {
+      data,
+      total: data.length,
+      page,
+      pageSize,
+      hasMore: data.length === pageSize,
+    }
   }
 
   async getUnreadCounts(userId: string) {
-    const userMailboxes = await this.db
-      .select({ id: mailboxes.id })
-      .from(mailboxes)
-      .where(eq(mailboxes.userId, userId))
-
-    if (userMailboxes.length === 0) {
+    const mailboxIds = await this.resolveMailboxIds(userId)
+    if (mailboxIds.length === 0) {
       return { inbox: 0, drafts: 0, spam: 0, total: 0 }
     }
-
-    const mailboxIds = userMailboxes.map((m) => m.id)
 
     const counts = await this.db
       .select({
         folder: emails.folder,
-        count: sql<number>`count(*)`,
+        count: sql<number>`count(*)::int`,
       })
       .from(emails)
       .where(
-        and(
-          sql`${emails.mailboxId} IN ${mailboxIds}`,
-          eq(emails.isRead, false),
-        ),
+        and(inArray(emails.mailboxId, mailboxIds), eq(emails.isRead, false)),
       )
       .groupBy(emails.folder)
 
     const result: Record<string, number> = { inbox: 0, drafts: 0, spam: 0, total: 0 }
     for (const c of counts) {
-      result[c.folder] = Number(c.count)
-      result.total += Number(c.count)
+      const n = Number(c.count)
+      result[c.folder] = n
+      result.total += n
     }
 
     return result

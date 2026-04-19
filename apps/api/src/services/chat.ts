@@ -39,6 +39,8 @@ export class ChatService {
 
     const conversationIds = rows.map((r) => r.id)
 
+    // DB-side filter: exclude the requesting user from the result rather
+    // than fetching every participant and discarding self in Node.
     const allParticipants = await this.db
       .select({
         conversationId: conversationParticipants.conversationId,
@@ -49,14 +51,18 @@ export class ChatService {
       })
       .from(conversationParticipants)
       .innerJoin(users, eq(users.id, conversationParticipants.userId))
-      .where(inArray(conversationParticipants.conversationId, conversationIds))
+      .where(
+        and(
+          inArray(conversationParticipants.conversationId, conversationIds),
+          sql`${conversationParticipants.userId} <> ${userId}`,
+        ),
+      )
 
     const byConversation = new Map<
       string,
       { id: string; name: string; email: string; avatarUrl: string | null }[]
     >()
     for (const p of allParticipants) {
-      if (p.userId === userId) continue
       const list = byConversation.get(p.conversationId) ?? []
       list.push({
         id: p.userId,

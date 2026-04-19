@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from 'node:crypto'
-import { eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { webhooks, webhookLogs } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
@@ -38,13 +38,20 @@ export class WebhookDispatcher {
       data,
     }
 
-    // Find all active webhooks subscribed to this event
-    const allWebhooks = await this.db.select().from(webhooks).where(eq(webhooks.active, true))
+    // DB-side filter: jsonb @> containment uses the GIN index if present,
+    // otherwise a partial scan limited to active webhooks. Either way we
+    // never pull non-matching webhook rows over the wire.
+    const matching = await this.db
+      .select({ id: webhooks.id, url: webhooks.url, secret: webhooks.secret })
+      .from(webhooks)
+      .where(
+        and(
+          eq(webhooks.active, true),
+          sql`${webhooks.events} @> ${JSON.stringify([event])}::jsonb`,
+        ),
+      )
 
-    const matching = allWebhooks.filter((wh) => {
-      const events = wh.events as string[]
-      return events.includes(event)
-    })
+    if (matching.length === 0) return
 
     // Deliver to each webhook in parallel
     await Promise.allSettled(

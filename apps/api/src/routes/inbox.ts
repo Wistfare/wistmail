@@ -9,6 +9,12 @@ import { EmailSender } from '../services/email-sender.js'
 import { BillingService } from '../services/billing.js'
 import { getDb } from '../lib/db.js'
 import { eventBus } from '../events/bus.js'
+import {
+  searchEmails,
+  searchEnabled,
+  updateIndexedEmail,
+  deleteIndexedEmail,
+} from '../services/search.js'
 
 export const inboxRoutes = new Hono<SessionEnv>()
 
@@ -54,6 +60,7 @@ inboxRoutes.post('/emails/:id/read', async (c) => {
   const db = getDb()
   const emailService = new EmailService(db)
   await emailService.markRead(emailId, userId)
+  updateIndexedEmail(userId, emailId, { isRead: true }).catch(() => {})
   eventBus.publish({
     type: 'email.updated',
     userId,
@@ -72,6 +79,7 @@ inboxRoutes.post('/emails/:id/unread', async (c) => {
   const db = getDb()
   const emailService = new EmailService(db)
   await emailService.markUnread(emailId, userId)
+  updateIndexedEmail(userId, emailId, { isRead: false }).catch(() => {})
   eventBus.publish({
     type: 'email.updated',
     userId,
@@ -90,6 +98,7 @@ inboxRoutes.post('/emails/:id/star', async (c) => {
   const db = getDb()
   const emailService = new EmailService(db)
   const starred = await emailService.toggleStar(emailId, userId)
+  updateIndexedEmail(userId, emailId, { isStarred: starred ?? false }).catch(() => {})
   eventBus.publish({
     type: 'email.updated',
     userId,
@@ -108,6 +117,7 @@ inboxRoutes.post('/emails/:id/archive', async (c) => {
   const db = getDb()
   const emailService = new EmailService(db)
   await emailService.archive(emailId, userId)
+  updateIndexedEmail(userId, emailId, { folder: 'archive' }).catch(() => {})
   eventBus.publish({
     type: 'email.updated',
     userId,
@@ -126,6 +136,8 @@ inboxRoutes.post('/emails/:id/delete', async (c) => {
   const db = getDb()
   const emailService = new EmailService(db)
   await emailService.delete(emailId, userId)
+  // Move to trash + drop from search index. We don't search trash by default.
+  deleteIndexedEmail(userId, emailId).catch(() => {})
   eventBus.publish({
     type: 'email.deleted',
     userId,
@@ -161,18 +173,29 @@ inboxRoutes.get('/unread-counts', async (c) => {
 })
 
 /**
- * GET /api/v1/inbox/search?q=query
+ * GET /api/v1/inbox/search?q=query&page=1&pageSize=25
+ *
+ * Routes through MeiliSearch when enabled (covers full-text body match);
+ * falls back to a slim SQL ILIKE on subject + from when MeiliSearch is
+ * unreachable so the app never appears broken on a cold deploy.
  */
 inboxRoutes.get('/search', async (c) => {
   const query = c.req.query('q') || ''
+  const page = parseInt(c.req.query('page') || '1', 10)
+  const pageSize = Math.min(parseInt(c.req.query('pageSize') || '25', 10), 100)
   if (!query.trim()) {
-    return c.json({ data: [], total: 0, page: 1, pageSize: 25, hasMore: false })
+    return c.json({ data: [], total: 0, page, pageSize, hasMore: false })
+  }
+
+  if (searchEnabled()) {
+    const meili = await searchEmails(c.get('userId'), query, page, pageSize)
+    if (meili) return c.json(meili)
   }
 
   const db = getDb()
   const emailService = new EmailService(db)
-  const result = await emailService.search(c.get('userId'), query)
-  return c.json(result)
+  const fallback = await emailService.search(c.get('userId'), query, page, pageSize)
+  return c.json(fallback)
 })
 
 /**
@@ -218,13 +241,18 @@ inboxRoutes.post('/compose', async (c) => {
   }
 
   if (parsed.data.send) {
-    // Check org has credits before sending
     const orgId = c.get('orgId')
+
+    // Atomic deduct-or-fail: avoids the TOCTOU window where a precheck
+    // says "yes" but a concurrent send drains the balance before we
+    // actually charge. If there are no credits we never even queue.
     if (orgId) {
       const billing = new BillingService(db)
-      const hasCredits = await billing.hasCredits(orgId)
-      if (!hasCredits) {
-        throw new ValidationError('Insufficient email credits. Please purchase more credits to continue sending.')
+      const deducted = await billing.deductCredit(orgId, 'pre-send')
+      if (!deducted) {
+        throw new ValidationError(
+          'Insufficient email credits. Please purchase more credits to continue sending.',
+        )
       }
     }
 
@@ -234,18 +262,30 @@ inboxRoutes.post('/compose', async (c) => {
       mailboxId: parsed.data.mailboxId,
     })
 
-    // Deduct credit and send via mail engine in the background
+    // Send via mail engine in the background. Refund the credit if the
+    // send fails so users aren't charged for messages we couldn't deliver.
     const sender = new EmailSender(db)
-    const sendAndDeduct = async () => {
-      const sendResult = await sender.sendEmail(result.id)
-      if (sendResult.success && orgId) {
-        const billing = new BillingService(db)
-        await billing.deductCredit(orgId, result.id)
-      }
-    }
-    sendAndDeduct().catch((err) => {
-      console.error(`Failed to send email ${result.id}:`, err)
-    })
+    sender
+      .sendEmail(result.id)
+      .then(async (sendResult) => {
+        if (!sendResult.success && orgId) {
+          await new BillingService(db).addCredits(
+            orgId,
+            1,
+            `Refund for failed send ${result.id}`,
+          )
+        }
+      })
+      .catch(async (err) => {
+        console.error(`Failed to send email ${result.id}:`, err)
+        if (orgId) {
+          await new BillingService(db).addCredits(
+            orgId,
+            1,
+            `Refund for failed send ${result.id}`,
+          )
+        }
+      })
 
     return c.json({ id: result.id, status: 'sending' }, 201)
   }

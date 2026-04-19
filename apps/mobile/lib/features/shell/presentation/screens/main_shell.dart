@@ -23,17 +23,15 @@ class MainShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Surface unread counts to the bottom nav badges. Watching here keeps the
-    // shell reactive when emails arrive over the WS or chats update.
-    final mailUnread = ref
-        .watch(inboxControllerProvider)
-        .emails
-        .where((e) => !e.isRead)
-        .length;
-    final chatUnread = ref
-        .watch(chatListControllerProvider)
-        .conversations
-        .fold<int>(0, (a, c) => a + c.unreadCount);
+    // Surface unread counts to the bottom nav badges. The mail count uses a
+    // cached selector so the shell only rebuilds when the count actually
+    // changes (not on every star/move/refresh).
+    final mailUnread = ref.watch(inboxUnreadCountProvider);
+    final chatUnread = ref.watch(
+      chatListControllerProvider.select(
+        (s) => s.conversations.fold<int>(0, (a, c) => a + c.unreadCount),
+      ),
+    );
 
     // Drawer lives on the shell scaffold so it overlays the bottom nav
     // and the drawer scrim covers the entire screen instead of the

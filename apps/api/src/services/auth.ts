@@ -60,6 +60,10 @@ export class AuthService {
     return this.beginSession(user.id)
   }
 
+  /// Single-query session lookup. Joins sessions → users → org_members in
+  /// one round-trip and pulls every flag the middleware + downstream
+  /// handlers need (MFA, setup, org role). Used by every authenticated
+  /// request — keep it lean.
   async validateSession(token: string) {
     const result = await this.db
       .select({
@@ -71,7 +75,10 @@ export class AuthService {
         userAvatar: users.avatarUrl,
         setupComplete: users.setupComplete,
         setupStep: users.setupStep,
-        role: orgMembers.role,
+        mfaRequired: users.mfaRequired,
+        mfaSetupComplete: users.mfaSetupComplete,
+        orgId: orgMembers.orgId,
+        orgRole: orgMembers.role,
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
@@ -87,19 +94,10 @@ export class AuthService {
       return null
     }
 
-    // Re-read MFA flags (they aren't in the joined select to keep the
-    // query lean, and they can flip mid-session).
-    const mfa = await this.db
-      .select({
-        mfaRequired: users.mfaRequired,
-        mfaSetupComplete: users.mfaSetupComplete,
-      })
-      .from(users)
-      .where(eq(users.id, session.userId))
-      .limit(1)
-
     return {
       userId: session.userId,
+      orgId: session.orgId ?? '',
+      orgRole: session.orgRole ?? '',
       user: {
         id: session.userId,
         name: session.userName,
@@ -107,9 +105,9 @@ export class AuthService {
         avatarUrl: session.userAvatar,
         setupComplete: session.setupComplete,
         setupStep: session.setupStep,
-        role: session.role || 'member',
-        mfaRequired: mfa[0]?.mfaRequired ?? true,
-        mfaSetupComplete: mfa[0]?.mfaSetupComplete ?? false,
+        role: session.orgRole ?? 'member',
+        mfaRequired: session.mfaRequired,
+        mfaSetupComplete: session.mfaSetupComplete,
       },
     }
   }

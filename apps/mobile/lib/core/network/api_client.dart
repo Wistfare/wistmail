@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'api_exception.dart';
 
@@ -20,8 +23,26 @@ class ApiClient {
         contentType: 'application/json',
         responseType: ResponseType.json,
         validateStatus: (status) => status != null && status < 500,
+        // Ask the server to gzip — Dart's HttpClient transparently
+        // decompresses, so consumers never see the encoding header.
+        headers: const {'Accept-Encoding': 'gzip'},
       ),
     );
+
+    // Tune the underlying HttpClient: persistent connections + a small
+    // pool keep TLS handshakes off the hot path for inbox pagination /
+    // realtime fan-in. The 90s idle timeout matches typical CDN keepalive.
+    dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () {
+        final c = HttpClient()
+          ..maxConnectionsPerHost = 6
+          ..idleTimeout = const Duration(seconds: 90)
+          ..autoUncompress = true
+          ..connectionTimeout = const Duration(seconds: 15);
+        return c;
+      },
+    );
+
     dio.interceptors.add(CookieManager(cookieJar));
     dio.interceptors.add(_ErrorInterceptor());
     return ApiClient._(dio, cookieJar);

@@ -38,6 +38,33 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // R8 with full mode shrinks the APK and dead-code-eliminates
+            // unused Kotlin stdlib + plugin classes. The Flutter-default
+            // proguard-rules.pro keeps the entry-points the engine needs.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+    }
+
+    packaging {
+        // Strip duplicate license/notice files plugins drag in. Saves
+        // a few hundred KB and avoids the "Duplicate file" warnings.
+        resources {
+            excludes += setOf(
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1",
+                "META-INF/DEPENDENCIES",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/*.kotlin_module",
+            )
         }
     }
 }

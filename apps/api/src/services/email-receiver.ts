@@ -4,6 +4,7 @@ import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 import { eventBus } from '../events/bus.js'
 import { sendEmailNotification } from './fcm.js'
+import { indexEmail } from './search.js'
 
 interface InboundEmail {
   from: string
@@ -93,8 +94,11 @@ export class EmailReceiver {
         createdAt,
       })
 
-      const preview = (parsed.textBody ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)
+      const snippet = (parsed.textBody ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)
+      const preview = snippet.slice(0, 140)
 
+      // Carry the full slim list-row payload so subscribers (web/mobile)
+      // can render the new inbox row without a follow-up fetch.
       eventBus.publish({
         type: 'email.new',
         userId: mailbox.userId,
@@ -102,10 +106,38 @@ export class EmailReceiver {
         mailboxId: mailbox.id,
         folder: 'inbox',
         fromAddress,
+        toAddresses: parsed.to.length > 0 ? parsed.to : inbound.to,
+        cc: parsed.cc,
         subject,
-        preview,
+        snippet,
+        isRead: false,
+        isStarred: false,
+        isDraft: false,
+        hasAttachments: false,
+        sizeBytes: inbound.rawData.length,
         createdAt: createdAt.toISOString(),
+        preview,
       })
+
+      // Index in MeiliSearch (fire-and-forget; no-op if disabled)
+      indexEmail({
+        id: emailId,
+        userId: mailbox.userId,
+        mailboxId: mailbox.id,
+        fromAddress,
+        toAddresses: parsed.to.length > 0 ? parsed.to : inbound.to,
+        cc: parsed.cc,
+        subject,
+        textBody: parsed.textBody,
+        htmlBody: parsed.htmlBody,
+        folder: 'inbox',
+        isRead: false,
+        isStarred: false,
+        isDraft: false,
+        hasAttachments: false,
+        sizeBytes: inbound.rawData.length,
+        createdAtMs: createdAt.getTime(),
+      }).catch((err) => console.error('[email-receiver] indexEmail failed:', err))
 
       // Push notification (fire-and-forget; no-op if FCM not configured)
       sendEmailNotification({

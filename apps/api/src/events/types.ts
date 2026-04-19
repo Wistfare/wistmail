@@ -12,6 +12,8 @@ export type RealtimeEvent =
   | ChatMessageNewEvent
   | ChatConversationUpdatedEvent
 
+/// Carries the full slim list-row payload so subscribers can render the
+/// new inbox row without a second HTTP fetch.
 export interface EmailNewEvent {
   type: 'email.new'
   userId: string
@@ -19,9 +21,18 @@ export interface EmailNewEvent {
   mailboxId: string
   folder: string
   fromAddress: string
+  toAddresses: string[]
+  cc: string[]
   subject: string
-  preview: string
+  snippet: string
+  isRead: boolean
+  isStarred: boolean
+  isDraft: boolean
+  hasAttachments: boolean
+  sizeBytes: number
   createdAt: string
+  /// @deprecated Use `snippet`. Retained for older clients during rollout.
+  preview: string
 }
 
 export interface EmailUpdatedEvent {

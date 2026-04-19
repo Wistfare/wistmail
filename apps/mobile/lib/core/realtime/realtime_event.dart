@@ -15,8 +15,18 @@ sealed class RealtimeEvent {
           mailboxId: json['mailboxId'] as String,
           folder: json['folder'] as String,
           fromAddress: json['fromAddress'] as String,
+          toAddresses: (json['toAddresses'] as List?)?.whereType<String>().toList() ?? const [],
+          cc: (json['cc'] as List?)?.whereType<String>().toList() ?? const [],
           subject: json['subject'] as String,
-          preview: json['preview'] as String,
+          // Server now carries the full snippet (max 200 chars). Older
+          // server versions only sent `preview` (140 chars) — fall back.
+          snippet: (json['snippet'] as String?) ?? (json['preview'] as String? ?? ''),
+          isRead: (json['isRead'] as bool?) ?? false,
+          isStarred: (json['isStarred'] as bool?) ?? false,
+          isDraft: (json['isDraft'] as bool?) ?? false,
+          hasAttachments: (json['hasAttachments'] as bool?) ?? false,
+          sizeBytes: (json['sizeBytes'] as num?)?.toInt() ?? 0,
+          preview: json['preview'] as String? ?? '',
           createdAt: DateTime.parse(json['createdAt'] as String),
         );
       case 'email.updated':
@@ -59,8 +69,16 @@ class EmailNewEvent extends RealtimeEvent {
     required this.mailboxId,
     required this.folder,
     required this.fromAddress,
+    this.toAddresses = const [],
+    this.cc = const [],
     required this.subject,
-    required this.preview,
+    this.snippet = '',
+    this.isRead = false,
+    this.isStarred = false,
+    this.isDraft = false,
+    this.hasAttachments = false,
+    this.sizeBytes = 0,
+    this.preview = '',
     required this.createdAt,
   });
 
@@ -68,8 +86,16 @@ class EmailNewEvent extends RealtimeEvent {
   final String mailboxId;
   final String folder;
   final String fromAddress;
+  final List<String> toAddresses;
+  final List<String> cc;
   final String subject;
-  final String preview;
+  final String snippet;
+  final bool isRead;
+  final bool isStarred;
+  final bool isDraft;
+  final bool hasAttachments;
+  final int sizeBytes;
+  final String preview; // legacy alias retained for the body fallback
   final DateTime createdAt;
 }
 

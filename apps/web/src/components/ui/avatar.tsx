@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import { cn, getInitials, stringToColor } from '@/lib/utils'
 
 export interface AvatarProps {
@@ -13,16 +14,35 @@ const sizeStyles = {
   lg: 'h-10 w-10 text-sm',
 }
 
+const sizePx = {
+  sm: 24,
+  md: 32,
+  lg: 40,
+}
+
 export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
   const initials = getInitials(name)
   const bgColor = stringToColor(name)
 
   if (src) {
+    const px = sizePx[size]
     return (
-      <img
+      <Image
         src={src}
         alt={name}
-        className={cn('rounded-full object-cover', sizeStyles[size], className)}
+        width={px}
+        height={px}
+        // 2x retina source: deviceSizes config in next.config picks the
+        // closest, then we render at the CSS size. quality 70 is plenty
+        // for avatar-scale crops and shaves bytes vs the default 75.
+        quality={70}
+        loading="lazy"
+        unoptimized={src.startsWith('data:')}
+        className={cn(
+          'rounded-full object-cover',
+          sizeStyles[size],
+          className,
+        )}
       />
     )
   }

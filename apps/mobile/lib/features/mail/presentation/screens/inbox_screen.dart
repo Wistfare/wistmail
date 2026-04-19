@@ -17,7 +17,7 @@ class InboxScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final inbox = ref.watch(inboxControllerProvider);
-    final unreadCount = inbox.emails.where((e) => !e.isRead).length;
+    final unreadCount = ref.watch(inboxUnreadCountProvider);
     final user = ref.watch(authControllerProvider).user;
     final showMfaBanner = user?.needsMfaSetup ?? false;
 
@@ -157,15 +157,45 @@ class _MfaBanner extends StatelessWidget {
   }
 }
 
-class _InboxBody extends ConsumerWidget {
+class _InboxBody extends ConsumerStatefulWidget {
   const _InboxBody({required this.inbox});
   final InboxState inbox;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_InboxBody> createState() => _InboxBodyState();
+}
+
+class _InboxBodyState extends ConsumerState<_InboxBody> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController()..addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    // Trigger ~600px before the bottom so the next page is in flight by
+    // the time the user reaches the end of the list.
+    if (pos.pixels >= pos.maxScrollExtent - 600) {
+      ref.read(inboxControllerProvider.notifier).loadMore();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final inbox = widget.inbox;
     if (inbox.isLoading && !inbox.hasLoaded) {
-      // Skeleton rows match real EmailListItem layout so the page doesn't
-      // jump when data arrives.
       return MediaQuery.removePadding(
         context: context,
         removeTop: true,
@@ -190,13 +220,41 @@ class _InboxBody extends ConsumerWidget {
         context: context,
         removeTop: true,
         child: ListView.separated(
+          controller: _scrollController,
           padding: EdgeInsets.zero,
           physics: const AlwaysScrollableScrollPhysics(),
-          itemCount: inbox.emails.length,
+          // +1 row reserved for the load-more spinner / end marker so the
+          // separator pattern stays consistent.
+          itemCount: inbox.emails.length + (inbox.hasMore ? 1 : 0),
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AppColors.border),
-          itemBuilder: (context, index) =>
-              EmailListItem(email: inbox.emails[index]),
+          itemBuilder: (context, index) {
+            if (index >= inbox.emails.length) {
+              return const _LoadMoreFooter();
+            }
+            return EmailListItem(email: inbox.emails[index]);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadMoreFooter extends StatelessWidget {
+  const _LoadMoreFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 18),
+      child: Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.accent,
+          ),
         ),
       ),
     );

@@ -1,8 +1,6 @@
 import { createMiddleware } from 'hono/factory'
 import { getCookie } from 'hono/cookie'
-import { eq } from 'drizzle-orm'
 import { AuthenticationError } from '@wistmail/shared'
-import { orgMembers } from '@wistmail/db'
 import { AuthService } from '../services/auth.js'
 import { getDb } from '../lib/db.js'
 
@@ -15,14 +13,16 @@ export type SessionEnv = {
   }
 }
 
+/// Single-query session auth. validateSession does one Postgres round-trip
+/// (sessions ⨝ users ⨝ org_members) and surfaces every downstream flag.
+/// No follow-up org lookup; no follow-up MFA lookup.
 export const sessionAuth = createMiddleware<SessionEnv>(async (c, next) => {
   const token = getCookie(c, 'wm_session')
   if (!token) {
     throw new AuthenticationError('Not authenticated')
   }
 
-  const db = getDb()
-  const auth = new AuthService(db)
+  const auth = new AuthService(getDb())
   const result = await auth.validateSession(token)
 
   if (!result) {
@@ -31,21 +31,8 @@ export const sessionAuth = createMiddleware<SessionEnv>(async (c, next) => {
 
   c.set('userId', result.userId)
   c.set('user', result.user)
-
-  // Resolve org membership
-  const membership = await db
-    .select()
-    .from(orgMembers)
-    .where(eq(orgMembers.userId, result.userId))
-    .limit(1)
-
-  if (membership.length > 0) {
-    c.set('orgId', membership[0].orgId)
-    c.set('orgRole', membership[0].role)
-  } else {
-    c.set('orgId', '')
-    c.set('orgRole', '')
-  }
+  c.set('orgId', result.orgId)
+  c.set('orgRole', result.orgRole)
 
   await next()
 })

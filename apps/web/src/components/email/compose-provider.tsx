@@ -1,7 +1,16 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback } from 'react'
-import { FloatingCompose, type ComposeData } from './floating-compose'
+import dynamic from 'next/dynamic'
+import type { ComposeData } from './floating-compose'
+
+/// Compose modal is dynamic-loaded so its (heavy) editor + toolbar
+/// JavaScript never enters the inbox initial bundle. The component only
+/// resolves once the user actually opens compose.
+const FloatingCompose = dynamic(
+  () => import('./floating-compose').then((m) => m.FloatingCompose),
+  { ssr: false },
+)
 
 type ComposeContextType = {
   openCompose: (data?: ComposeData) => void

@@ -21,9 +21,17 @@ describe('event bus integration with email.new payload shape', () => {
       mailboxId: 'mbx_1',
       folder: 'inbox',
       fromAddress: 'alex@x.com',
+      toAddresses: ['me@x.com'],
+      cc: [],
       subject: 'Hello',
-      preview: 'Short preview',
+      snippet: 'Short snippet',
+      isRead: false,
+      isStarred: false,
+      isDraft: false,
+      hasAttachments: false,
+      sizeBytes: 1024,
       createdAt: '2026-01-01T00:00:00Z',
+      preview: 'Short snippet',
     })
 
     expect(received).toHaveLength(1)

@@ -278,6 +278,22 @@ async function ensureSchema() {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )`,
+    // ── Hot-path indexes (idempotent). Every authenticated request resolves
+    // the user's mailboxes; every inbox open paginates emails by folder.
+    `CREATE INDEX IF NOT EXISTS mailboxes_user_id_idx ON mailboxes(user_id)`,
+    `CREATE INDEX IF NOT EXISTS mailboxes_domain_id_idx ON mailboxes(domain_id)`,
+    `CREATE INDEX IF NOT EXISTS emails_mailbox_folder_created_idx ON emails(mailbox_id, folder, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS emails_mailbox_unread_folder_idx ON emails(mailbox_id, is_read, folder)`,
+    `CREATE INDEX IF NOT EXISTS org_members_user_id_idx ON org_members(user_id)`,
+    `CREATE INDEX IF NOT EXISTS org_members_org_id_idx ON org_members(org_id)`,
+    `CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token)`,
+    `CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id)`,
+    `CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at)`,
+    `CREATE INDEX IF NOT EXISTS conversation_participants_user_idx ON conversation_participants(user_id)`,
+    `CREATE INDEX IF NOT EXISTS chat_messages_conv_created_idx ON chat_messages(conversation_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS device_tokens_user_idx ON device_tokens(user_id)`,
+    `CREATE INDEX IF NOT EXISTS audit_logs_user_created_idx ON audit_logs(user_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS calendar_events_user_start_idx ON calendar_events(user_id, start_at)`,
   ]
 
   for (const stmt of createStatements) {

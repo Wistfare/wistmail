@@ -1,51 +1,25 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import { Sidebar } from '@/components/layout/sidebar'
 import { ComposeProvider } from '@/components/email/compose-provider'
-import { api } from '@/lib/api-client'
+import { getServerSession } from '@/lib/server-session'
 
-type SessionUser = {
-  name: string
-  email: string
-  avatarUrl: string | null
-  setupComplete: boolean
-  role: string
-}
+/// Server-rendered shell. Auth + setup gating happens before the client
+/// even hydrates — no flash of "loading" state, no client refetch on every
+/// navigation. The user is forwarded as props to the (client) Sidebar.
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const user = await getServerSession()
+  if (!user) {
+    redirect('/login')
+  }
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<SessionUser | null>(null)
-  const [loading, setLoading] = useState(true)
-  const router = useRouter()
-  const pathname = usePathname()
-
-  useEffect(() => {
-    api
-      .get<{ user: SessionUser | null }>('/api/v1/auth/session')
-      .then((res) => {
-        if (!res.user) {
-          router.replace('/login')
-          return
-        }
-        setUser(res.user)
-
-        if (!res.user.setupComplete && !pathname.startsWith('/setup')) {
-          router.replace('/setup')
-        }
-      })
-      .catch(() => {
-        router.replace('/login')
-      })
-      .finally(() => setLoading(false))
-  }, [router, pathname])
-
-  if (loading || !user) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-wm-bg">
-        <div className="h-6 w-6 animate-spin border-2 border-wm-accent border-t-transparent" />
-      </div>
-    )
+  // We can't read the URL pathname from a Server Component synchronously,
+  // but the middleware-style check (`x-pathname` header set by middleware)
+  // gives us enough to skip the setup redirect on /setup itself.
+  const headerList = await headers()
+  const pathname = headerList.get('x-pathname') ?? ''
+  if (!user.setupComplete && !pathname.startsWith('/setup')) {
+    redirect('/setup')
   }
 
   if (pathname.startsWith('/setup')) {
@@ -56,7 +30,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <ComposeProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar
-          user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? undefined, role: user.role }}
+          user={{
+            name: user.name,
+            email: user.email,
+            avatarUrl: user.avatarUrl ?? undefined,
+            role: user.role,
+          }}
           activeRoute={pathname}
           unreadCounts={{ inbox: 0 }}
         />

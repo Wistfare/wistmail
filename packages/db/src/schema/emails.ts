@@ -48,7 +48,18 @@ export const emails = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('emails_mailbox_id_folder_idx').on(table.mailboxId, table.folder),
+    // Inbox list query — covers WHERE mailbox_id = ? AND folder = ? ORDER BY created_at DESC.
+    index('emails_mailbox_folder_created_idx').on(
+      table.mailboxId,
+      table.folder,
+      table.createdAt,
+    ),
+    // Unread-counts query — WHERE mailbox_id IN (...) AND is_read = false GROUP BY folder.
+    index('emails_mailbox_unread_folder_idx').on(
+      table.mailboxId,
+      table.isRead,
+      table.folder,
+    ),
     index('emails_thread_id_idx').on(table.threadId),
     index('emails_from_address_idx').on(table.fromAddress),
     index('emails_created_at_idx').on(table.createdAt),

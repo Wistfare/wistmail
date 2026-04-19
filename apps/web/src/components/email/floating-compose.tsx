@@ -7,8 +7,7 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
-
-type Mailbox = { id: string; address: string; displayName: string }
+import { getMailboxes, type Mailbox } from '@/lib/mailboxes-cache'
 
 function getScheduleTime(dayOffset: number | 'monday', hour: number): string {
   const d = new Date()
@@ -60,13 +59,18 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
   const [scheduledAt, setScheduledAt] = useState('')
 
   useEffect(() => {
-    api.get<{ data: Mailbox[] }>('/api/v1/setup/mailboxes').then((res) => {
-      if (res.data.length > 0) {
-        setMailboxes(res.data)
-        setFromMailboxId(res.data[0].id)
-        setFromAddress(res.data[0].address)
-      }
-    })
+    let cancelled = false
+    getMailboxes()
+      .then((list) => {
+        if (cancelled || list.length === 0) return
+        setMailboxes(list)
+        setFromMailboxId(list[0].id)
+        setFromAddress(list[0].address)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function addChip(value: string, chips: string[], setChips: (c: string[]) => void, clear: () => void) {
