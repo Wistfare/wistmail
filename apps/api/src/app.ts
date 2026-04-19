@@ -21,6 +21,7 @@ import { chatRoutes } from './routes/chat.js'
 import { labelRoutes } from './routes/labels.js'
 import { calendarRoutes } from './routes/calendar.js'
 import { projectRoutes } from './routes/projects.js'
+import { mfaRoutes } from './routes/mfa.js'
 import { domains as domainsTable } from '@wistmail/db'
 
 export type AppEnv = {
@@ -108,5 +109,6 @@ v1.route('/chat', chatRoutes)
 v1.route('/labels', labelRoutes)
 v1.route('/calendar', calendarRoutes)
 v1.route('/projects', projectRoutes)
+v1.route('/mfa', mfaRoutes)
 
 app.route('/api/v1', v1)

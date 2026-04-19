@@ -5,10 +5,12 @@ import { hash } from 'argon2'
 import { createHash, randomBytes } from 'node:crypto'
 import { eq, and, isNull, gt } from 'drizzle-orm'
 import { ValidationError, generateId } from '@wistmail/shared'
-import { users, passwordResetTokens, sessions, organizations, orgMembers, domains } from '@wistmail/db'
+import { users, passwordResetTokens, sessions, mfaMethods, organizations, orgMembers, domains } from '@wistmail/db'
 import { AuthService } from '../services/auth.js'
+import { MfaService } from '../services/mfa.js'
 import { getDb } from '../lib/db.js'
 import { buildPasswordResetEmail } from '../templates/password-reset.js'
+import { resolveOrgFrom } from '../lib/org-from.js'
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -46,12 +48,16 @@ export const authRoutes = new Hono()
 
 /**
  * POST /api/v1/auth/login
- * User logs in with their mailbox email (e.g., vedadom@wistfare.com)
+ *
+ * Step 1 of the 2-step login. Validates credentials. If the user has any
+ * verified MFA method, the response is { mfaRequired: true, pendingToken,
+ * methods } and NO session cookie is set — the client must call
+ * /login/verify with a code to complete sign-in. If no MFA is configured,
+ * the session cookie is set immediately (current behavior).
  */
 authRoutes.post('/login', async (c) => {
   const body = await c.req.json()
   const parsed = loginSchema.safeParse(body)
-
   if (!parsed.success) {
     throw new ValidationError('Invalid input', {
       errors: parsed.error.flatten().fieldErrors,
@@ -60,8 +66,28 @@ authRoutes.post('/login', async (c) => {
 
   const db = getDb()
   const auth = new AuthService(db)
-  const { user, session } = await auth.login(parsed.data)
+  const userRecord = await auth.verifyCredentials(parsed.data)
 
+  const mfa = new MfaService(db)
+  if (await mfa.hasVerifiedMethod(userRecord.id)) {
+    const methods = await db
+      .select({ type: mfaMethods.type, label: mfaMethods.label })
+      .from(mfaMethods)
+      .where(
+        and(
+          eq(mfaMethods.userId, userRecord.id),
+          eq(mfaMethods.verified, 'true'),
+        ),
+      )
+    const { pendingToken } = await mfa.createPendingLogin(userRecord.id)
+    return c.json({
+      mfaRequired: true,
+      pendingToken,
+      methods,
+    })
+  }
+
+  const { user, session } = await auth.beginSession(userRecord.id)
   setCookie(c, COOKIE_NAME, session.token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -69,8 +95,91 @@ authRoutes.post('/login', async (c) => {
     path: '/',
     maxAge: COOKIE_MAX_AGE,
   })
-
   return c.json({ user })
+})
+
+/**
+ * POST /api/v1/auth/login/verify
+ * Body: { pendingToken, code }
+ *
+ * Step 2 of the 2-step login. Tries the supplied code against every
+ * verified MFA factor. On success, sets the session cookie and returns
+ * the user record.
+ */
+authRoutes.post('/login/verify', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const parsed = z
+    .object({
+      pendingToken: z.string().min(16),
+      code: z.string().min(4).max(20),
+    })
+    .safeParse(body)
+  if (!parsed.success) {
+    throw new ValidationError('Invalid input', {
+      errors: parsed.error.flatten().fieldErrors,
+    })
+  }
+
+  const db = getDb()
+  const mfa = new MfaService(db)
+
+  const userId = await mfa.claimPendingLogin(parsed.data.pendingToken)
+  if (!userId) {
+    throw new ValidationError('This login session has expired. Please sign in again.')
+  }
+
+  const matched = await mfa.tryAnyFactor(userId, parsed.data.code)
+  if (!matched) {
+    throw new ValidationError('That code is incorrect.')
+  }
+
+  await mfa.deletePendingLogin(parsed.data.pendingToken)
+
+  const auth = new AuthService(db)
+  const { user, session } = await auth.beginSession(userId)
+  setCookie(c, COOKIE_NAME, session.token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: COOKIE_MAX_AGE,
+  })
+  return c.json({ user, methodUsed: matched })
+})
+
+/**
+ * POST /api/v1/auth/login/email-code
+ * Body: { pendingToken }
+ *
+ * Dispatches a fresh email-MFA code to the user's verified backup address.
+ * The pending token must still be valid; this does NOT issue a new one.
+ */
+authRoutes.post('/login/email-code', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const parsed = z.object({ pendingToken: z.string().min(16) }).safeParse(body)
+  if (!parsed.success) throw new ValidationError('Invalid input')
+
+  const db = getDb()
+  const mfa = new MfaService(db)
+  const userId = await mfa.claimPendingLogin(parsed.data.pendingToken)
+  if (!userId) {
+    throw new ValidationError('This login session has expired. Please sign in again.')
+  }
+
+  const userRow = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+  if (userRow.length === 0) throw new ValidationError('User not found')
+  const fallback = userRow[0].email.split('@')[1] ?? 'wistfare.com'
+  const { orgName, fromDomain } = await resolveOrgFrom(db, userId, fallback)
+
+  const ok = await mfa.dispatchLoginEmailCode(userId, orgName, fromDomain, userRow[0].name)
+  if (!ok) {
+    throw new ValidationError('No verified email factor on this account.')
+  }
+  return c.json({ ok: true })
 })
 
 /**
@@ -222,6 +331,7 @@ authRoutes.post('/reset-password', async (c) => {
         .regex(/[A-Z]/, 'Must include an uppercase letter')
         .regex(/[a-z]/, 'Must include a lowercase letter')
         .regex(/\d/, 'Must include a number'),
+      mfaCode: z.string().min(4).max(20).optional(),
     })
     .safeParse(body)
 
@@ -250,6 +360,30 @@ authRoutes.post('/reset-password', async (c) => {
   }
   const token = tokenResult[0]
 
+  // If the user has MFA configured, require a code in addition to the email
+  // link — the email factor alone shouldn't be enough to take over the
+  // account.
+  const mfa = new MfaService(db)
+  if (await mfa.hasVerifiedMethod(token.userId)) {
+    if (!parsed.data.mfaCode) {
+      // 412 = Precondition Required — client knows to prompt for the code.
+      return c.json(
+        {
+          mfaRequired: true,
+          error: {
+            code: 'MFA_REQUIRED',
+            message: 'Enter your two-factor code to continue.',
+          },
+        },
+        412,
+      )
+    }
+    const matched = await mfa.tryAnyFactor(token.userId, parsed.data.mfaCode)
+    if (!matched) {
+      throw new ValidationError('That two-factor code is incorrect.')
+    }
+  }
+
   const newHash = await hash(parsed.data.newPassword)
 
   await db.update(users).set({ passwordHash: newHash, updatedAt: now }).where(eq(users.id, token.userId))
@@ -261,6 +395,57 @@ authRoutes.post('/reset-password', async (c) => {
   // Revoke all existing sessions for this user — they must log in fresh.
   await db.delete(sessions).where(eq(sessions.userId, token.userId))
 
+  return c.json({ ok: true })
+})
+
+/**
+ * POST /api/v1/auth/reset-password/email-code
+ * Body: { token }
+ *
+ * Issues a fresh email-MFA code for the reset flow, addressed to the
+ * user's verified email-MFA address. Used when the reset page needs the
+ * user to enter a code via email.
+ */
+authRoutes.post('/reset-password/email-code', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const parsed = z.object({ token: z.string().min(32) }).safeParse(body)
+  if (!parsed.success) throw new ValidationError('Invalid input')
+
+  const db = getDb()
+  const tokenHash = hashToken(parsed.data.token)
+  const now = new Date()
+  const tokenResult = await db
+    .select()
+    .from(passwordResetTokens)
+    .where(
+      and(
+        eq(passwordResetTokens.tokenHash, tokenHash),
+        isNull(passwordResetTokens.usedAt),
+        gt(passwordResetTokens.expiresAt, now),
+      ),
+    )
+    .limit(1)
+  if (tokenResult.length === 0) {
+    throw new ValidationError('This reset link has expired or already been used.')
+  }
+
+  const userRow = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, tokenResult[0].userId))
+    .limit(1)
+  if (userRow.length === 0) throw new ValidationError('User not found')
+  const fallback = userRow[0].email.split('@')[1] ?? 'wistfare.com'
+  const { orgName, fromDomain } = await resolveOrgFrom(db, tokenResult[0].userId, fallback)
+
+  const mfa = new MfaService(db)
+  const ok = await mfa.dispatchLoginEmailCode(
+    tokenResult[0].userId,
+    orgName,
+    fromDomain,
+    userRow[0].name,
+  )
+  if (!ok) throw new ValidationError('No verified email factor on this account.')
   return c.json({ ok: true })
 })
 

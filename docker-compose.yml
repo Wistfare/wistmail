@@ -141,6 +141,10 @@ services:
       # The file is written by the deploy workflow to ./.secrets/ on the host.
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-service-account.json
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-wistfare-1756656058858}
+      # AES-256-GCM key for encrypting MFA secrets at rest. 32-byte hex
+      # (64 chars). Generate once with `openssl rand -hex 32`. Rotating
+      # this invalidates every stored TOTP secret — users must re-enroll.
+      MFA_SECRETS_KEY: ${MFA_SECRETS_KEY:?MFA_SECRETS_KEY is required}
     volumes:
       - ./.secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
     depends_on:

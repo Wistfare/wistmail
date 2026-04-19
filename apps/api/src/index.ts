@@ -21,9 +21,10 @@ async function ensureSchema() {
       setup_step varchar(20) DEFAULT 'domain',
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
     )`,
-    // Idempotent column add for existing user tables created before
-    // external_email was introduced.
+    // Idempotent column adds for users created before these features.
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS external_email varchar(255)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_required boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_setup_complete boolean NOT NULL DEFAULT false`,
     `CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id varchar(64) PRIMARY KEY,
       user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -32,6 +33,43 @@ async function ensureSchema() {
       used_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now()
     )`,
+    `CREATE TABLE IF NOT EXISTS mfa_methods (
+      id varchar(64) PRIMARY KEY,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type varchar(20) NOT NULL,
+      secret_encrypted text NOT NULL,
+      label varchar(120),
+      verified text NOT NULL DEFAULT 'false',
+      last_used_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS mfa_methods_user_idx ON mfa_methods(user_id)`,
+    `CREATE TABLE IF NOT EXISTS mfa_backup_codes (
+      id varchar(64) PRIMARY KEY,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      code_hash varchar(128) NOT NULL UNIQUE,
+      used_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS mfa_backup_codes_user_idx ON mfa_backup_codes(user_id)`,
+    `CREATE TABLE IF NOT EXISTS mfa_pending_logins (
+      id varchar(64) PRIMARY KEY,
+      token_hash varchar(128) NOT NULL UNIQUE,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      attempts integer NOT NULL DEFAULT 0,
+      expires_at timestamptz NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS mfa_email_codes (
+      id varchar(64) PRIMARY KEY,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      purpose varchar(20) NOT NULL,
+      code_hash varchar(128) NOT NULL,
+      expires_at timestamptz NOT NULL,
+      consumed_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS mfa_email_codes_user_idx ON mfa_email_codes(user_id, purpose)`,
     `CREATE TABLE IF NOT EXISTS domains (
       id varchar(64) PRIMARY KEY, name varchar(255) NOT NULL UNIQUE,
       user_id varchar(64) REFERENCES users(id) ON DELETE CASCADE,

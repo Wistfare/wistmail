@@ -178,6 +178,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           FIREBASE_PROJECT_ID: wistfare-1756656058858
+          MFA_SECRETS_KEY: ${{ secrets.MFA_SECRETS_KEY }}
           CHANGED_API:    ${{ needs.detect-changes.outputs.api }}
           CHANGED_WEB:    ${{ needs.detect-changes.outputs.web }}
           CHANGED_DOCS:   ${{ needs.detect-changes.outputs.docs }}
@@ -221,6 +222,19 @@ jobs:
                /opt/wistmail/.secrets/firebase-service-account.json
           "
           rm -f /tmp/firebase-sa.json
+
+          # Ensure MFA_SECRETS_KEY is in /opt/wistmail/.env. The api will
+          # refuse to start without it (`?MFA_SECRETS_KEY is required` in
+          # docker-compose.yml). Idempotent: only inserts the line if not
+          # already present, never overwrites an existing key (rotating a
+          # key would invalidate every stored TOTP secret — must be done
+          # deliberately, not as a deploy side-effect).
+          if [ -n "$MFA_SECRETS_KEY" ]; then
+            ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" \
+              "touch /opt/wistmail/.env && chmod 600 /opt/wistmail/.env && \
+               grep -q '^MFA_SECRETS_KEY=' /opt/wistmail/.env || \
+               echo 'MFA_SECRETS_KEY=$MFA_SECRETS_KEY' >> /opt/wistmail/.env"
+          fi
 
           # Deploy only what changed
           ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" "

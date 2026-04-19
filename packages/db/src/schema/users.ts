@@ -9,6 +9,10 @@ export const users = pgTable('users', {
   externalEmail: varchar('external_email', { length: 255 }),
   setupComplete: boolean('setup_complete').notNull().default(false),
   setupStep: varchar('setup_step', { length: 20 }).notNull().default('domain'),
+  // MFA enrollment state. mfaRequired stays true even after setup so we can
+  // tell "user has it enabled" from "user has not yet completed enrollment".
+  mfaRequired: boolean('mfa_required').notNull().default(true),
+  mfaSetupComplete: boolean('mfa_setup_complete').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })

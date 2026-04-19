@@ -10,25 +10,35 @@ const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 export class AuthService {
   constructor(private db: Database) {}
 
-  async login(input: { email: string; password: string }) {
+  /// Validate email + password ONLY. Returns the user record on success.
+  /// Used by both the legacy single-step login and the 2-step MFA login.
+  async verifyCredentials(input: { email: string; password: string }) {
     const email = input.email.trim().toLowerCase()
 
     const result = await this.db.select().from(users).where(eq(users.email, email)).limit(1)
     if (result.length === 0) {
       throw new AuthenticationError('Invalid email or password')
     }
-
     const user = result[0]
 
     const valid = await verify(user.passwordHash, input.password)
     if (!valid) {
       throw new AuthenticationError('Invalid email or password')
     }
+    return user
+  }
 
-    const session = await this.createSession(user.id)
-
+  /// Issue a session for a userId that the caller has already authenticated.
+  async beginSession(userId: string) {
+    const session = await this.createSession(userId)
+    const result = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+    const user = result[0]
     return {
-      userId: user.id,
+      userId,
       session,
       user: {
         id: user.id,
@@ -37,8 +47,17 @@ export class AuthService {
         avatarUrl: user.avatarUrl,
         setupComplete: user.setupComplete,
         setupStep: user.setupStep,
+        mfaRequired: user.mfaRequired,
+        mfaSetupComplete: user.mfaSetupComplete,
       },
     }
+  }
+
+  /// Single-step login (no MFA). Kept for back-compat with any callers
+  /// that don't go through the routes layer.
+  async login(input: { email: string; password: string }) {
+    const user = await this.verifyCredentials(input)
+    return this.beginSession(user.id)
   }
 
   async validateSession(token: string) {
@@ -68,6 +87,17 @@ export class AuthService {
       return null
     }
 
+    // Re-read MFA flags (they aren't in the joined select to keep the
+    // query lean, and they can flip mid-session).
+    const mfa = await this.db
+      .select({
+        mfaRequired: users.mfaRequired,
+        mfaSetupComplete: users.mfaSetupComplete,
+      })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1)
+
     return {
       userId: session.userId,
       user: {
@@ -78,6 +108,8 @@ export class AuthService {
         setupComplete: session.setupComplete,
         setupStep: session.setupStep,
         role: session.role || 'member',
+        mfaRequired: mfa[0]?.mfaRequired ?? true,
+        mfaSetupComplete: mfa[0]?.mfaSetupComplete ?? false,
       },
     }
   }
