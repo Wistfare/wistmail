@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/wm_logo.dart';
 import '../providers/auth_controller.dart';
 
+/// Lightweight branded splash shown only while the auth controller is
+/// restoring a saved session. As soon as `isRestoring` flips false, we
+/// redirect to the inbox or sign-in. No spinner — the lime logo alone
+/// signals "the app is loading".
 class SplashScreen extends ConsumerWidget {
   const SplashScreen({super.key});
 
@@ -20,16 +25,7 @@ class SplashScreen extends ConsumerWidget {
 
     return const Scaffold(
       backgroundColor: AppColors.background,
-      body: Center(
-        child: SizedBox(
-          width: 32,
-          height: 32,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: AppColors.accent,
-          ),
-        ),
-      ),
+      body: Center(child: WmLogo(size: 56)),
     );
   }
 }
