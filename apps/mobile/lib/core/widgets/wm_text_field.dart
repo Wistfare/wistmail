@@ -19,6 +19,7 @@ class WmTextField extends StatefulWidget {
     this.autofocus = false,
     this.onChanged,
     this.onSubmitted,
+    this.trailing,
   });
 
   final String label;
@@ -33,6 +34,11 @@ class WmTextField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
 
+  /// Optional widget shown on the right side of the label row — e.g. a
+  /// "Forgot Password?" link beside the password field. Doesn't change the
+  /// vertical distance between fields.
+  final Widget? trailing;
+
   @override
   State<WmTextField> createState() => _WmTextFieldState();
 }
@@ -45,7 +51,16 @@ class _WmTextFieldState extends State<WmTextField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(widget.label.toUpperCase(), style: AppTextStyles.inputLabel),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(widget.label.toUpperCase(), style: AppTextStyles.inputLabel),
+            if (widget.trailing != null) ...[
+              const Spacer(),
+              widget.trailing!,
+            ],
+          ],
+        ),
         const SizedBox(height: 10),
         Container(
           decoration: const BoxDecoration(

@@ -149,6 +149,17 @@ class _Form extends StatelessWidget {
           prefixIcon: Icons.lock_outline,
           isPassword: true,
           autofillHints: const [AutofillHints.password],
+          trailing: GestureDetector(
+            onTap: () => context.push('/auth/forgot-password'),
+            child: Text(
+              'Forgot Password?',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.accent,
+              ),
+            ),
+          ),
         ),
         if (errorMessage != null) ...[
           const SizedBox(height: 12),
@@ -157,21 +168,6 @@ class _Form extends StatelessWidget {
             style: AppTextStyles.bodySmall.copyWith(color: AppColors.danger),
           ),
         ],
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerRight,
-          child: GestureDetector(
-            onTap: () => context.push('/auth/forgot-password'),
-            child: Text(
-              'Forgot Password?',
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.accent,
-              ),
-            ),
-          ),
-        ),
         const SizedBox(height: 24),
         WmPrimaryButton(
           key: const Key('sign-in-button'),
