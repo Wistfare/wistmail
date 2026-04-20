@@ -81,10 +81,18 @@ setupRoutes.get('/status', async (c) => {
     hasSession = sessionResult.length > 0 && new Date() < sessionResult[0].expiresAt
   }
 
+  // Fresh-install detection: the onboarding flow uses this to
+  // decide whether to route the very first visitor straight into
+  // setup ("no users yet") vs. the sign-in screen. A single LIMIT
+  // 1 probe — cheaper than a count — is all we need.
+  const firstUser = await db.select({ id: users.id }).from(users).limit(1)
+  const hasUsers = firstUser.length > 0
+
   const setupToken = await getSetupToken(c)
 
   return c.json({
     hasSession,
+    hasUsers,
     inProgress: setupToken !== null,
     step: setupToken?.step || null,
     domainId: setupToken?.domainId || null,

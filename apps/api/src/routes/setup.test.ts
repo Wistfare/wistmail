@@ -144,8 +144,11 @@ describeDb('POST /api/v1/setup/domain — integration', () => {
     // Status should be pending
     expect(body.status).toBe('pending')
 
-    // Records: MX, SPF, DKIM, DMARC
-    expect(body.records).toHaveLength(4)
+    // Records: A (mail.<domain>), MX, SPF, DKIM, DMARC. The A
+    // record joined the set alongside MX so operators get the full
+    // inbound-mail path — without it the MX target is an
+    // unresolvable hostname.
+    expect(body.records).toHaveLength(5)
   })
 
   it('sets a setup token cookie on success', async () => {

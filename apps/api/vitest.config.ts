@@ -6,6 +6,15 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     env: {
       NODE_ENV: 'test',
+      // DB-gated suites (setup.test.ts, auth.test.ts) check
+      // `process.env.DATABASE_URL` to decide whether to run.
+      // Our PGlite fixture overrides getDb() entirely so the URL
+      // is never actually dialled — we just need the gate open.
+      DATABASE_URL: 'postgresql://unused@localhost:5432/test-fixture',
+      // Feature flag the setup/skip-dns route reads. Tests are run
+      // in a hermetic environment with no real DNS, so the skip
+      // branch is always acceptable.
+      ALLOW_SKIP_DNS: 'true',
     },
     // Global fixture — every test file boots against an in-process
     // PGlite Postgres with the production schema applied, and gets a
