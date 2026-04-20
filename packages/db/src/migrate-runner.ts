@@ -33,18 +33,62 @@ const migrationsFolder = join(here, '..', 'drizzle')
 const client = postgres(url, { max: 1 })
 const db = drizzle(client)
 
+/// Walk an error chain (DrizzleQueryError → PostgresError) and
+/// collect every message + SQLSTATE code we can find. A regex on
+/// only `err.message` misses the signal — drizzle wraps the real
+/// Postgres error under `.cause` with a generic "Failed query: …"
+/// envelope, so the underlying "relation already exists" text
+/// never surfaces on the outer error.
+function describeError(err: unknown): { blob: string; codes: string[] } {
+  const messages: string[] = []
+  const codes: string[] = []
+  let cursor: unknown = err
+  const seen = new Set<unknown>()
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor)
+    if (cursor instanceof Error) {
+      messages.push(cursor.message)
+    } else {
+      messages.push(String(cursor))
+    }
+    if (
+      typeof cursor === 'object' &&
+      cursor !== null &&
+      'code' in cursor &&
+      typeof (cursor as { code?: unknown }).code === 'string'
+    ) {
+      codes.push((cursor as { code: string }).code)
+    }
+    cursor = (cursor as { cause?: unknown }).cause
+  }
+  return { blob: messages.join(' \u2192 '), codes }
+}
+
+/// The signals we accept as "this DB has already been provisioned".
+/// - Message-level: "already exists" / "duplicate" (the Postgres
+///   server's human text, surfaced on the inner PostgresError)
+/// - SQLSTATE-level:
+///     42P07 duplicate_table
+///     42P06 duplicate_schema
+///     42710 duplicate_object (indexes, constraints, sequences)
+///     23505 unique_violation (duplicate tracker row on partial
+///            prior run)
+function isAlreadyAppliedSignal(err: unknown): boolean {
+  const { blob, codes } = describeError(err)
+  if (/already exists|duplicate/i.test(blob)) return true
+  return codes.some(
+    (c) => c === '42P07' || c === '42P06' || c === '42710' || c === '23505',
+  )
+}
+
 async function run(): Promise<void> {
   try {
     await migrate(db, { migrationsFolder })
     return
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    // Postgres surfaces both "relation ... already exists" (for tables
-    // and indexes) and "duplicate key" (for the __drizzle_migrations
-    // row insert if a prior run half-completed). Both are signals that
-    // the DB already matches the migration.
-    if (!/already exists|duplicate/i.test(msg)) {
-      console.error('[migrate] migrator failed:', msg)
+    if (!isAlreadyAppliedSignal(err)) {
+      const { blob } = describeError(err)
+      console.error('[migrate] migrator failed:', blob)
       throw err
     }
     console.warn('[migrate] existing schema detected — bootstrapping tracker')
@@ -101,7 +145,8 @@ try {
   await client.end()
   process.exit(0)
 } catch (err) {
-  console.error('[migrate] failed:', err)
+  const { blob, codes } = describeError(err)
+  console.error(`[migrate] failed: ${blob}${codes.length ? ` [codes: ${codes.join(',')}]` : ''}`)
   await client.end().catch(() => {})
   process.exit(1)
 }
