@@ -780,9 +780,9 @@ class _CleanupBannerState extends ConsumerState<_CleanupBanner> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.surface,
       padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
       decoration: const BoxDecoration(
+        color: AppColors.surface,
         border: Border(
           bottom: BorderSide(color: AppColors.border, width: 1),
         ),
@@ -845,9 +845,9 @@ class _FilterBar extends ConsumerWidget {
     final hasUnread = state.emails.any((e) => !e.isRead);
 
     return Container(
-      color: AppColors.background,
       padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
       decoration: const BoxDecoration(
+        color: AppColors.background,
         border: Border(
           bottom: BorderSide(color: AppColors.border, width: 1),
         ),
