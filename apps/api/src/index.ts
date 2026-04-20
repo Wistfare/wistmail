@@ -322,7 +322,14 @@ async function ensureSchema() {
 }
 
 async function start() {
-  await ensureSchema()
+  // Greenfield installs that apply schema via `drizzle-kit migrate`
+  // set DISABLE_ENSURE_SCHEMA=1 to skip the legacy hand-maintained
+  // CREATE path. See packages/db/MIGRATIONS.md.
+  if (process.env.DISABLE_ENSURE_SCHEMA !== '1') {
+    await ensureSchema()
+  } else {
+    console.log('[schema] DISABLE_ENSURE_SCHEMA=1 — trusting drizzle migrations')
+  }
 
   const server = serve({
     fetch: app.fetch,
