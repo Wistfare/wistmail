@@ -7,6 +7,7 @@ import '../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../features/auth/presentation/screens/delete_account_screen.dart';
 import '../features/mail/presentation/screens/inbox_screen.dart';
 import '../features/mail/presentation/screens/email_detail_screen.dart';
+import '../features/mail/domain/compose_args.dart';
 import '../features/mail/presentation/screens/compose_screen.dart';
 import '../features/mail/presentation/screens/mail_search_screen.dart';
 import '../features/chat/presentation/screens/chat_list_screen.dart';
@@ -203,7 +204,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/compose',
-        builder: (context, state) => const ComposeScreen(),
+        builder: (context, state) {
+          // Reply / replyAll / forward pass a ComposeArgs via `extra`
+          // so we can prefill the form without lossy URL encoding.
+          final args = state.extra is ComposeArgs
+              ? state.extra as ComposeArgs
+              : ComposeArgs.empty;
+          return ComposeScreen(args: args);
+        },
       ),
       GoRoute(
         path: '/settings/pending-sync',

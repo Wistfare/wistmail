@@ -9,7 +9,9 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_app_bar.dart';
 import '../../../../core/widgets/wm_avatar.dart';
 import '../../../../core/widgets/wm_tag.dart';
+import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../data/mail_actions.dart';
+import '../../domain/compose_args.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
 
@@ -31,15 +33,32 @@ class EmailDetailScreen extends ConsumerWidget {
           data: (email) => [
             _IconAction(
               icon: Icons.reply,
-              onPressed: () {},
+              onPressed: () {
+                final me = ref.read(authControllerProvider).user?.email;
+                context.push(
+                  '/compose',
+                  extra: ComposeFromEmail.reply(email, userEmail: me),
+                );
+              },
             ),
             _IconAction(
               icon: Icons.reply_all,
-              onPressed: () {},
+              onPressed: () {
+                final me = ref.read(authControllerProvider).user?.email;
+                context.push(
+                  '/compose',
+                  extra: ComposeFromEmail.replyAll(email, userEmail: me),
+                );
+              },
             ),
             _IconAction(
               icon: Icons.forward,
-              onPressed: () {},
+              onPressed: () {
+                context.push(
+                  '/compose',
+                  extra: ComposeFromEmail.forward(email),
+                );
+              },
             ),
             _IconAction(
               icon: Icons.archive_outlined,

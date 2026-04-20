@@ -5,45 +5,56 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/mail_actions.dart';
+import '../../domain/compose_args.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
+import '../widgets/recipient_chips_field.dart';
 
-/// Mobile/Compose — design.lib.pen node `wr2Bw`. Sharp From/To/Cc/Subject
-/// rows separated by 1px hairlines, lime "Send" pill in top right,
-/// formatting toolbar at bottom.
+/// Mobile/Compose. Supports new compose, reply, reply-all and
+/// forward by accepting a `ComposeArgs` constructor parameter (passed
+/// from the router via `extra`). To/Cc/Bcc are real chip inputs;
+/// Bcc is hidden until the user opts in.
 class ComposeScreen extends ConsumerStatefulWidget {
-  const ComposeScreen({super.key});
+  const ComposeScreen({super.key, this.args = ComposeArgs.empty});
+
+  final ComposeArgs args;
 
   @override
   ConsumerState<ComposeScreen> createState() => _ComposeScreenState();
 }
 
 class _ComposeScreenState extends ConsumerState<ComposeScreen> {
-  final _toController = TextEditingController();
-  final _ccController = TextEditingController();
-  final _subjectController = TextEditingController();
-  final _bodyController = TextEditingController();
+  late List<String> _to;
+  late List<String> _cc;
+  late List<String> _bcc;
+  late final TextEditingController _subjectController;
+  late final TextEditingController _bodyController;
+  late bool _showCc;
+  late bool _showBcc;
   bool _isSending = false;
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    _to = List.of(widget.args.toAddresses);
+    _cc = List.of(widget.args.cc);
+    _bcc = List.of(widget.args.bcc);
+    _showCc = _cc.isNotEmpty;
+    _showBcc = _bcc.isNotEmpty;
+    _subjectController = TextEditingController(text: widget.args.subject);
+    _bodyController = TextEditingController(text: widget.args.body);
+  }
+
+  @override
   void dispose() {
-    _toController.dispose();
-    _ccController.dispose();
     _subjectController.dispose();
     _bodyController.dispose();
     super.dispose();
   }
 
-  List<String> _splitAddresses(String raw) => raw
-      .split(RegExp(r'[,;\s]+'))
-      .map((s) => s.trim())
-      .where((s) => s.isNotEmpty)
-      .toList();
-
   Future<void> _send(Mailbox mailbox) async {
-    final to = _splitAddresses(_toController.text);
-    if (to.isEmpty) {
+    if (_to.isEmpty) {
       setState(() => _errorMessage = 'Add at least one recipient.');
       return;
     }
@@ -54,19 +65,16 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
     final draft = ComposeDraft(
       fromAddress: mailbox.address,
       mailboxId: mailbox.id,
-      toAddresses: to,
-      cc: _splitAddresses(_ccController.text),
+      toAddresses: _to,
+      cc: _cc,
+      bcc: _bcc,
       subject: _subjectController.text,
       textBody: _bodyController.text,
       send: true,
     );
-    // Resolve MailActions synchronously — `mailActionsProvider`
-    // resolves on app start (via _Root.watch) so by the time the
-    // user taps Send it's almost always ready. We never await the
-    // bootstrap here because waiting in a widget tree can stall
-    // tests (path_provider doesn't resolve in widget tests). If the
-    // engine isn't ready, drop to the bare repository path — the
-    // optimistic UX is best-effort.
+    // Synchronous read — engine is bootstrapped on app start. Falls
+    // back to direct repo call when the offline-first stack isn't
+    // ready (test env without sqflite).
     final actions = ref.read(mailActionsProvider).valueOrNull;
     try {
       if (actions != null) {
@@ -102,11 +110,23 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
         child: Column(
           children: [
             _Header(
+              title: _headerTitle(),
               isSending: _isSending,
               onClose: () => context.pop(),
-              onSend: () => mailboxes.whenOrNull(
-                data: (list) => list.isEmpty ? null : _send(list.first),
-              ),
+              onSend: () {
+                // Drop focus first so any chip field with a pending
+                // buffer commits its current text into a real chip
+                // before we validate _to. Microtask delay gives the
+                // focus listener + setState a tick to settle.
+                FocusManager.instance.primaryFocus?.unfocus();
+                Future.microtask(() {
+                  if (!mounted) return;
+                  mailboxes.whenOrNull(
+                    data: (list) =>
+                        list.isEmpty ? null : _send(list.first),
+                  );
+                });
+              },
             ),
             Expanded(
               child: mailboxes.when(
@@ -125,8 +145,16 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                   }
                   return _Form(
                     fromAddress: list.first.address,
-                    toController: _toController,
-                    ccController: _ccController,
+                    to: _to,
+                    cc: _cc,
+                    bcc: _bcc,
+                    showCc: _showCc,
+                    showBcc: _showBcc,
+                    onToChanged: (v) => setState(() => _to = v),
+                    onCcChanged: (v) => setState(() => _cc = v),
+                    onBccChanged: (v) => setState(() => _bcc = v),
+                    onShowCc: () => setState(() => _showCc = true),
+                    onShowBcc: () => setState(() => _showBcc = true),
                     subjectController: _subjectController,
                     bodyController: _bodyController,
                     errorMessage: _errorMessage,
@@ -155,14 +183,23 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
       ),
     );
   }
+
+  String _headerTitle() {
+    final s = _subjectController.text;
+    if (s.toLowerCase().startsWith('re:')) return 'Reply';
+    if (s.toLowerCase().startsWith('fwd:')) return 'Forward';
+    return 'New Message';
+  }
 }
 
 class _Header extends StatelessWidget {
   const _Header({
+    required this.title,
     required this.isSending,
     required this.onClose,
     required this.onSend,
   });
+  final String title;
   final bool isSending;
   final VoidCallback onClose;
   final VoidCallback onSend;
@@ -181,7 +218,7 @@ class _Header extends StatelessWidget {
             onPressed: onClose,
           ),
           const SizedBox(width: 4),
-          Text('New Message', style: AppTextStyles.titleMedium),
+          Text(title, style: AppTextStyles.titleMedium),
           const Spacer(),
           _SendButton(isSending: isSending, onPressed: onSend),
           const SizedBox(width: 8),
@@ -236,145 +273,220 @@ class _SendButton extends StatelessWidget {
 class _Form extends StatelessWidget {
   const _Form({
     required this.fromAddress,
-    required this.toController,
-    required this.ccController,
+    required this.to,
+    required this.cc,
+    required this.bcc,
+    required this.showCc,
+    required this.showBcc,
+    required this.onToChanged,
+    required this.onCcChanged,
+    required this.onBccChanged,
+    required this.onShowCc,
+    required this.onShowBcc,
     required this.subjectController,
     required this.bodyController,
     required this.errorMessage,
   });
+
   final String fromAddress;
-  final TextEditingController toController;
-  final TextEditingController ccController;
+  final List<String> to;
+  final List<String> cc;
+  final List<String> bcc;
+  final bool showCc;
+  final bool showBcc;
+  final ValueChanged<List<String>> onToChanged;
+  final ValueChanged<List<String>> onCcChanged;
+  final ValueChanged<List<String>> onBccChanged;
+  final VoidCallback onShowCc;
+  final VoidCallback onShowBcc;
   final TextEditingController subjectController;
   final TextEditingController bodyController;
   final String? errorMessage;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const Divider(color: AppColors.border, height: 1),
-        _Row(
-          label: 'From',
-          child: Text(fromAddress,
-              style: AppTextStyles.monoSmall.copyWith(fontSize: 13)),
-        ),
-        const Divider(color: AppColors.border, height: 1),
-        _Row(
-          label: 'To',
-          child: _Input(
-              controller: toController, hint: 'name@domain.com'),
-        ),
-        const Divider(color: AppColors.border, height: 1),
-        _Row(
-          label: 'Cc',
-          child:
-              _Input(controller: ccController, hint: 'Add recipients...'),
-        ),
-        const Divider(color: AppColors.border, height: 1),
-        _Row(
-          label: 'Subject',
-          child: _Input(controller: subjectController),
-        ),
-        const Divider(color: AppColors.border, height: 1),
-        if (errorMessage != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: Text(errorMessage!,
-                style: AppTextStyles.bodySmall
-                    .copyWith(color: AppColors.danger)),
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const Divider(color: AppColors.border, height: 1),
+          _Row(
+            label: 'From',
+            child: Text(fromAddress,
+                style: AppTextStyles.monoSmall.copyWith(fontSize: 13)),
           ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          const Divider(color: AppColors.border, height: 1),
+          _Row(
+            label: 'To',
+            trailing: (showCc && showBcc)
+                ? null
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!showCc)
+                        _MiniLink(label: 'Cc', onTap: onShowCc),
+                      if (!showBcc) ...[
+                        if (!showCc) const SizedBox(width: 8),
+                        _MiniLink(label: 'Bcc', onTap: onShowBcc),
+                      ],
+                    ],
+                  ),
+            child: RecipientChipsField(
+              values: to,
+              onChanged: onToChanged,
+              placeholder: 'name@domain.com',
+            ),
+          ),
+          if (showCc) ...[
+            const Divider(color: AppColors.border, height: 1),
+            _Row(
+              label: 'Cc',
+              child: RecipientChipsField(
+                values: cc,
+                onChanged: onCcChanged,
+                placeholder: 'Add Cc recipients…',
+              ),
+            ),
+          ],
+          if (showBcc) ...[
+            const Divider(color: AppColors.border, height: 1),
+            _Row(
+              label: 'Bcc',
+              child: RecipientChipsField(
+                values: bcc,
+                onChanged: onBccChanged,
+                placeholder: 'Add Bcc recipients…',
+              ),
+            ),
+          ],
+          const Divider(color: AppColors.border, height: 1),
+          _Row(
+            label: 'Subject',
             child: TextField(
-              controller: bodyController,
-              maxLines: null,
-              expands: true,
-              textAlignVertical: TextAlignVertical.top,
+              controller: subjectController,
               cursorColor: AppColors.accent,
               style: GoogleFonts.inter(
                 fontSize: 14,
+                fontWeight: FontWeight.w500,
                 color: AppColors.textPrimary,
-                height: 1.6,
               ),
-              decoration: InputDecoration(
-                hintText: 'Write your message...',
-                hintStyle: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: AppColors.textTertiary,
-                ),
+              decoration: const InputDecoration(
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
-                filled: false,
+                isDense: true,
                 contentPadding: EdgeInsets.zero,
               ),
             ),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.child});
-  final String label;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 56,
-            child: Text(
-              label,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textTertiary,
-                letterSpacing: 0.4,
+          const Divider(color: AppColors.border, height: 1),
+          if (errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Text(errorMessage!,
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.danger)),
+            ),
+          // Body — multiline, no fixed height (the scroll view above
+          // handles overflow). Min-height keeps the field tappable
+          // even on a fresh compose.
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 280),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              child: TextField(
+                controller: bodyController,
+                maxLines: null,
+                minLines: 8,
+                cursorColor: AppColors.accent,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                  height: 1.6,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Write your message...',
+                  hintStyle: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: AppColors.textTertiary,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
             ),
           ),
-          Expanded(child: child),
         ],
       ),
     );
   }
 }
 
-class _Input extends StatelessWidget {
-  const _Input({required this.controller, this.hint});
-  final TextEditingController controller;
-  final String? hint;
+class _Row extends StatelessWidget {
+  const _Row({required this.label, required this.child, this.trailing});
+  final String label;
+  final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      cursorColor: AppColors.accent,
-      style: AppTextStyles.monoSmall.copyWith(
-        color: AppColors.textPrimary,
-        fontSize: 13,
-      ),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: AppTextStyles.monoSmall.copyWith(
-          color: AppColors.textTertiary,
-          fontSize: 13,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      // ConstrainedBox keeps every row at a consistent minimum height
+      // regardless of how many chips it contains — fixes the jumpy
+      // chip-vs-empty input layout.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 28),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 56,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  label,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(child: child),
+            if (trailing != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, top: 4),
+                child: trailing,
+              ),
+          ],
         ),
-        border: InputBorder.none,
-        enabledBorder: InputBorder.none,
-        focusedBorder: InputBorder.none,
-        isDense: true,
-        contentPadding: EdgeInsets.zero,
-        filled: false,
+      ),
+    );
+  }
+}
+
+class _MiniLink extends StatelessWidget {
+  const _MiniLink({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Text(
+        label,
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppColors.accent,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
