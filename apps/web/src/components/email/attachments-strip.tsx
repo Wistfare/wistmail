@@ -1,28 +1,40 @@
 'use client'
 
+import { useState } from 'react'
 import {
   Calendar,
+  Check,
   Download,
   File,
   FileImage,
   FileText,
   FileVideo,
+  HelpCircle,
+  MapPin,
+  X,
 } from 'lucide-react'
+import { api } from '@/lib/api-client'
+import type { ParsedIcs } from '@/lib/email-queries'
 
 interface Attachment {
   id: string
   filename: string
   contentType: string
   sizeBytes: number
+  parsedIcs?: ParsedIcs
 }
 
 /// Full attachment chip strip rendered in the email-detail header.
 /// Each chip = type-icon + filename + size, click = download.
 /// Calendar invites (.ics / text/calendar) get a separate ICS card
-/// rendered above the strip with title/time/RSVP placeholders.
+/// rendered above the strip — if the server parsed it successfully we
+/// render title/time/location + working RSVP buttons, otherwise we
+/// fall back to the generic placeholder.
 export function AttachmentsStrip({
+  emailId,
   attachments,
 }: {
+  emailId: string
   attachments: Attachment[]
 }) {
   if (attachments.length === 0) return null
@@ -45,7 +57,7 @@ export function AttachmentsStrip({
         </span>
       </div>
 
-      {ics && <IcsCard attachment={ics} />}
+      {ics && <IcsCard emailId={emailId} attachment={ics} />}
 
       {others.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -94,22 +106,70 @@ function AttachmentChip({ attachment }: { attachment: Attachment }) {
   )
 }
 
-function IcsCard({ attachment }: { attachment: Attachment }) {
-  // Without the bytes we can't parse summary/dtstart/dtend yet, so
-  // we render a compact "calendar invite" card with a download link.
-  // When the mail-engine starts streaming bytes, we'll parse client-
-  // side and replace this with the rich title/time/RSVP rendering.
+type RsvpResponse = 'accept' | 'tentative' | 'decline'
+
+function IcsCard({
+  emailId,
+  attachment,
+}: {
+  emailId: string
+  attachment: Attachment
+}) {
+  const parsed = attachment.parsedIcs
+  const [lastResponse, setLastResponse] = useState<RsvpResponse | null>(null)
+  const [sending, setSending] = useState<RsvpResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Organizer email is required to produce a valid REPLY — without it
+  // there's no one to send the response to. Disable buttons but still
+  // render the metadata card so the user sees the event details.
+  const canRsvp = Boolean(parsed?.organizer?.email)
+
+  async function rsvp(response: RsvpResponse) {
+    if (sending) return
+    setSending(response)
+    setError(null)
+    try {
+      await api.post(
+        `/api/v1/inbox/emails/${emailId}/attachments/${attachment.id}/rsvp`,
+        { response },
+      )
+      setLastResponse(response)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send RSVP')
+    } finally {
+      setSending(null)
+    }
+  }
+
   return (
     <div className="border border-wm-accent bg-wm-accent/10 p-3">
       <div className="flex items-start gap-3">
         <Calendar className="h-5 w-5 shrink-0 text-wm-accent" />
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-wm-text-primary">
-            Calendar invite
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-wm-text-primary">
+            {parsed?.summary || 'Calendar invite'}
           </p>
-          <p className="font-mono text-[11px] text-wm-text-muted">
-            {attachment.filename} · {formatBytes(attachment.sizeBytes)}
-          </p>
+          {parsed?.startAt ? (
+            <p className="text-[12px] text-wm-text-secondary">
+              {formatInviteTime(parsed.startAt, parsed.endAt, parsed.allDay)}
+            </p>
+          ) : null}
+          {parsed?.location ? (
+            <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-wm-text-muted">
+              <MapPin className="h-3 w-3 shrink-0" />
+              {parsed.location}
+            </p>
+          ) : null}
+          {parsed?.organizer?.email ? (
+            <p className="mt-0.5 font-mono text-[10px] text-wm-text-muted">
+              from {parsed.organizer.name || parsed.organizer.email}
+            </p>
+          ) : (
+            <p className="font-mono text-[11px] text-wm-text-muted">
+              {attachment.filename} · {formatBytes(attachment.sizeBytes)}
+            </p>
+          )}
         </div>
         <a
           href={`/api/v1/inbox/attachments/${attachment.id}/download`}
@@ -120,34 +180,116 @@ function IcsCard({ attachment }: { attachment: Attachment }) {
           Open
         </a>
       </div>
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          className="cursor-not-allowed bg-wm-accent/30 px-3 py-1 font-mono text-[11px] font-semibold text-wm-accent"
-          disabled
-          title="RSVP isn't wired yet"
-        >
-          Yes
-        </button>
-        <button
-          type="button"
-          className="cursor-not-allowed border border-wm-border px-3 py-1 font-mono text-[11px] font-semibold text-wm-text-muted"
-          disabled
-          title="RSVP isn't wired yet"
-        >
-          Maybe
-        </button>
-        <button
-          type="button"
-          className="cursor-not-allowed border border-wm-border px-3 py-1 font-mono text-[11px] font-semibold text-wm-text-muted"
-          disabled
-          title="RSVP isn't wired yet"
-        >
-          No
-        </button>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <RsvpButton
+          label="Yes"
+          icon={<Check className="h-3 w-3" />}
+          active={lastResponse === 'accept'}
+          loading={sending === 'accept'}
+          disabled={!canRsvp || sending !== null}
+          onClick={() => rsvp('accept')}
+        />
+        <RsvpButton
+          label="Maybe"
+          icon={<HelpCircle className="h-3 w-3" />}
+          active={lastResponse === 'tentative'}
+          loading={sending === 'tentative'}
+          disabled={!canRsvp || sending !== null}
+          onClick={() => rsvp('tentative')}
+        />
+        <RsvpButton
+          label="No"
+          icon={<X className="h-3 w-3" />}
+          active={lastResponse === 'decline'}
+          loading={sending === 'decline'}
+          disabled={!canRsvp || sending !== null}
+          onClick={() => rsvp('decline')}
+        />
+        {lastResponse ? (
+          <span className="font-mono text-[10px] font-semibold uppercase text-wm-success">
+            RSVP sent · {labelFor(lastResponse)}
+          </span>
+        ) : null}
+        {!canRsvp ? (
+          <span className="font-mono text-[10px] uppercase text-wm-text-muted">
+            No organizer — can't reply
+          </span>
+        ) : null}
+        {error ? (
+          <span className="font-mono text-[10px] uppercase text-wm-danger">
+            {error}
+          </span>
+        ) : null}
       </div>
     </div>
   )
+}
+
+function RsvpButton({
+  label,
+  icon,
+  active,
+  loading,
+  disabled,
+  onClick,
+}: {
+  label: string
+  icon: React.ReactNode
+  active: boolean
+  loading: boolean
+  disabled: boolean
+  onClick: () => void
+}) {
+  const base =
+    'inline-flex items-center gap-1 px-3 py-1 font-mono text-[11px] font-semibold transition-colors'
+  const style = active
+    ? 'bg-wm-accent text-white'
+    : disabled
+      ? 'border border-wm-border text-wm-text-muted cursor-not-allowed'
+      : 'border border-wm-border text-wm-text-secondary hover:bg-wm-surface-hover cursor-pointer'
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} className={`${base} ${style}`}>
+      {loading ? <span className="h-3 w-3 animate-pulse">·</span> : icon}
+      {label}
+    </button>
+  )
+}
+
+function labelFor(r: RsvpResponse): string {
+  return r === 'accept' ? 'Accepted' : r === 'tentative' ? 'Tentative' : 'Declined'
+}
+
+function formatInviteTime(
+  startAt: string,
+  endAt: string | null,
+  allDay: boolean,
+): string {
+  const start = new Date(startAt)
+  if (Number.isNaN(start.getTime())) return ''
+  const end = endAt ? new Date(endAt) : null
+  const dateFmt: Intl.DateTimeFormatOptions = {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }
+  const timeFmt: Intl.DateTimeFormatOptions = {
+    hour: 'numeric',
+    minute: '2-digit',
+  }
+  if (allDay) {
+    return start.toLocaleDateString(undefined, dateFmt) + ' · all day'
+  }
+  const datePart = start.toLocaleDateString(undefined, dateFmt)
+  const startTime = start.toLocaleTimeString(undefined, timeFmt)
+  if (end) {
+    const sameDay = start.toDateString() === end.toDateString()
+    const endTime = end.toLocaleTimeString(undefined, timeFmt)
+    return sameDay
+      ? `${datePart} · ${startTime} – ${endTime}`
+      : `${datePart} ${startTime} → ${end.toLocaleDateString(undefined, dateFmt)} ${endTime}`
+  }
+  return `${datePart} · ${startTime}`
 }
 
 function iconFor(contentType: string, filename: string) {

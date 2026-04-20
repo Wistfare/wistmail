@@ -250,7 +250,7 @@ class _Body extends ConsumerWidget {
           const SizedBox(height: 20),
           const Divider(color: AppColors.border, height: 1),
           if (email.attachments.isNotEmpty)
-            AttachmentsStrip(attachments: email.attachments),
+            AttachmentsStrip(emailId: email.id, attachments: email.attachments),
           const SizedBox(height: 20),
           // Real HTML rendering — flutter_html with our typography +
           // cid: attachment resolution + remote-image privacy gate.

@@ -28,6 +28,7 @@ abstract final class AppColors {
   // Status / system
   static const Color danger = Color(0xFFEF4444);
   static const Color dangerSubtle = Color(0xFF2A0E0E);
+  static const Color success = Color(0xFF10B981);
 
   // Drawer
   static const Color drawerBackground = Color(0xFF111111);

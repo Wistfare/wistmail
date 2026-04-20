@@ -47,10 +47,30 @@ export interface EmailPage {
   hasMore: boolean
 }
 
+export interface ParsedIcs {
+  uid: string
+  method: string | null
+  summary: string | null
+  description: string | null
+  location: string | null
+  startAt: string | null
+  endAt: string | null
+  allDay: boolean
+  organizer: { email: string; name: string | null } | null
+  attendees: Array<{ email: string; name: string | null; rsvp: boolean }>
+  sequence: number
+}
+
 export interface FullEmail extends EmailListItem {
   textBody: string | null
   htmlBody: string | null
-  attachments: Array<{ id: string; filename: string; contentType: string; sizeBytes: number }>
+  attachments: Array<{
+    id: string
+    filename: string
+    contentType: string
+    sizeBytes: number
+    parsedIcs?: ParsedIcs
+  }>
 }
 
 export const inboxKeys = {

@@ -1,20 +1,26 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
+import { readFile } from 'node:fs/promises'
 import { ValidationError } from '@wistmail/shared'
-import { emails, mailboxes } from '@wistmail/db'
+import { attachments, emails, mailboxes } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
 import { EmailSender, EMAIL_STATUS } from '../services/email-sender.js'
 import { checkAndReserveSend, refundSend } from '../services/send-rate-limit.js'
 import { getDb } from '../lib/db.js'
 import { eventBus } from '../events/bus.js'
+import { parseIcs, buildRsvpReply, type RsvpResponse } from '../lib/ics.js'
+import { pathForAttachment } from '../lib/attachment-storage.js'
 import {
   searchEmails,
   searchEnabled,
   updateIndexedEmail,
   deleteIndexedEmail,
 } from '../services/search.js'
+
+const MAIL_ENGINE_URL = process.env.MAIL_ENGINE_URL || 'http://mail-engine:8025'
+const INBOUND_SECRET = process.env.INBOUND_SECRET || ''
 
 export const inboxRoutes = new Hono<SessionEnv>()
 
@@ -359,4 +365,157 @@ inboxRoutes.post('/emails/:id/dispatch', async (c) => {
   })
 
   return c.json({ id: emailId, status: EMAIL_STATUS.Sending }, 202)
+})
+
+/**
+ * POST /api/v1/inbox/emails/:id/attachments/:aid/rsvp
+ *
+ * Send a METHOD:REPLY ICS back to the invite's organizer reflecting
+ * the user's accept/tentative/decline choice. We bypass the normal
+ * draft→claim→send pipeline because RSVPs aren't "drafts" — they're a
+ * single atomic acknowledgement and the UI doesn't want them cluttering
+ * the Drafts folder while in flight. The response is fire-and-forget:
+ * on success we write a `sendingLogs` entry and optionally drop a row
+ * in the emails table (folder='sent') so the user can find the reply
+ * in their Sent list.
+ */
+inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
+  const emailId = c.req.param('id')
+  const attachmentId = c.req.param('aid')
+  const userId = c.get('userId')
+
+  const body = await c.req.json().catch(() => ({}))
+  const parsed = z
+    .object({ response: z.enum(['accept', 'tentative', 'decline']) })
+    .safeParse(body)
+  if (!parsed.success) throw new ValidationError('Invalid response')
+  const response = parsed.data.response as RsvpResponse
+
+  const db = getDb()
+  // Ownership check in one join — email must belong to a mailbox the
+  // user owns, AND the attachment must belong to that email. We load
+  // the mailbox address to use as the From on the reply.
+  const rows = await db
+    .select({
+      attachmentId: attachments.id,
+      contentType: attachments.contentType,
+      mailboxAddress: mailboxes.address,
+      mailboxDisplayName: mailboxes.displayName,
+    })
+    .from(attachments)
+    .innerJoin(emails, eq(emails.id, attachments.emailId))
+    .innerJoin(mailboxes, eq(mailboxes.id, emails.mailboxId))
+    .where(
+      and(
+        eq(attachments.id, attachmentId),
+        eq(emails.id, emailId),
+        eq(mailboxes.userId, userId),
+      ),
+    )
+    .limit(1)
+
+  if (rows.length === 0) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'Invite not found' } },
+      404,
+    )
+  }
+  const row = rows[0]
+
+  // Read the raw ICS bytes from disk, parse, and build a REPLY.
+  let icsText: string
+  try {
+    icsText = await readFile(pathForAttachment(row.attachmentId), 'utf8')
+  } catch (err) {
+    console.error('[rsvp] storage read failed:', err)
+    return c.json(
+      {
+        error: {
+          code: 'GONE',
+          message: 'Invite bytes are no longer available.',
+        },
+      },
+      410,
+    )
+  }
+  const invite = parseIcs(icsText)
+  if (!invite || !invite.organizer?.email) {
+    return c.json(
+      {
+        error: {
+          code: 'INVALID_INVITE',
+          message: 'Invite is missing an organizer — cannot reply.',
+        },
+      },
+      422,
+    )
+  }
+
+  const reply = buildRsvpReply({
+    invite,
+    attendeeEmail: row.mailboxAddress,
+    attendeeName: row.mailboxDisplayName,
+    response,
+  })
+
+  // Human-readable subject/body — calendar clients use the ICS part,
+  // but humans reading the reply in a plain mail client still want to
+  // see what happened.
+  const VERBS: Record<RsvpResponse, string> = {
+    accept: 'Accepted',
+    tentative: 'Tentative',
+    decline: 'Declined',
+  }
+  const verb = VERBS[response]
+  const summary = invite.summary || 'invitation'
+  const subject = `${verb}: ${summary}`
+  const text = `${verb}: ${summary}\n\nThis is an automated RSVP from WistMail.`
+
+  const fromHeader = row.mailboxDisplayName
+    ? `"${row.mailboxDisplayName}" <${row.mailboxAddress}>`
+    : row.mailboxAddress
+
+  try {
+    const engineRes = await fetch(`${MAIL_ENGINE_URL}/api/v1/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Inbound-Secret': INBOUND_SECRET,
+      },
+      body: JSON.stringify({
+        from: fromHeader,
+        to: [invite.organizer.email],
+        subject,
+        text,
+        icalendar: reply,
+        icalendarMethod: 'REPLY',
+      }),
+    })
+    if (!engineRes.ok) {
+      const data = (await engineRes.json().catch(() => ({}))) as { error?: string }
+      console.error('[rsvp] mail-engine rejected:', data.error || engineRes.status)
+      return c.json(
+        {
+          error: {
+            code: 'SEND_FAILED',
+            message: data.error || 'Mail engine rejected the reply.',
+          },
+        },
+        502,
+      )
+    }
+  } catch (err) {
+    console.error('[rsvp] mail-engine fetch failed:', err)
+    return c.json(
+      {
+        error: {
+          code: 'SEND_FAILED',
+          message: 'Could not reach mail engine.',
+        },
+      },
+      502,
+    )
+  }
+
+  return c.json({ ok: true, response })
 })

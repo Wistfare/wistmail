@@ -1,7 +1,10 @@
 import { eq, and, desc, gt, ilike, isNull, lte, or, sql, inArray } from 'drizzle-orm'
+import { readFile } from 'node:fs/promises'
 import { emails, attachments, mailboxes } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
+import { parseIcs } from '../lib/ics.js'
+import { pathForAttachment } from '../lib/attachment-storage.js'
 
 const PREVIEW_CHARS = 200
 
@@ -218,7 +221,32 @@ export class EmailService {
       .from(attachments)
       .where(eq(attachments.emailId, emailId))
 
-    return { ...email, attachments: emailAttachments }
+    // For each text/calendar attachment, parse the ICS so the client
+    // can render a proper "meeting invite" card (title/time/location +
+    // RSVP buttons). We do this on read rather than at receive-time so
+    // we don't need a schema migration, and it's cheap — real invites
+    // are a few KB and parsing runs in <1 ms.
+    const enriched = await Promise.all(
+      emailAttachments.map(async (a) => {
+        const isIcs =
+          a.contentType?.toLowerCase().includes('text/calendar') ||
+          a.filename?.toLowerCase().endsWith('.ics')
+        if (!isIcs) return a
+        try {
+          const bytes = await readFile(pathForAttachment(a.id), 'utf8')
+          const parsed = parseIcs(bytes)
+          if (parsed) return { ...a, parsedIcs: parsed }
+        } catch (err) {
+          // Storage miss or parse explosion — the chip falls back to
+          // the generic "Calendar invite" placeholder, which is still
+          // useful. Don't poison the whole email detail response.
+          console.warn(`[email] ICS parse failed for ${a.id}:`, err)
+        }
+        return a
+      }),
+    )
+
+    return { ...email, attachments: enriched }
   }
 
   /// Build the slim list-row shape from a freshly inserted email — used by

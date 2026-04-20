@@ -472,6 +472,7 @@ export default function InboxPage() {
             </div>
 
             <AttachmentsStrip
+              emailId={selectedFull.id}
               attachments={selectedFull.attachments ?? []}
             />
             <div className="flex-1 overflow-y-auto px-6 py-6">{renderEmailBody(selectedFull)}</div>

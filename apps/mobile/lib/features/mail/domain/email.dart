@@ -247,6 +247,7 @@ class EmailAttachment {
     required this.filename,
     required this.contentType,
     required this.sizeBytes,
+    this.parsedIcs,
   });
 
   final String id;
@@ -254,12 +255,76 @@ class EmailAttachment {
   final String contentType;
   final int sizeBytes;
 
+  /// Present when the server successfully parsed a text/calendar
+  /// attachment — lets the UI render title/time/location + working
+  /// RSVP buttons instead of the generic placeholder.
+  final ParsedIcs? parsedIcs;
+
   factory EmailAttachment.fromJson(Map<String, dynamic> json) {
     return EmailAttachment(
       id: json['id'] as String,
       filename: (json['filename'] as String?) ?? '',
       contentType: (json['contentType'] as String?) ?? '',
       sizeBytes: (json['sizeBytes'] as int?) ?? 0,
+      parsedIcs: json['parsedIcs'] is Map<String, dynamic>
+          ? ParsedIcs.fromJson(json['parsedIcs'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+}
+
+/// Server-parsed VEVENT fields. Lifted straight from the API response;
+/// we don't re-parse the ICS client-side.
+class ParsedIcs {
+  const ParsedIcs({
+    required this.uid,
+    this.method,
+    this.summary,
+    this.description,
+    this.location,
+    this.startAt,
+    this.endAt,
+    required this.allDay,
+    this.organizerEmail,
+    this.organizerName,
+    required this.sequence,
+  });
+
+  final String uid;
+  final String? method;
+  final String? summary;
+  final String? description;
+  final String? location;
+  final DateTime? startAt;
+  final DateTime? endAt;
+  final bool allDay;
+  final String? organizerEmail;
+  final String? organizerName;
+  final int sequence;
+
+  factory ParsedIcs.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDt(dynamic v) {
+      if (v is String) return DateTime.tryParse(v);
+      return null;
+    }
+
+    final organizer = json['organizer'];
+    return ParsedIcs(
+      uid: (json['uid'] as String?) ?? '',
+      method: json['method'] as String?,
+      summary: json['summary'] as String?,
+      description: json['description'] as String?,
+      location: json['location'] as String?,
+      startAt: parseDt(json['startAt']),
+      endAt: parseDt(json['endAt']),
+      allDay: (json['allDay'] as bool?) ?? false,
+      organizerEmail: organizer is Map<String, dynamic>
+          ? organizer['email'] as String?
+          : null,
+      organizerName: organizer is Map<String, dynamic>
+          ? organizer['name'] as String?
+          : null,
+      sequence: (json['sequence'] as int?) ?? 0,
     );
   }
 }
