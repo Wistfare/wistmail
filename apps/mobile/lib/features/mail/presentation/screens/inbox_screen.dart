@@ -203,7 +203,7 @@ class _SelectionBar extends ConsumerWidget {
       // so we just surface a confirmation without an action button.
       final count = ids.length;
       final plural = count == 1 ? '' : 's';
-      String? message;
+      String message;
       String? undoAction;
       String? undoFolder;
       switch (action) {
@@ -223,6 +223,11 @@ class _SelectionBar extends ConsumerWidget {
           undoFolder = 'inbox';
         case 'purge':
           message = 'Permanently deleted $count email$plural.';
+        default:
+          // Unknown action shouldn't reach here — the selection bar
+          // only fires the cases above — but give the analyzer a
+          // definite assignment so the Text arg is non-nullable.
+          message = 'Done.';
       }
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
