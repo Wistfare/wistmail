@@ -23,7 +23,7 @@ class LocalDb {
 
   final Database db;
 
-  static const _kSchemaVersion = 2;
+  static const _kSchemaVersion = 3;
   static const _kFileName = 'wistfare-mail-local.db';
 
   static LocalDb? _instance;
@@ -115,6 +115,13 @@ Future<void> _onUpgrade(Database db, int from, int to) async {
       );
     }
   }
+  // v3 — compose_drafts table for in-progress compose autosave so
+  // backgrounding the app / accidentally popping the screen doesn't
+  // wipe a half-typed message. One row per mailbox; the latest
+  // write wins.
+  if (from < 3) {
+    await db.execute(_createComposeDraftsSql);
+  }
 }
 
 Future<bool> _columnExists(
@@ -125,6 +132,20 @@ Future<bool> _columnExists(
   final rows = await db.rawQuery('PRAGMA table_info($table)');
   return rows.any((r) => (r['name'] as String?) == column);
 }
+
+const String _createComposeDraftsSql = '''
+  CREATE TABLE IF NOT EXISTS compose_drafts (
+    mailbox_id TEXT PRIMARY KEY,
+    to_json TEXT NOT NULL DEFAULT '[]',
+    cc_json TEXT NOT NULL DEFAULT '[]',
+    bcc_json TEXT NOT NULL DEFAULT '[]',
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    in_reply_to TEXT,
+    scheduled_at_ms INTEGER,
+    updated_at_ms INTEGER NOT NULL
+  )
+''';
 
 Future<void> _createSchema(Database db) async {
   await db.execute('''
@@ -160,6 +181,8 @@ Future<void> _createSchema(Database db) async {
       'CREATE INDEX IF NOT EXISTS emails_mailbox_idx ON emails(mailbox_id)');
   await db.execute(
       'CREATE INDEX IF NOT EXISTS emails_status_idx ON emails(status)');
+
+  await db.execute(_createComposeDraftsSql);
 
   await db.execute('''
     CREATE TABLE IF NOT EXISTS outbox (

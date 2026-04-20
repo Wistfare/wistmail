@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/presentation/providers/auth_controller.dart';
 import '../../features/mail/data/outbox_handlers.dart';
 import '../../features/mail/presentation/providers/mail_providers.dart';
+import 'compose_drafts_store.dart';
 import 'email_local_store.dart';
 import 'local_db.dart';
 import 'outbox.dart';
@@ -25,6 +26,12 @@ final emailLocalStoreProvider = FutureProvider<EmailLocalStore>((ref) async {
 final outboxProvider = FutureProvider<Outbox>((ref) async {
   final db = await ref.watch(localDbProvider.future);
   return Outbox(db);
+});
+
+final composeDraftsStoreProvider =
+    FutureProvider<ComposeDraftsStore>((ref) async {
+  final db = await ref.watch(localDbProvider.future);
+  return ComposeDraftsStore(db);
 });
 
 /// SyncEngine — singleton, drain loop owned. `keepAlive` prevents

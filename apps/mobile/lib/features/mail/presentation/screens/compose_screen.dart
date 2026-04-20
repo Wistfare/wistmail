@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/local/compose_drafts_store.dart';
+import '../../../../core/local/local_providers.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/mail_actions.dart';
@@ -34,6 +38,16 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   bool _isSending = false;
   String? _errorMessage;
 
+  /// Debounce handle — any time the user types we wait 800ms of idle
+  /// before persisting to avoid hammering sqlite on every keystroke.
+  Timer? _autosaveTimer;
+  /// Mailbox id for the currently-attached draft. Only set after
+  /// the first save so clear-on-send knows which row to delete.
+  String? _draftMailboxId;
+  /// Whether we've already attempted the one-shot restore. Guards
+  /// against re-running the restore on hot reload.
+  bool _restoreAttempted = false;
+
   @override
   void initState() {
     super.initState();
@@ -44,13 +58,88 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
     _showBcc = _bcc.isNotEmpty;
     _subjectController = TextEditingController(text: widget.args.subject);
     _bodyController = TextEditingController(text: widget.args.body);
+    _subjectController.addListener(_scheduleAutosave);
+    _bodyController.addListener(_scheduleAutosave);
   }
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
+    _subjectController.removeListener(_scheduleAutosave);
+    _bodyController.removeListener(_scheduleAutosave);
     _subjectController.dispose();
     _bodyController.dispose();
     super.dispose();
+  }
+
+  /// Defers the actual sqlite write to a debounced timer so the
+  /// autosave doesn't fire on every keystroke. 800 ms matches the
+  /// feeling of "the app saved when I paused" without being so long
+  /// that a tap-close-misclick loses real work.
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 800), _persistDraft);
+  }
+
+  Future<void> _persistDraft() async {
+    final mailboxId = _draftMailboxId;
+    if (mailboxId == null) return;
+    final store = await ref.read(composeDraftsStoreProvider.future);
+    await store.save(
+      ComposeDraftRow(
+        mailboxId: mailboxId,
+        toAddresses: _to,
+        cc: _cc,
+        bcc: _bcc,
+        subject: _subjectController.text,
+        body: _bodyController.text,
+        inReplyTo: widget.args.inReplyTo,
+        scheduledAt: _scheduledAt,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  /// One-shot restore when the compose screen opens without pre-
+  /// filled ComposeArgs (i.e. a fresh "new compose" rather than a
+  /// reply / forward that already has its own body). Called from
+  /// the build once we know the user's default mailbox.
+  Future<void> _restoreDraftFor(String mailboxId) async {
+    if (_restoreAttempted) return;
+    _restoreAttempted = true;
+    _draftMailboxId = mailboxId;
+
+    // If the user opened compose via a reply / forward, we treat
+    // their passed-in content as the source of truth and leave any
+    // older stashed draft alone — restoring over a reply body is a
+    // worse UX than discarding the stash.
+    final hasPrefilled = widget.args.toAddresses.isNotEmpty ||
+        widget.args.subject.isNotEmpty ||
+        widget.args.body.isNotEmpty;
+    if (hasPrefilled) return;
+
+    final store = await ref.read(composeDraftsStoreProvider.future);
+    final row = await store.load(mailboxId);
+    if (row == null || !mounted) return;
+    setState(() {
+      _to = List.of(row.toAddresses);
+      _cc = List.of(row.cc);
+      _bcc = List.of(row.bcc);
+      _showCc = _cc.isNotEmpty;
+      _showBcc = _bcc.isNotEmpty;
+      _subjectController.text = row.subject;
+      _bodyController.text = row.body;
+      _scheduledAt = row.scheduledAt;
+    });
+  }
+
+  /// Wipe the persisted draft row — called after a successful send
+  /// so we don't restore a stale copy next time compose opens.
+  Future<void> _clearPersistedDraft() async {
+    final mailboxId = _draftMailboxId;
+    if (mailboxId == null) return;
+    final store = await ref.read(composeDraftsStoreProvider.future);
+    await store.clear(mailboxId);
   }
 
   /// Optional scheduled-send target. Populated from the picker in
@@ -89,6 +178,11 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
         final repo = await ref.read(mailRepositoryProvider.future);
         await repo.compose(draft);
       }
+      // Wipe the stashed draft now that the real send (or schedule)
+      // is committed — otherwise re-opening compose would restore
+      // the just-sent message and mislead the user.
+      _autosaveTimer?.cancel();
+      await _clearPersistedDraft();
       if (!mounted) return;
       context.pop();
     } catch (e) {
@@ -110,7 +204,18 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   Widget build(BuildContext context) {
     final mailboxes = ref.watch(mailboxesProvider);
 
-    return Scaffold(
+    return PopScope(
+      // Flush the draft synchronously before the system pop — covers
+      // the Android back gesture + root-level swipe where the user
+      // leaves without tapping our Close button.
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) return;
+        _autosaveTimer?.cancel();
+        // Fire-and-forget — widget is about to unmount.
+        _persistDraft();
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
@@ -156,6 +261,13 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                       ),
                     );
                   }
+                  // Fire-and-forget: restore any stashed draft the
+                  // first time we land on this mailbox. Guarded by
+                  // _restoreAttempted so hot reload / rebuilds
+                  // don't re-run it.
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _restoreDraftFor(list.first.id);
+                  });
                   return _Form(
                     fromAddress: list.first.address,
                     to: _to,
@@ -163,9 +275,18 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                     bcc: _bcc,
                     showCc: _showCc,
                     showBcc: _showBcc,
-                    onToChanged: (v) => setState(() => _to = v),
-                    onCcChanged: (v) => setState(() => _cc = v),
-                    onBccChanged: (v) => setState(() => _bcc = v),
+                    onToChanged: (v) {
+                      setState(() => _to = v);
+                      _scheduleAutosave();
+                    },
+                    onCcChanged: (v) {
+                      setState(() => _cc = v);
+                      _scheduleAutosave();
+                    },
+                    onBccChanged: (v) {
+                      setState(() => _bcc = v);
+                      _scheduleAutosave();
+                    },
                     onShowCc: () => setState(() => _showCc = true),
                     onShowBcc: () => setState(() => _showBcc = true),
                     subjectController: _subjectController,
@@ -194,6 +315,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
