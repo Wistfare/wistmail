@@ -19,6 +19,12 @@ import { api } from './api-client'
 
 export type EmailStatus = 'idle' | 'sending' | 'sent' | 'failed' | 'rate_limited'
 
+export interface EmailLabelRef {
+  id: string
+  name: string
+  color: string
+}
+
 export interface EmailListItem {
   id: string
   mailboxId: string
@@ -37,6 +43,10 @@ export interface EmailListItem {
   sendError: string | null
   updatedAt: string
   createdAt: string
+  /// Labels shipped inline with every list row so the inbox doesn't
+  /// have to fire a per-row `/labels/email/:id` request (was the old
+  /// N+1 pattern — 50 rows ⇒ 50 sequential calls).
+  labels: EmailLabelRef[]
 }
 
 export interface EmailPage {

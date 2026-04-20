@@ -27,7 +27,6 @@ import {
   AttachmentsStrip,
 } from '@/components/email/attachments-strip'
 import { api } from '@/lib/api-client'
-import { useLabelsForEmail } from '@/lib/labels'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import {
   type EmailListItem,
@@ -377,7 +376,7 @@ export default function InboxPage() {
                   onRetry={() => handleRetrySend(email.id)}
                 />
               </div>
-              <RowLabels emailId={email.id} />
+              <RowLabels labels={email.labels ?? []} />
             </button>
           ))}
 
@@ -552,15 +551,18 @@ function SendStatusPill({
 }
 
 /// Tiny chip strip rendered under the row preview. Empty + collapsed
-/// when the email has no labels (the common case). Uses a separate
-/// component so the row-level component doesn't need to be a
-/// QueryClient consumer for unrelated reasons.
-function RowLabels({ emailId }: { emailId: string }) {
-  const { data } = useLabelsForEmail(emailId)
-  if (!data || data.length === 0) return null
+/// when the email has no labels (the common case). Labels now ship
+/// baked into the list response — no per-row fetch — so the old
+/// QueryClient plumbing is gone.
+function RowLabels({
+  labels,
+}: {
+  labels: { id: string; name: string; color: string }[]
+}) {
+  if (labels.length === 0) return null
   return (
     <div className="mt-1 flex flex-wrap gap-1">
-      {data.map((l) => (
+      {labels.map((l) => (
         <span
           key={l.id}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase"

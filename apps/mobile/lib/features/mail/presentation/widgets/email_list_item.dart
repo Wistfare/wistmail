@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_tag.dart';
-import '../../../labels/presentation/providers/labels_providers.dart';
 import '../../domain/email.dart';
 import 'attachments_strip.dart';
 
@@ -109,7 +108,7 @@ class EmailListItem extends ConsumerWidget {
               // Real labels — fetched on demand from /labels/email/:id.
               // The autoDispose family caches per-email, so scrolling
               // back to a row reuses the result instead of refetching.
-              _RowLabels(emailId: email.id),
+              _RowLabels(labels: email.labels),
             ],
           ),
         ),
@@ -121,28 +120,24 @@ class EmailListItem extends ConsumerWidget {
 /// Inline labels strip rendered under the row preview. Empty +
 /// collapsed when the email has no labels (the common case) so
 /// untagged rows aren't visually heavier than they were before.
-class _RowLabels extends ConsumerWidget {
-  const _RowLabels({required this.emailId});
-  final String emailId;
+/// Labels come baked into the list response — no per-row network
+/// fetch — which is why this doesn't need ref/providers anymore.
+class _RowLabels extends StatelessWidget {
+  const _RowLabels({required this.labels});
+  final List<EmailLabelRef> labels;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final labels = ref.watch(labelsForEmailProvider(emailId));
-    return labels.maybeWhen(
-      data: (list) {
-        if (list.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(left: 18, top: 6),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
-              for (final l in list) WmTag(label: l.name, color: l.swatch),
-            ],
-          ),
-        );
-      },
-      orElse: () => const SizedBox.shrink(),
+  Widget build(BuildContext context) {
+    if (labels.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(left: 18, top: 6),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: [
+          for (final l in labels) WmTag(label: l.name, color: l.swatch),
+        ],
+      ),
     );
   }
 }

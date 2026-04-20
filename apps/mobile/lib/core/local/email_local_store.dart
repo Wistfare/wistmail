@@ -284,6 +284,11 @@ class EmailLocalStore {
           .toList());
       values['detail_loaded'] = 1;
     }
+    // Labels: persist on every upsert so cached rows render chips
+    // offline. Empty lists overwrite too (label removed server-side).
+    values['labels_json'] = jsonEncode(incoming.labels
+        .map((l) => {'id': l.id, 'name': l.name, 'color': l.color})
+        .toList());
 
     String? touched;
     if (existing.isEmpty) {
@@ -351,6 +356,20 @@ class EmailLocalStore {
       }
     }
 
+    List<EmailLabelRef> _decodeLabels() {
+      final raw = row['labels_json'] as String?;
+      if (raw == null || raw.isEmpty) return const [];
+      try {
+        final list = jsonDecode(raw) as List<dynamic>;
+        return list
+            .whereType<Map<String, dynamic>>()
+            .map((m) => EmailLabelRef.fromJson(m))
+            .toList(growable: false);
+      } catch (_) {
+        return const [];
+      }
+    }
+
     return Email(
       id: row['id'] as String,
       fromAddress: (row['from_address'] as String?) ?? '',
@@ -379,6 +398,7 @@ class EmailLocalStore {
           ? null
           : row['mailbox_id'] as String?,
       attachments: _decodeAttachments(),
+      labels: _decodeLabels(),
     );
   }
 

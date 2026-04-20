@@ -251,6 +251,11 @@ export async function searchEmails(
       sendError: null,
       updatedAt: new Date(h.createdAt).toISOString(),
       createdAt: new Date(h.createdAt).toISOString(),
+      // Meili doesn't index label membership (labels change too often
+      // to keep reliably in sync). Search rows ship without labels;
+      // they re-appear when the user clicks through to the detail view
+      // or when the inbox list reloads.
+      labels: [],
     }))
 
     const total =

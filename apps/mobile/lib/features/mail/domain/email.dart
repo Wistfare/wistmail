@@ -44,6 +44,7 @@ class Email {
     DateTime? updatedAt,
     this.mailboxId,
     this.attachments = const [],
+    this.labels = const [],
   })  : updatedAt = updatedAt ?? createdAt,
         senderName = _extractSenderName(fromAddress),
         senderEmail = _extractSenderEmail(fromAddress),
@@ -78,6 +79,11 @@ class Email {
   final DateTime updatedAt;
   final String? mailboxId;
   final List<EmailAttachment> attachments;
+  /// Labels attached to this email. Server ships these inline on every
+  /// list response so the row renderer never has to fire a per-row
+  /// lookup. Empty in search-result rows (Meili doesn't index label
+  /// membership reliably).
+  final List<EmailLabelRef> labels;
 
   // Pre-computed once in the constructor — getters used to recompute these
   // on every frame for every row in the list.
@@ -114,6 +120,9 @@ class Email {
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
           .map((a) => EmailAttachment.fromJson(a as Map<String, dynamic>))
           .toList(growable: false),
+      labels: (json['labels'] as List<dynamic>? ?? const [])
+          .map((l) => EmailLabelRef.fromJson(l as Map<String, dynamic>))
+          .toList(growable: false),
     );
   }
 
@@ -147,6 +156,7 @@ class Email {
         updatedAt: updatedAt ?? this.updatedAt,
         mailboxId: mailboxId,
         attachments: attachments,
+        labels: labels,
       );
 
   /// Merge a fully-loaded body fetched from /emails/:id back into the slim
@@ -179,6 +189,7 @@ class Email {
         updatedAt: updatedAt,
         mailboxId: mailboxId,
         attachments: attachments ?? this.attachments,
+        labels: labels,
       );
 
   String get timeAgo => _formatTimeAgo(createdAt);
@@ -270,6 +281,36 @@ class EmailAttachment {
           ? ParsedIcs.fromJson(json['parsedIcs'] as Map<String, dynamic>)
           : null,
     );
+  }
+}
+
+/// Compact label reference baked into every email list row.
+/// Intentionally small — just what the row renderer needs to draw a
+/// chip. Full label objects (with mailboxId etc.) come from the
+/// labels settings endpoint when the user actually edits them.
+class EmailLabelRef {
+  const EmailLabelRef({
+    required this.id,
+    required this.name,
+    required this.color,
+  });
+
+  final String id;
+  final String name;
+  final String color;
+
+  factory EmailLabelRef.fromJson(Map<String, dynamic> json) {
+    return EmailLabelRef(
+      id: (json['id'] as String?) ?? '',
+      name: (json['name'] as String?) ?? '',
+      color: (json['color'] as String?) ?? '#999999',
+    );
+  }
+
+  Color get swatch {
+    final hex = color.replaceFirst('#', '');
+    if (hex.length != 6) return const Color(0xFF999999);
+    return Color(int.parse('FF$hex', radix: 16));
   }
 }
 

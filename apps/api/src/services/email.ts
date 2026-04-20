@@ -1,12 +1,22 @@
 import { eq, and, desc, gt, ilike, isNull, lte, or, sql, inArray } from 'drizzle-orm'
 import { readFile } from 'node:fs/promises'
-import { emails, attachments, mailboxes } from '@wistmail/db'
+import { emails, attachments, mailboxes, labels, emailLabels } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 import { parseIcs } from '../lib/ics.js'
 import { pathForAttachment } from '../lib/attachment-storage.js'
 
 const PREVIEW_CHARS = 200
+
+/// Compact label reference the inbox row needs for rendering — id,
+/// name, colour. Full label objects (with mailboxId etc.) live behind
+/// `GET /labels` and are only fetched when the user opens the label
+/// settings / assign-popover flows.
+export interface EmailLabelRef {
+  id: string
+  name: string
+  color: string
+}
 
 /// Slim row returned by listByFolder/search — never includes the full
 /// text/html body. The detail view fetches the full record via getById.
@@ -35,6 +45,10 @@ export interface EmailListItem {
   /// wins reconciliation when WS events race local optimistic state.
   updatedAt: string
   createdAt: string
+  /// Labels assigned to this email. Baked into the list response so the
+  /// inbox row renderer never has to fire a per-row fetch — that was
+  /// the old N+1 pattern (50 rows ⇒ 50 `/labels/email/:id` calls).
+  labels: EmailLabelRef[]
 }
 
 export interface EmailListPage {
@@ -64,6 +78,34 @@ export class EmailService {
       .from(mailboxes)
       .where(eq(mailboxes.userId, userId))
     return rows.map((m) => m.id)
+  }
+
+  /// Batch-fetch label assignments for a page of emails. Returns a map
+  /// keyed by email id so the row mappers can stitch labels in with a
+  /// single lookup. One DB round-trip regardless of page size — beats
+  /// the old pattern of the client firing one GET per row.
+  private async hydrateLabels(
+    emailIds: string[],
+  ): Promise<Map<string, EmailLabelRef[]>> {
+    const map = new Map<string, EmailLabelRef[]>()
+    if (emailIds.length === 0) return map
+    const rows = await this.db
+      .select({
+        emailId: emailLabels.emailId,
+        id: labels.id,
+        name: labels.name,
+        color: labels.color,
+      })
+      .from(emailLabels)
+      .innerJoin(labels, eq(labels.id, emailLabels.labelId))
+      .where(inArray(emailLabels.emailId, emailIds))
+    for (const r of rows) {
+      const existing = map.get(r.emailId)
+      const ref: EmailLabelRef = { id: r.id, name: r.name, color: r.color }
+      if (existing) existing.push(ref)
+      else map.set(r.emailId, [ref])
+    }
+    return map
   }
 
   /// Translate a folder name (literal or synthetic) into a WHERE clause
@@ -175,6 +217,7 @@ export class EmailService {
         .where(where),
     ])
 
+    const labelMap = await this.hydrateLabels(rows.map((r) => r.id))
     const data: EmailListItem[] = rows.map((r) => ({
       id: r.id,
       mailboxId: r.mailboxId,
@@ -193,6 +236,7 @@ export class EmailService {
       sendError: r.sendError,
       updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
+      labels: labelMap.get(r.id) ?? [],
     }))
 
     const total = Number(count ?? 0)
@@ -278,11 +322,14 @@ export class EmailService {
 
     if (rows.length === 0) return null
     const r = rows[0]
-    const att = await this.db
-      .select({ id: attachments.id })
-      .from(attachments)
-      .where(eq(attachments.emailId, emailId))
-      .limit(1)
+    const [att, labelMap] = await Promise.all([
+      this.db
+        .select({ id: attachments.id })
+        .from(attachments)
+        .where(eq(attachments.emailId, emailId))
+        .limit(1),
+      this.hydrateLabels([emailId]),
+    ])
 
     return {
       id: r.id,
@@ -302,6 +349,7 @@ export class EmailService {
       sendError: r.sendError,
       updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
+      labels: labelMap.get(emailId) ?? [],
     }
   }
 
@@ -420,6 +468,7 @@ export class EmailService {
       .limit(pageSize)
       .offset(offset)
 
+    const labelMap = await this.hydrateLabels(rows.map((r) => r.id))
     const data: EmailListItem[] = rows.map((r) => ({
       id: r.id,
       mailboxId: r.mailboxId,
@@ -438,6 +487,7 @@ export class EmailService {
       sendError: r.sendError,
       updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
+      labels: labelMap.get(r.id) ?? [],
     }))
 
     return {

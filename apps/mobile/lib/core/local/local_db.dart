@@ -23,7 +23,7 @@ class LocalDb {
 
   final Database db;
 
-  static const _kSchemaVersion = 1;
+  static const _kSchemaVersion = 2;
   static const _kFileName = 'wistfare-mail-local.db';
 
   static LocalDb? _instance;
@@ -101,6 +101,14 @@ Future<void> _onUpgrade(Database db, int from, int to) async {
   // No legacy versions yet. When we bump _kSchemaVersion, append
   // branches here. Never edit a prior branch.
   if (from < 1) await _createSchema(db);
+  // v2 — inline labels column so cached rows can render chips offline
+  // without a per-row fetch. Default '[]' means older rows just show
+  // no labels until the next sync rehydrates them.
+  if (from < 2) {
+    await db.execute(
+      "ALTER TABLE emails ADD COLUMN labels_json TEXT NOT NULL DEFAULT '[]'",
+    );
+  }
 }
 
 Future<void> _createSchema(Database db) async {
@@ -125,6 +133,7 @@ Future<void> _createSchema(Database db) async {
       status TEXT NOT NULL DEFAULT 'idle',
       send_error TEXT,
       attachments_json TEXT NOT NULL DEFAULT '[]',
+      labels_json TEXT NOT NULL DEFAULT '[]',
       updated_at_ms INTEGER NOT NULL,
       created_at_ms INTEGER NOT NULL,
       detail_loaded INTEGER NOT NULL DEFAULT 0
