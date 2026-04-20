@@ -79,6 +79,8 @@ export default function InboxPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const inSelectionMode = selectedIds.size > 0
 
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+
   // Cache-driven data: list (paginated) + selected detail.
   const list = useInboxList(folderParam)
   const detail = useEmailDetail(selectedId)
@@ -155,6 +157,110 @@ export default function InboxPage() {
     setSelectedId(email.id)
     if (!email.isRead) markRead.mutate({ id: email.id })
   }
+
+  // Global keyboard shortcuts. Modelled on Gmail so muscle memory
+  // transfers. Events from text inputs / contentEditable are
+  // ignored so typing in compose doesn't eat a `c` as "compose"
+  // or `e` as "archive". `/` focuses search even if nothing else is.
+  useEffect(() => {
+    function isTypingSurface(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) return false
+      const tag = target.tagName.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+      if (target.isContentEditable) return true
+      return false
+    }
+
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === '/' && !isTypingSurface(e.target)) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        return
+      }
+      if (isTypingSurface(e.target)) return
+
+      switch (e.key) {
+        case 'Escape':
+          if (inSelectionMode) {
+            clearSelection()
+            e.preventDefault()
+          } else if (searchQuery) {
+            setSearchQuery('')
+            e.preventDefault()
+          }
+          return
+        case 'j': {
+          if (filteredEmails.length === 0) return
+          const idx = selectedId
+            ? filteredEmails.findIndex((em) => em.id === selectedId)
+            : -1
+          const next =
+            idx < 0 ? 0 : Math.min(idx + 1, filteredEmails.length - 1)
+          selectEmail(filteredEmails[next])
+          e.preventDefault()
+          return
+        }
+        case 'k': {
+          if (filteredEmails.length === 0) return
+          const idx = selectedId
+            ? filteredEmails.findIndex((em) => em.id === selectedId)
+            : 0
+          const prev = idx <= 0 ? 0 : idx - 1
+          selectEmail(filteredEmails[prev])
+          e.preventDefault()
+          return
+        }
+        case 'x':
+          if (selectedId) {
+            toggleSelect(selectedId)
+            e.preventDefault()
+          }
+          return
+        case 'e':
+          if (selectedId) {
+            handleArchive(selectedId)
+            e.preventDefault()
+          }
+          return
+        case '#':
+        case 'Delete':
+          if (selectedId) {
+            handleDelete(selectedId)
+            e.preventDefault()
+          }
+          return
+        case 's':
+          if (selectedId) {
+            const em = emails.find((m) => m.id === selectedId)
+            if (em) star.mutate(em)
+            e.preventDefault()
+          }
+          return
+        case 'c':
+          openCompose()
+          e.preventDefault()
+          return
+        case 'r':
+          if (selectedFull) {
+            handleReply()
+            e.preventDefault()
+          }
+          return
+      }
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filteredEmails,
+    selectedId,
+    selectedFull,
+    inSelectionMode,
+    searchQuery,
+    emails,
+  ])
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -461,6 +567,7 @@ export default function InboxPage() {
         <div className="flex items-center gap-2 border-b border-wm-border bg-wm-surface px-5 py-2.5">
           <Search className="h-4 w-4 text-wm-text-muted" />
           <input
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
