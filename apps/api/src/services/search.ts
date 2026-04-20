@@ -244,6 +244,12 @@ export async function searchEmails(
       isDraft: h.isDraft,
       hasAttachments: h.hasAttachments,
       sizeBytes: h.sizeBytes,
+      // Search hits don't carry send-state metadata. Default to 'idle'
+      // — the row will reconcile with its true status the next time
+      // the inbox list streams.
+      status: 'idle',
+      sendError: null,
+      updatedAt: new Date(h.createdAt).toISOString(),
       createdAt: new Date(h.createdAt).toISOString(),
     }))
 

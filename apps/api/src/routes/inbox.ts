@@ -1,11 +1,11 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { ValidationError } from '@wistmail/shared'
-import { mailboxes } from '@wistmail/db'
+import { emails, mailboxes } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
-import { EmailSender } from '../services/email-sender.js'
+import { EmailSender, EMAIL_STATUS } from '../services/email-sender.js'
 import { checkAndReserveSend, refundSend } from '../services/send-rate-limit.js'
 import { getDb } from '../lib/db.js'
 import { eventBus } from '../events/bus.js'
@@ -243,55 +243,120 @@ inboxRoutes.post('/compose', async (c) => {
   if (parsed.data.send) {
     const userId = c.get('userId')
 
-    // Per-user send rate limit replaces the old credit gate. If the
-    // user is over budget we don't even create the draft as 'sending';
-    // we hand back a `rate_limited` status so the client (or the
-    // outbox sync engine) can retry when the window rolls over.
+    // Per-user send rate limit. If we're over budget the draft still
+    // gets persisted in 'rate_limited' state — the dispatcher loop
+    // will retry it automatically when the window rolls over, and the
+    // UI can render it in the Outbox with a "Sending later…" pill.
     const rate = await checkAndReserveSend(userId)
-    if (!rate.allowed) {
-      const retrySec = Math.ceil(rate.retryAfterMs / 1000)
-      return c.json(
-        {
-          error: {
-            code: 'RATE_LIMITED',
-            message: `Send limit reached for the ${rate.scope}. Try again in ${retrySec}s.`,
-            details: {
-              scope: rate.scope,
-              retryAfterMs: rate.retryAfterMs,
-              hourCount: rate.hourCount,
-              dayCount: rate.dayCount,
-            },
-          },
-        },
-        429,
-      )
-    }
 
-    // Create the draft, then dispatch via mail-engine in the
-    // background. If the send fails we refund the rate-limit slot so
-    // a transient network failure doesn't burn the user's hourly
-    // budget.
     const result = await emailService.createDraft(userId, {
       ...parsed.data,
       mailboxId: parsed.data.mailboxId,
     })
 
+    if (!rate.allowed) {
+      // Stamp the email as rate_limited; user sees it in Outbox.
+      await db
+        .update(emails)
+        .set({
+          status: EMAIL_STATUS.RateLimited,
+          sendError: `Send limit reached (${rate.scope})`,
+          updatedAt: new Date(),
+        })
+        .where(eq(emails.id, result.id))
+      return c.json(
+        {
+          id: result.id,
+          status: EMAIL_STATUS.RateLimited,
+          rate: {
+            scope: rate.scope,
+            retryAfterMs: rate.retryAfterMs,
+            hourCount: rate.hourCount,
+            dayCount: rate.dayCount,
+          },
+        },
+        202,
+      )
+    }
+
     const sender = new EmailSender(db)
-    sender
-      .sendEmail(result.id)
-      .then(async (sendResult) => {
-        if (!sendResult.success) {
-          await refundSend(userId)
-        }
-      })
-      .catch(async (err) => {
-        console.error(`Failed to send email ${result.id}:`, err)
+    // Claim atomically (idle → sending) and kick off the actual send
+    // in the background. The HTTP response returns immediately so the
+    // client can show "Sending…" without waiting on mail-engine.
+    const claimed = await sender.claim(result.id)
+    if (claimed) {
+      sender.sendEmail(result.id).catch(async (err) => {
+        console.error(`[compose] background send threw for ${result.id}:`, err)
         await refundSend(userId)
       })
+    }
 
-    return c.json({ id: result.id, status: 'sending' }, 201)
+    return c.json({ id: result.id, status: EMAIL_STATUS.Sending }, 201)
   }
 
   const result = await emailService.createDraft(c.get('userId'), parsed.data)
   return c.json({ id: result.id, status: 'draft' }, 201)
+})
+
+/**
+ * POST /api/v1/inbox/emails/:id/dispatch
+ *
+ * User-initiated retry for an email currently in 'failed' or
+ * 'rate_limited'. The dispatcher loop covers automatic retries; this
+ * endpoint covers the "Tap to retry" affordance after a hard failure
+ * or the user wanting to send-now from the Outbox.
+ */
+inboxRoutes.post('/emails/:id/dispatch', async (c) => {
+  const emailId = c.req.param('id')
+  const userId = c.get('userId')
+  const db = getDb()
+
+  // Authorization — only the owner of the email's mailbox can dispatch.
+  const owned = await db
+    .select({ id: emails.id, status: emails.status })
+    .from(emails)
+    .innerJoin(mailboxes, eq(emails.mailboxId, mailboxes.id))
+    .where(and(eq(emails.id, emailId), eq(mailboxes.userId, userId)))
+    .limit(1)
+  if (owned.length === 0) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Email not found' } }, 404)
+  }
+
+  const rate = await checkAndReserveSend(userId)
+  if (!rate.allowed) {
+    return c.json(
+      {
+        error: {
+          code: 'RATE_LIMITED',
+          message: `Send limit reached for the ${rate.scope}.`,
+          details: {
+            scope: rate.scope,
+            retryAfterMs: rate.retryAfterMs,
+          },
+        },
+      },
+      429,
+    )
+  }
+
+  const sender = new EmailSender(db)
+  const claimed = await sender.claim(emailId)
+  if (!claimed) {
+    return c.json(
+      {
+        error: {
+          code: 'INVALID_STATE',
+          message: 'Email is already sending or has been sent.',
+        },
+      },
+      409,
+    )
+  }
+
+  sender.sendEmail(emailId).catch(async (err) => {
+    console.error(`[dispatch] background send threw for ${emailId}:`, err)
+    await refundSend(userId)
+  })
+
+  return c.json({ id: emailId, status: EMAIL_STATUS.Sending }, 202)
 })

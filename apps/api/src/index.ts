@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm'
 import { app } from './app.js'
 import { getDb } from './lib/db.js'
 import { attachWebSocketServer } from './ws/server.js'
+import { startSendDispatcher } from './services/send-dispatcher.js'
 
 const port = parseInt(process.env.API_PORT || '3001', 10)
 
@@ -134,6 +135,14 @@ async function ensureSchema() {
       filename varchar(255) NOT NULL, content_type varchar(255) NOT NULL,
       size_bytes int NOT NULL DEFAULT 0, storage_key text NOT NULL
     )`,
+    // Idempotent column adds for the drafts-as-outbox lifecycle
+    // (status / sendError / sendAttempts / lastAttemptAt / updatedAt).
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS status varchar(16) NOT NULL DEFAULT 'idle'`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS send_error text`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS send_attempts int NOT NULL DEFAULT 0`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS last_attempt_at timestamptz`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`,
+    `CREATE INDEX IF NOT EXISTS emails_status_idx ON emails(status) WHERE status IN ('sending','rate_limited','failed')`,
     `CREATE TABLE IF NOT EXISTS labels (
       id varchar(64) PRIMARY KEY, name varchar(255) NOT NULL,
       color varchar(7) NOT NULL DEFAULT '#999999',
@@ -309,6 +318,11 @@ async function start() {
   })
 
   attachWebSocketServer(server as unknown as import('node:http').Server)
+
+  // Background tick that picks up rate_limited sends and retries them
+  // when their backoff window has elapsed. Idempotent — claim() locks
+  // each row so multiple processes can run safely.
+  startSendDispatcher(getDb())
 
   console.log(`Wistfare Mail API running on http://localhost:${port}`)
   console.log(`WebSocket stream at ws://localhost:${port}/api/v1/stream`)

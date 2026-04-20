@@ -9,6 +9,7 @@ export type RealtimeEvent =
   | EmailNewEvent
   | EmailUpdatedEvent
   | EmailDeletedEvent
+  | EmailSendStatusEvent
   | ChatMessageNewEvent
   | ChatConversationUpdatedEvent
 
@@ -50,6 +51,17 @@ export interface EmailDeletedEvent {
   type: 'email.deleted'
   userId: string
   emailId: string
+}
+
+/// Send-state transitions for an outbound email — used by clients to
+/// flip the "Sending…" pill to "Sent", "Couldn't send", or
+/// "Rate-limited, retrying" without a refetch.
+export interface EmailSendStatusEvent {
+  type: 'email.send_status'
+  userId: string
+  emailId: string
+  status: 'idle' | 'sending' | 'sent' | 'failed' | 'rate_limited'
+  error: string | null
 }
 
 export interface ChatMessageNewEvent {

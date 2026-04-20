@@ -23,6 +23,14 @@ export interface EmailListItem {
   isDraft: boolean
   hasAttachments: boolean
   sizeBytes: number
+  /// Outbound lifecycle status. 'idle' for inbound + drafts, the
+  /// drafts-as-outbox states for everything you've tried to send.
+  status: 'idle' | 'sending' | 'sent' | 'failed' | 'rate_limited'
+  /// Last mail-engine error if status is 'failed' or 'rate_limited'.
+  sendError: string | null
+  /// Server-side mutation timestamp. Used by clients for last-write-
+  /// wins reconciliation when WS events race local optimistic state.
+  updatedAt: string
   createdAt: string
 }
 
@@ -97,6 +105,9 @@ export class EmailService {
           isDraft: emails.isDraft,
           hasAttachments: hasAttExpr,
           sizeBytes: emails.sizeBytes,
+          status: emails.status,
+          sendError: emails.sendError,
+          updatedAt: emails.updatedAt,
           createdAt: emails.createdAt,
         })
         .from(emails)
@@ -124,6 +135,9 @@ export class EmailService {
       isDraft: r.isDraft,
       hasAttachments: r.hasAttachments,
       sizeBytes: r.sizeBytes,
+      status: (r.status ?? 'idle') as EmailListItem['status'],
+      sendError: r.sendError,
+      updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
     }))
 
@@ -174,6 +188,9 @@ export class EmailService {
         isStarred: emails.isStarred,
         isDraft: emails.isDraft,
         sizeBytes: emails.sizeBytes,
+        status: emails.status,
+        sendError: emails.sendError,
+        updatedAt: emails.updatedAt,
         createdAt: emails.createdAt,
       })
       .from(emails)
@@ -202,6 +219,9 @@ export class EmailService {
       isDraft: r.isDraft,
       hasAttachments: att.length > 0,
       sizeBytes: r.sizeBytes,
+      status: (r.status ?? 'idle') as EmailListItem['status'],
+      sendError: r.sendError,
+      updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
     }
   }
@@ -216,7 +236,7 @@ export class EmailService {
 
     if (result.length === 0) return false
 
-    await this.db.update(emails).set({ isRead: true }).where(eq(emails.id, emailId))
+    await this.db.update(emails).set({ isRead: true, updatedAt: new Date() }).where(eq(emails.id, emailId))
     return true
   }
 
@@ -230,7 +250,7 @@ export class EmailService {
 
     if (result.length === 0) return false
 
-    await this.db.update(emails).set({ isRead: false }).where(eq(emails.id, emailId))
+    await this.db.update(emails).set({ isRead: false, updatedAt: new Date() }).where(eq(emails.id, emailId))
     return true
   }
 
@@ -245,7 +265,7 @@ export class EmailService {
     if (result.length === 0) return null
 
     const newStarred = !result[0].isStarred
-    await this.db.update(emails).set({ isStarred: newStarred }).where(eq(emails.id, emailId))
+    await this.db.update(emails).set({ isStarred: newStarred, updatedAt: new Date() }).where(eq(emails.id, emailId))
     return newStarred
   }
 
@@ -259,7 +279,7 @@ export class EmailService {
 
     if (result.length === 0) return false
 
-    await this.db.update(emails).set({ folder }).where(eq(emails.id, emailId))
+    await this.db.update(emails).set({ folder, updatedAt: new Date() }).where(eq(emails.id, emailId))
     return true
   }
 
@@ -310,6 +330,9 @@ export class EmailService {
         isDraft: emails.isDraft,
         hasAttachments: hasAttExpr,
         sizeBytes: emails.sizeBytes,
+        status: emails.status,
+        sendError: emails.sendError,
+        updatedAt: emails.updatedAt,
         createdAt: emails.createdAt,
       })
       .from(emails)
@@ -332,6 +355,9 @@ export class EmailService {
       isDraft: r.isDraft,
       hasAttachments: r.hasAttachments,
       sizeBytes: r.sizeBytes,
+      status: (r.status ?? 'idle') as EmailListItem['status'],
+      sendError: r.sendError,
+      updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
     }))
 
