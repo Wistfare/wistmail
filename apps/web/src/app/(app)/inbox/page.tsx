@@ -34,9 +34,12 @@ import {
   useArchive,
   useDelete,
   useEmailDetail,
+  useEmptyTrash,
   useInboxList,
   useMarkRead,
+  usePurge,
   useToggleStar,
+  useTrashRetention,
 } from '@/lib/email-queries'
 
 const FILTER_TABS = [
@@ -66,6 +69,9 @@ export default function InboxPage() {
   const markRead = useMarkRead()
   const archive = useArchive()
   const remove = useDelete()
+  const purge = usePurge()
+  const emptyTrash = useEmptyTrash()
+  const trashConfig = useTrashRetention()
 
   // Reset selection when the folder changes.
   useEffect(() => {
@@ -124,6 +130,33 @@ export default function InboxPage() {
   function handleDelete(emailId: string) {
     remove.mutate({ id: emailId })
     if (selectedId === emailId) setSelectedId(null)
+  }
+
+  function handlePermanentDelete(emailId: string) {
+    if (
+      !confirm(
+        'Permanently delete this email? This bypasses the 30-day recovery window.',
+      )
+    ) {
+      return
+    }
+    purge.mutate({ id: emailId })
+    if (selectedId === emailId) setSelectedId(null)
+  }
+
+  function handleEmptyTrash() {
+    if (emails.length === 0) return
+    if (
+      !confirm(
+        `Permanently delete all ${emails.length} email${
+          emails.length === 1 ? '' : 's'
+        } in Trash? This can't be undone.`,
+      )
+    ) {
+      return
+    }
+    emptyTrash.mutate()
+    setSelectedId(null)
   }
 
   async function handleRetrySend(emailId: string) {
@@ -261,9 +294,33 @@ export default function InboxPage() {
         <div className="flex items-center border-b border-wm-border px-5 py-3">
           <span className="text-sm font-semibold text-wm-text-primary">{folderName}</span>
           <div className="flex-1" />
+          {folderParam === 'trash' && emails.length > 0 && (
+            <button
+              type="button"
+              onClick={handleEmptyTrash}
+              disabled={emptyTrash.isPending}
+              className="mr-3 inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20 disabled:cursor-wait disabled:opacity-60"
+              title="Permanently delete every email in Trash"
+            >
+              <Trash2 className="h-3 w-3" />
+              {emptyTrash.isPending ? 'Emptying…' : 'Empty trash'}
+            </button>
+          )}
           <ArrowUpDown className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
           <SlidersHorizontal className="ml-3 h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
         </div>
+
+        {folderParam === 'trash' && (
+          <div className="border-b border-wm-border bg-wm-warning/5 px-5 py-2">
+            <p className="font-mono text-[10px] text-wm-text-muted">
+              Emails here are permanently deleted after{' '}
+              <span className="font-semibold text-wm-text-secondary">
+                {trashConfig.data?.retentionDays ?? 30}
+              </span>{' '}
+              days.
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center border-b border-wm-border px-5">
           {FILTER_TABS.map((tab) => (
@@ -426,10 +483,22 @@ export default function InboxPage() {
                   <Tag className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
                 }
               />
-              <Trash2
-                className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
-                onClick={() => handleDelete(selectedFull.id)}
-              />
+              {selectedFull.folder === 'trash' ? (
+                <button
+                  type="button"
+                  onClick={() => handlePermanentDelete(selectedFull.id)}
+                  className="inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20"
+                  title="Delete this email permanently — bypasses the 30-day trash window"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Delete forever
+                </button>
+              ) : (
+                <Trash2
+                  className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
+                  onClick={() => handleDelete(selectedFull.id)}
+                />
+              )}
             </div>
 
             <div className="flex items-center gap-3 border-b border-wm-border px-6 py-3">

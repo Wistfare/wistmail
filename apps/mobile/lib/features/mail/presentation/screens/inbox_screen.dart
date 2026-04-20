@@ -21,6 +21,7 @@ class InboxScreen extends ConsumerWidget {
     final unreadCount = ref.watch(inboxUnreadCountProvider);
     final user = ref.watch(authControllerProvider).user;
     final showMfaBanner = user?.needsMfaSetup ?? false;
+    final folder = ref.watch(currentFolderProvider);
 
     // Auth gating happens in the router's redirect — no listener needed here.
 
@@ -33,6 +34,7 @@ class InboxScreen extends ConsumerWidget {
         children: [
           _TopBar(unreadCount: unreadCount),
           if (showMfaBanner) const _MfaBanner(),
+          if (folder.id == 'trash') const _TrashBanner(),
           Expanded(child: _InboxBody(inbox: inbox)),
         ],
       ),
@@ -155,6 +157,158 @@ class _MfaBanner extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Banner rendered above the trash list — tells the user their
+/// messages auto-purge after N days and gives them the nuclear "empty
+/// trash now" affordance. Keep it compact: an extra 32px of header
+/// in a list they're already in to delete things has to earn its
+/// screen real estate.
+class _TrashBanner extends ConsumerStatefulWidget {
+  const _TrashBanner();
+
+  @override
+  ConsumerState<_TrashBanner> createState() => _TrashBannerState();
+}
+
+class _TrashBannerState extends ConsumerState<_TrashBanner> {
+  int _retentionDays = 30;
+  bool _loading = true;
+  bool _emptying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRetention();
+  }
+
+  Future<void> _loadRetention() async {
+    try {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      final days = await repo.getTrashRetention();
+      if (!mounted) return;
+      setState(() {
+        _retentionDays = days;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _emptyTrash() async {
+    if (_emptying) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text(
+          'Empty Trash?',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: const Text(
+          'Permanently delete everything in Trash. This bypasses the recovery window and cannot be undone.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'EMPTY TRASH',
+              style: TextStyle(color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() => _emptying = true);
+    try {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      final result = await repo.emptyTrash();
+      if (!mounted) return;
+      ref.read(inboxControllerProvider.notifier).refresh();
+      final n = result['purgedEmails'] ?? 0;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            n == 0 ? 'Trash was already empty.' : 'Deleted $n email${n == 1 ? '' : 's'}.',
+          ),
+        ),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Empty trash failed: $err'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _emptying = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.surface,
+      padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppColors.border, width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.schedule, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _loading
+                  ? 'Trash auto-cleans regularly.'
+                  : 'Auto-deletes after $_retentionDays days.',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _emptying ? null : _emptyTrash,
+            icon: _emptying
+                ? const SizedBox(
+                    height: 12,
+                    width: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      valueColor: AlwaysStoppedAnimation(AppColors.danger),
+                    ),
+                  )
+                : const Icon(Icons.delete_forever_outlined,
+                    size: 14, color: AppColors.danger),
+            label: Text(
+              _emptying ? 'Emptying…' : 'EMPTY',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.danger,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

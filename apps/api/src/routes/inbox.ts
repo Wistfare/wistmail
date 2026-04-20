@@ -13,6 +13,11 @@ import { eventBus } from '../events/bus.js'
 import { parseIcs, buildRsvpReply, type RsvpResponse } from '../lib/ics.js'
 import { pathForAttachment } from '../lib/attachment-storage.js'
 import {
+  TRASH_RETENTION_DAYS,
+  emptyTrashForUser,
+  purgeOneFromTrash,
+} from '../services/trash-retention.js'
+import {
   searchEmails,
   searchEnabled,
   updateIndexedEmail,
@@ -656,4 +661,56 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
     .where(eq(attachments.id, attachmentId))
 
   return c.json({ ok: true, response })
+})
+
+// ───────────────────────────────── Trash retention ────────────────────────
+
+/**
+ * GET /api/v1/inbox/trash/config
+ * How long emails linger in Trash before we hard-delete them. The UI
+ * renders this as the retention banner on the trash folder.
+ */
+inboxRoutes.get('/trash/config', async (c) => {
+  return c.json({ retentionDays: TRASH_RETENTION_DAYS })
+})
+
+/**
+ * POST /api/v1/inbox/trash/empty
+ * Hard-delete everything currently in the user's trash. Unlike the
+ * hourly retention cron, this bypasses the N-day window — it's
+ * explicit user intent. Also removes on-disk attachments.
+ */
+inboxRoutes.post('/trash/empty', async (c) => {
+  const userId = c.get('userId')
+  const db = getDb()
+  const result = await emptyTrashForUser(db, userId)
+  return c.json({ ok: true, ...result })
+})
+
+/**
+ * POST /api/v1/inbox/emails/:id/purge
+ * Permanently delete a single email. Only allowed when the email is
+ * already in 'trash' — otherwise callers should use /delete (soft
+ * delete → trash). Prevents the UI from accidentally hard-deleting
+ * inbox items through the wrong call.
+ */
+inboxRoutes.post('/emails/:id/purge', async (c) => {
+  const emailId = c.req.param('id')
+  const userId = c.get('userId')
+  const db = getDb()
+  const ok = await purgeOneFromTrash(db, emailId, userId)
+  if (!ok) {
+    return c.json(
+      {
+        error: {
+          code: 'NOT_IN_TRASH',
+          message:
+            'Only emails already in Trash can be permanently deleted.',
+        },
+      },
+      409,
+    )
+  }
+  eventBus.publish({ type: 'email.deleted', userId, emailId })
+  return c.json({ ok: true })
 })

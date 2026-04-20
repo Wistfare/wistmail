@@ -59,6 +59,38 @@ class MailRemoteDataSource {
     );
   }
 
+  /// Hard-delete a single email that's already in Trash. The server
+  /// 409s if the email is still in inbox/archive/etc — that's a
+  /// contract mismatch the UI shouldn't reach, but we surface it as
+  /// a thrown DioException so the caller can fall back to normal
+  /// delete if needed.
+  Future<void> purge(String emailId) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/purge',
+    );
+  }
+
+  /// Empty the user's entire Trash folder. Returns the server's
+  /// reported counts for telemetry / success toasts.
+  Future<Map<String, int>> emptyTrash() async {
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/trash/empty',
+    );
+    final data = response.data ?? const <String, dynamic>{};
+    return {
+      'purgedEmails': (data['purgedEmails'] as num?)?.toInt() ?? 0,
+      'purgedBytes': (data['purgedBytes'] as num?)?.toInt() ?? 0,
+    };
+  }
+
+  /// Retention window in days. Shown on the trash banner.
+  Future<int> getTrashRetention() async {
+    final response = await _client.dio.get<Map<String, dynamic>>(
+      '/api/v1/inbox/trash/config',
+    );
+    return (response.data?['retentionDays'] as num?)?.toInt() ?? 30;
+  }
+
   Future<Map<String, int>> getUnreadCounts() async {
     final response = await _client.dio.get<Map<String, dynamic>>(
       '/api/v1/inbox/unread-counts',

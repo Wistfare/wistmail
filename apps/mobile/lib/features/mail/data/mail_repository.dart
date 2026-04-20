@@ -9,6 +9,12 @@ abstract class MailRepository {
   Future<bool> toggleStar(String emailId);
   Future<void> archive(String emailId);
   Future<void> delete(String emailId);
+  /// Hard-delete a single email (must already be in Trash).
+  Future<void> purge(String emailId);
+  /// Empty the whole Trash folder. Returns purged counts for toasts.
+  Future<Map<String, int>> emptyTrash();
+  /// How many days emails linger in Trash before auto-purge.
+  Future<int> getTrashRetention();
   Future<Map<String, int>> getUnreadCounts();
   Future<String> compose(ComposeDraft draft);
   Future<List<Mailbox>> getMailboxes();
@@ -48,6 +54,15 @@ class MailRepositoryImpl implements MailRepository {
 
   @override
   Future<void> delete(String emailId) => _remote.delete(emailId);
+
+  @override
+  Future<void> purge(String emailId) => _remote.purge(emailId);
+
+  @override
+  Future<Map<String, int>> emptyTrash() => _remote.emptyTrash();
+
+  @override
+  Future<int> getTrashRetention() => _remote.getTrashRetention();
 
   @override
   Future<Map<String, int>> getUnreadCounts() => _remote.getUnreadCounts();

@@ -88,7 +88,64 @@ class EmailDetailScreen extends ConsumerWidget {
             ),
             _IconAction(
               icon: Icons.delete_outline,
+              // Trash-folder items bypass the soft-delete path: they're
+              // already trashed, so another "delete" means permanent.
+              // We gate on a confirmation dialog — permanent means
+              // attachment bytes get unlinked too.
               onPressed: () async {
+                final isAlreadyTrashed = email.folder == 'trash';
+                if (isAlreadyTrashed) {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final navigator = Navigator.of(context);
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: AppColors.surface,
+                      title: const Text(
+                        'Delete forever?',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      content: const Text(
+                        'This bypasses the 30-day recovery window. You cannot undo this.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('CANCEL'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text(
+                            'DELETE FOREVER',
+                            style: TextStyle(color: AppColors.danger),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm != true) return;
+                  try {
+                    final repo = await ref.read(mailRepositoryProvider.future);
+                    await repo.purge(email.id);
+                    ref
+                        .read(inboxControllerProvider.notifier)
+                        .removeLocal(email.id);
+                  } catch (err) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Delete failed: $err'),
+                        backgroundColor: AppColors.danger,
+                      ),
+                    );
+                    return;
+                  }
+                  if (navigator.canPop()) navigator.pop();
+                  return;
+                }
                 final actions = ref.read(mailActionsProvider).valueOrNull;
                 if (actions != null) {
                   unawaited(actions.delete(email));

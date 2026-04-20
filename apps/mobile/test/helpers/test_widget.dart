@@ -209,6 +209,23 @@ class FakeMailRepository implements MailRepository {
     deleteCalls++;
   }
 
+  int purgeCalls = 0;
+  int emptyTrashCalls = 0;
+
+  @override
+  Future<void> purge(String emailId) async {
+    purgeCalls++;
+  }
+
+  @override
+  Future<Map<String, int>> emptyTrash() async {
+    emptyTrashCalls++;
+    return const {'purgedEmails': 0, 'purgedBytes': 0};
+  }
+
+  @override
+  Future<int> getTrashRetention() async => 30;
+
   @override
   Future<Map<String, int>> getUnreadCounts() async =>
       const {'inbox': 0, 'drafts': 0, 'spam': 0, 'total': 0};

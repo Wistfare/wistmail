@@ -292,6 +292,65 @@ export function useDelete() {
   })
 }
 
+/// Permanent delete — only valid when the email is already in
+/// folder='trash'. The API rejects attempts on inbox rows with a 409
+/// to stop us from accidentally hard-deleting fresh mail.
+export function usePurge() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, { id: string }, OptimisticContext>({
+    mutationFn: ({ id }) => api.post(`/api/v1/inbox/emails/${id}/purge`),
+    onMutate: async ({ id }) => {
+      await qc.cancelQueries({ queryKey: inboxKeys.all })
+      const ctx = snapshotLists(qc)
+      applyToAllLists(qc, id, () => null)
+      return ctx
+    },
+    onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+  })
+}
+
+/// Empty the entire Trash folder in one go — the nuclear option the
+/// user reaches via a visible button above the trash list. Optimistic
+/// at the cache level (nukes the trash list immediately); rollback on
+/// error.
+export function useEmptyTrash() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, void, OptimisticContext>({
+    mutationFn: () => api.post(`/api/v1/inbox/trash/empty`),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: inboxKeys.all })
+      const ctx = snapshotLists(qc)
+      // Drop every row in every cached trash list page. We don't
+      // distinguish which folder the row sits in because the server
+      // scopes to `folder='trash'` server-side; any other list that
+      // happens to include a trashed row will reconcile on its next
+      // refetch.
+      qc.setQueriesData<InfiniteListCache>(
+        { queryKey: inboxKeys.list('trash') },
+        (old) =>
+          old
+            ? { ...old, pages: old.pages.map((p) => ({ ...p, data: [], total: 0 })) }
+            : old,
+      )
+      return ctx
+    },
+    onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: inboxKeys.list('trash') })
+    },
+  })
+}
+
+/// Trash retention window (e.g. 30 days). Tiny read that powers the
+/// "Emails in Trash are permanently deleted after N days" banner.
+export function useTrashRetention() {
+  return useQuery({
+    queryKey: ['inbox', 'trash', 'config'],
+    queryFn: () => api.get<{ retentionDays: number }>(`/api/v1/inbox/trash/config`),
+    staleTime: 60 * 60 * 1000, // never really changes in a session
+  })
+}
+
 /// Apply a server-pushed status change (from the email.send_status
 /// WS event) to every cached list. Doesn't touch network.
 export function applySendStatus(

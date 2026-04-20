@@ -4,6 +4,7 @@ import { app } from './app.js'
 import { getDb } from './lib/db.js'
 import { attachWebSocketServer } from './ws/server.js'
 import { startSendDispatcher } from './services/send-dispatcher.js'
+import { startTrashRetention } from './services/trash-retention.js'
 
 const port = parseInt(process.env.API_PORT || '3001', 10)
 
@@ -334,6 +335,14 @@ async function start() {
   // when their backoff window has elapsed. Idempotent — claim() locks
   // each row so multiple processes can run safely.
   startSendDispatcher(getDb())
+
+  // Hourly sweep of Trash: hard-delete emails that have been sitting
+  // there longer than TRASH_RETENTION_DAYS (30 by default) and free
+  // their attachments from disk. Skipped when DISABLE_TRASH_PURGE is
+  // set so CI / local dev can keep old rows around for inspection.
+  if (process.env.DISABLE_TRASH_PURGE !== '1') {
+    startTrashRetention(getDb())
+  }
 
   console.log(`Wistfare Mail API running on http://localhost:${port}`)
   console.log(`WebSocket stream at ws://localhost:${port}/api/v1/stream`)
