@@ -8,6 +8,7 @@ import '../../../auth/presentation/providers/auth_controller.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_list_item.dart';
 import '../widgets/email_list_skeleton.dart';
+import '../widgets/sync_status_pill.dart';
 import '../../../shell/presentation/screens/main_shell.dart';
 
 /// Mobile/Inbox — design.lib.pen node `DSAIy`.
@@ -92,6 +93,8 @@ class _TopBar extends StatelessWidget {
                 ),
               ),
             ],
+            const SizedBox(width: 8),
+            const SyncStatusPill(),
             const Spacer(),
             IconButton(
               splashRadius: 22,

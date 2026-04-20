@@ -1,10 +1,32 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:rxdart/rxdart.dart';
 
 import '../network/api_exception.dart';
 import 'email_local_store.dart';
 import 'outbox.dart';
+
+/// Hook for telemetry — tests can capture, production can pipe to
+/// Datadog/Sentry. Default impl prints in debug mode and no-ops in
+/// release. Each event is a flat key/value bag so downstream sinks
+/// can flatten without parsing.
+typedef SyncTelemetrySink = void Function(SyncTelemetryEvent event);
+
+class SyncTelemetryEvent {
+  const SyncTelemetryEvent(this.kind, [this.data = const {}]);
+
+  /// 'enqueue' | 'dispatch_start' | 'dispatch_ok' | 'dispatch_retry' |
+  /// 'dispatch_failed' | 'drain_tick'
+  final String kind;
+  final Map<String, Object?> data;
+}
+
+void _defaultTelemetry(SyncTelemetryEvent e) {
+  if (!kReleaseMode) {
+    debugPrint('[sync-engine] ${e.kind} ${e.data}');
+  }
+}
 
 /// Surface state for the "X unsynced" pill / inspector.
 class SyncStatus {
@@ -59,11 +81,13 @@ class SyncEngine {
     required Map<OutboxOp, OutboxHandler> handlers,
     Duration drainDebounce = const Duration(milliseconds: 250),
     Duration tickInterval = const Duration(seconds: 15),
+    SyncTelemetrySink? telemetry,
   })  : _outbox = outbox,
         _store = store,
         _handlers = handlers,
         _drainDebounce = drainDebounce,
-        _tickInterval = tickInterval;
+        _tickInterval = tickInterval,
+        _telemetry = telemetry ?? _defaultTelemetry;
 
   /// Backoff schedule: 1s, 4s, 30s, 5m, 1h. Exhausts at index ==
   /// length, at which point the row goes to 'failed'.
@@ -81,6 +105,7 @@ class SyncEngine {
   final Map<OutboxOp, OutboxHandler> _handlers;
   final Duration _drainDebounce;
   final Duration _tickInterval;
+  final SyncTelemetrySink _telemetry;
 
   Timer? _debounceTimer;
   Timer? _tickTimer;
@@ -104,6 +129,12 @@ class SyncEngine {
       op: op,
       payload: payload,
     );
+    _telemetry(SyncTelemetryEvent('enqueue', {
+      'rowId': id,
+      'op': op.wireName,
+      'entityType': entityType,
+      'entityId': entityId,
+    }));
     _scheduleDrain();
     await _publishStatus();
     return id;
@@ -132,6 +163,23 @@ class SyncEngine {
   Future<void> drainNow() async {
     _debounceTimer?.cancel();
     await _drainOnce();
+  }
+
+  /// Inspector — list every row currently in the outbox (any status).
+  Future<List<OutboxRow>> listAll() => _outbox.all();
+
+  /// Inspector — user-initiated retry of a failed mutation. Re-arms
+  /// the debounce so the drain runs shortly after.
+  Future<void> requeue(int id) async {
+    await _outbox.requeue(id);
+    await _publishStatus(clearError: true);
+    _scheduleDrain();
+  }
+
+  /// Inspector — user-initiated discard of a failed mutation.
+  Future<void> discard(int id) async {
+    await _outbox.discard(id);
+    await _publishStatus();
   }
 
   void _scheduleDrain() {
@@ -165,13 +213,28 @@ class SyncEngine {
         row.id,
         'No handler registered for ${row.op.wireName}',
       );
+      _telemetry(SyncTelemetryEvent('dispatch_failed', {
+        'rowId': row.id,
+        'op': row.op.wireName,
+        'reason': 'no_handler',
+      }));
       return;
     }
+
+    _telemetry(SyncTelemetryEvent('dispatch_start', {
+      'rowId': row.id,
+      'op': row.op.wireName,
+      'attempt': row.attempts + 1,
+    }));
 
     try {
       await handler(row, _store);
       await _outbox.ackSuccess(row.id);
       await _publishStatus(clearError: true);
+      _telemetry(SyncTelemetryEvent('dispatch_ok', {
+        'rowId': row.id,
+        'op': row.op.wireName,
+      }));
     } catch (err) {
       final message = err.toString();
       final shouldRetry = _isRetryable(err) && row.attempts + 1 < maxAttempts;
@@ -184,12 +247,24 @@ class SyncEngine {
           delayMs: delay,
         );
         await _publishStatus(error: message);
+        _telemetry(SyncTelemetryEvent('dispatch_retry', {
+          'rowId': row.id,
+          'op': row.op.wireName,
+          'delayMs': delay,
+          'attempt': row.attempts + 1,
+        }));
         // Re-arm the debounce so the retry actually fires when its
         // window elapses (the periodic tick is the safety net).
         _scheduleDrain();
       } else {
         await _outbox.markFailed(row.id, message);
         await _publishStatus(error: message);
+        _telemetry(SyncTelemetryEvent('dispatch_failed', {
+          'rowId': row.id,
+          'op': row.op.wireName,
+          'attempt': row.attempts + 1,
+          'reason': 'exhausted_or_hard_failure',
+        }));
       }
     }
   }

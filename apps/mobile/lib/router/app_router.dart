@@ -28,6 +28,7 @@ import '../features/mfa/presentation/screens/mfa_totp_setup_screen.dart';
 import '../features/mfa/presentation/screens/mfa_email_setup_screen.dart';
 import '../features/mfa/presentation/screens/mfa_backup_codes_screen.dart';
 import '../features/mfa/presentation/screens/mfa_methods_settings_screen.dart';
+import '../features/settings/presentation/screens/pending_sync_screen.dart';
 import '../features/shell/presentation/screens/main_shell.dart';
 
 /// Root router. Built as a Riverpod provider so its `redirect` callback can
@@ -203,6 +204,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/compose',
         builder: (context, state) => const ComposeScreen(),
+      ),
+      GoRoute(
+        path: '/settings/pending-sync',
+        builder: (context, state) => const PendingSyncScreen(),
       ),
       GoRoute(
         path: '/chat/new',

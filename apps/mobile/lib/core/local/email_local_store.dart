@@ -158,6 +158,39 @@ class EmailLocalStore {
     _bumpDetail(id);
   }
 
+  /// Replace a row's primary key — used by the compose-as-outbox flow.
+  /// We insert with a client-side temp id so the user sees the row in
+  /// Sent immediately; once the server creates the real row the
+  /// outbox handler swaps the local id to match. Idempotent: if the
+  /// new id already exists (because a WS event landed first) we drop
+  /// the temp row instead of throwing on the unique constraint.
+  Future<void> swapId({required String oldId, required String newId}) async {
+    if (oldId == newId) return;
+    await _raw.transaction((txn) async {
+      final existingNew = await txn.query(
+        'emails',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [newId],
+        limit: 1,
+      );
+      if (existingNew.isNotEmpty) {
+        await txn.delete('emails', where: 'id = ?', whereArgs: [oldId]);
+        return;
+      }
+      await txn.update(
+        'emails',
+        {'id': newId, 'updated_at_ms': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [oldId],
+      );
+    });
+    _bumpDetail(oldId);
+    _bumpDetail(newId);
+    final after = await getById(newId);
+    if (after != null) _bumpFolder(after.folder);
+  }
+
   /// Persist the body + attachments after a `getById` HTTP fetch so
   /// the next open is instant.
   Future<void> updateBody({

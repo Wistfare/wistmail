@@ -1,5 +1,6 @@
 import '../../../core/local/outbox.dart';
 import '../../../core/local/sync_engine.dart';
+import '../domain/email.dart';
 import 'mail_repository.dart';
 
 /// Concrete OutboxHandler implementations. Each takes the row's payload
@@ -47,6 +48,30 @@ Map<OutboxOp, OutboxHandler> buildMailHandlers(MailRepository repo) {
       // transitions the email to 'sending' and the WS event flips
       // the row's pill once delivery resolves.
       await repo.dispatch(row.entityId);
+    },
+    OutboxOp.composeSend: (row, store) async {
+      // First-time send of a new compose. Payload carries the full
+      // draft; the local store already has a placeholder row keyed by
+      // the temp id (entity_id). On success we swap the local id to
+      // whatever the server assigned so subsequent WS events bind
+      // correctly.
+      final draft = ComposeDraft(
+        fromAddress: (row.payload['fromAddress'] as String?) ?? '',
+        mailboxId: (row.payload['mailboxId'] as String?) ?? '',
+        toAddresses:
+            (row.payload['toAddresses'] as List?)?.whereType<String>().toList() ??
+                const [],
+        cc: (row.payload['cc'] as List?)?.whereType<String>().toList() ??
+            const [],
+        bcc: (row.payload['bcc'] as List?)?.whereType<String>().toList() ??
+            const [],
+        subject: (row.payload['subject'] as String?) ?? '',
+        textBody: row.payload['textBody'] as String?,
+        htmlBody: row.payload['htmlBody'] as String?,
+        send: true,
+      );
+      final realId = await repo.compose(draft);
+      await store.swapId(oldId: row.entityId, newId: realId);
     },
   };
 }

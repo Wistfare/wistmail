@@ -20,6 +20,14 @@ enum OutboxOp {
   /// One-shot dispatch of a queued draft. Never coalesced with itself
   /// (we only allow one in-flight send per draft id).
   dispatchSend,
+  /// First-time send of a *new* compose. The payload carries the full
+  /// draft (fromAddress, to, subject, body, …) plus a client-generated
+  /// temp id. The handler creates the email server-side and swaps the
+  /// local row's id from temp → server. Coalesce key uses the temp id
+  /// so a re-tap of Send while the first attempt is in flight doesn't
+  /// queue a duplicate. (We also disable Send in the UI while the
+  /// outbox row exists.)
+  composeSend,
 }
 
 extension OutboxOpExt on OutboxOp {
@@ -37,6 +45,8 @@ extension OutboxOpExt on OutboxOp {
         return 'archive';
       case OutboxOp.dispatchSend:
         return 'dispatch_send';
+      case OutboxOp.composeSend:
+        return 'compose_send';
     }
   }
 
@@ -62,6 +72,12 @@ extension OutboxOpExt on OutboxOp {
       case OutboxOp.dispatchSend:
         // One-in-flight per draft; not coalesced with anything else.
         return 'send:$entityId';
+      case OutboxOp.composeSend:
+        // Each new compose gets its own slot keyed by the temp id, so
+        // two different drafts never collide. Re-enqueue with the
+        // same temp id replaces the payload (e.g. user edits subject
+        // and re-taps Send within the debounce window).
+        return 'compose:$entityId';
     }
   }
 
@@ -284,4 +300,22 @@ class Outbox {
     return rows.map(OutboxRow.fromMap).toList(growable: false);
   }
 
+  /// Force a row back to pending so the next drain picks it up
+  /// immediately. User-initiated retry path from the Pending Sync
+  /// inspector for failed mutations.
+  Future<void> requeue(int id) async {
+    await _raw.update(
+      'outbox',
+      {'status': 'pending', 'not_before_ms': 0, 'last_error': null},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Drop a row entirely. User-initiated discard from the Pending
+  /// Sync inspector for failed mutations the user no longer wants
+  /// applied.
+  Future<void> discard(int id) async {
+    await _raw.delete('outbox', where: 'id = ?', whereArgs: [id]);
+  }
 }

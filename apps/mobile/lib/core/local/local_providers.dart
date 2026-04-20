@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/mail/data/mail_repository.dart';
 import '../../features/mail/data/outbox_handlers.dart';
 import '../../features/mail/presentation/providers/mail_providers.dart';
 import 'email_local_store.dart';

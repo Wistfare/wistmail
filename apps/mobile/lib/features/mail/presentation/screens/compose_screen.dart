@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../data/mail_actions.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
 
@@ -50,17 +51,30 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
       _isSending = true;
       _errorMessage = null;
     });
+    final draft = ComposeDraft(
+      fromAddress: mailbox.address,
+      mailboxId: mailbox.id,
+      toAddresses: to,
+      cc: _splitAddresses(_ccController.text),
+      subject: _subjectController.text,
+      textBody: _bodyController.text,
+      send: true,
+    );
+    // Resolve MailActions synchronously — `mailActionsProvider`
+    // resolves on app start (via _Root.watch) so by the time the
+    // user taps Send it's almost always ready. We never await the
+    // bootstrap here because waiting in a widget tree can stall
+    // tests (path_provider doesn't resolve in widget tests). If the
+    // engine isn't ready, drop to the bare repository path — the
+    // optimistic UX is best-effort.
+    final actions = ref.read(mailActionsProvider).valueOrNull;
     try {
-      final repo = await ref.read(mailRepositoryProvider.future);
-      await repo.compose(ComposeDraft(
-        fromAddress: mailbox.address,
-        mailboxId: mailbox.id,
-        toAddresses: to,
-        cc: _splitAddresses(_ccController.text),
-        subject: _subjectController.text,
-        textBody: _bodyController.text,
-        send: true,
-      ));
+      if (actions != null) {
+        await actions.send(draft);
+      } else {
+        final repo = await ref.read(mailRepositoryProvider.future);
+        await repo.compose(draft);
+      }
       if (!mounted) return;
       context.pop();
     } catch (e) {

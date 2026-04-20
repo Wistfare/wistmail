@@ -44,18 +44,35 @@ class EmailDetailScreen extends ConsumerWidget {
             _IconAction(
               icon: Icons.archive_outlined,
               onPressed: () async {
-                final actions = await ref.read(mailActionsProvider.future);
-                // Optimistic — UI returns immediately, sync engine
-                // owns the network call.
-                unawaited(actions.archive(email));
+                // Synchronous read — engine is bootstrapped on app
+                // start so this resolves immediately in production.
+                // Fallback to direct repo call if not (test env).
+                final actions = ref.read(mailActionsProvider).valueOrNull;
+                if (actions != null) {
+                  unawaited(actions.archive(email));
+                } else {
+                  final repo = await ref.read(mailRepositoryProvider.future);
+                  await repo.archive(email.id);
+                  ref
+                      .read(inboxControllerProvider.notifier)
+                      .removeLocal(email.id);
+                }
                 if (context.mounted) context.pop();
               },
             ),
             _IconAction(
               icon: Icons.delete_outline,
               onPressed: () async {
-                final actions = await ref.read(mailActionsProvider.future);
-                unawaited(actions.delete(email));
+                final actions = ref.read(mailActionsProvider).valueOrNull;
+                if (actions != null) {
+                  unawaited(actions.delete(email));
+                } else {
+                  final repo = await ref.read(mailRepositoryProvider.future);
+                  await repo.delete(email.id);
+                  ref
+                      .read(inboxControllerProvider.notifier)
+                      .removeLocal(email.id);
+                }
                 if (context.mounted) context.pop();
               },
             ),
@@ -68,9 +85,17 @@ class EmailDetailScreen extends ConsumerWidget {
         data: (email) => _Body(
           email: email,
           onToggleStar: () async {
-            final actions = await ref.read(mailActionsProvider.future);
-            // Coalesces multiple rapid taps into one HTTP call.
-            await actions.toggleStar(email);
+            final actions = ref.read(mailActionsProvider).valueOrNull;
+            if (actions != null) {
+              // Coalesces multiple rapid taps into one HTTP call.
+              await actions.toggleStar(email);
+            } else {
+              final repo = await ref.read(mailRepositoryProvider.future);
+              final starred = await repo.toggleStar(email.id);
+              ref.read(inboxControllerProvider.notifier).applyLocal(
+                    email.copyWith(isStarred: starred),
+                  );
+            }
             ref.invalidate(emailDetailProvider(email.id));
           },
         ),

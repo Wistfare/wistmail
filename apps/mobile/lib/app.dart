@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/local/local_providers.dart';
 import 'core/theme/app_theme.dart';
 import 'router/app_router.dart';
 
@@ -18,6 +19,11 @@ class _Root extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
+    // Eagerly bootstrap the offline-first stack so the sqflite open
+    // happens during the first frame and the SyncEngine drain loop
+    // is running by the time the inbox renders. The provider is
+    // keepAlive so it survives screen disposals.
+    ref.watch(syncEngineProvider);
     return MaterialApp.router(
       title: 'Wistfare Mail',
       debugShowCheckedModeBanner: false,
