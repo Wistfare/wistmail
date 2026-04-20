@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_avatar.dart';
-import '../../../../core/widgets/wm_logo.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 
 /// Mobile/Drawer — design.lib.pen node `poQbm`. Matches the design
@@ -111,20 +110,7 @@ class _Header extends StatelessWidget {
       bottom: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
-        child: Row(
-          children: [
-            const WmLogo(size: 28),
-            const SizedBox(width: 10),
-            Text(
-              'Wistfare Mail',
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
+        child: Container(),
       ),
     );
   }
@@ -177,12 +163,6 @@ class _UserTile extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-              IconButton(
-                splashRadius: 18,
-                onPressed: onClose,
-                icon: const Icon(Icons.close, size: 18),
-                color: AppColors.textTertiary,
               ),
             ],
           ),

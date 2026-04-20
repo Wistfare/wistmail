@@ -19,7 +19,7 @@ class WmAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions = const [],
     this.showBack = true,
     this.onBack,
-    this.divider = true,
+    this.divider = false,
   });
 
   /// Plain text title.

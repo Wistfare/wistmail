@@ -65,9 +65,6 @@ class _TopBar extends StatelessWidget {
       bottom: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-        ),
         child: Row(
           children: [
             // Open the shell-level drawer so it overlays the bottom nav.

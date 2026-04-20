@@ -119,9 +119,6 @@ class _Header extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Container(
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-        ),
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
         child: Row(
           children: [

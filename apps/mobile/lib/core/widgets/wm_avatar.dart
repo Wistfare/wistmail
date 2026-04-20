@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_colors.dart';
+import '../theme/contrast.dart';
 
 /// Circular initial-letter avatar — chat list, sender row in EmailDetail,
 /// drawer header.
@@ -43,20 +44,20 @@ class WmAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bg = color ?? colorFor(name);
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: color ?? colorFor(name),
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Text(
         _initials,
+        // Pick black/white based on the background's luminance so initials
+        // stay readable across the full palette + the bright accent green.
         style: GoogleFonts.inter(
           fontSize: size * 0.36,
           fontWeight: FontWeight.w600,
-          color: Colors.white,
+          color: readableOn(bg),
           height: 1,
         ),
       ),

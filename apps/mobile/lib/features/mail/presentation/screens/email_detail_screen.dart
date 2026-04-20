@@ -56,10 +56,6 @@ class EmailDetailScreen extends ConsumerWidget {
                 if (context.mounted) context.pop();
               },
             ),
-            _IconAction(
-              icon: Icons.more_vert,
-              onPressed: () {},
-            ),
           ],
           loading: () => const [SizedBox.shrink()],
           error: (_, __) => const [SizedBox.shrink()],
@@ -131,11 +127,14 @@ class _Body extends StatelessWidget {
               Expanded(
                 child: Text(
                   email.subject.isEmpty ? '(no subject)' : email.subject,
+                  // Sized down from 20 → 16 to match the rest of the
+                  // titleLarge family on detail screens; the bigger value
+                  // overpowered the tags row right below.
                   style: GoogleFonts.inter(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
-                    height: 1.3,
+                    height: 1.35,
                   ),
                 ),
               ),

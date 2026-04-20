@@ -40,9 +40,6 @@ class _TopBar extends StatelessWidget {
       bottom: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 8, 8, 12),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-        ),
         child: Row(
           children: [
             Text('Chat', style: AppTextStyles.titleLarge),

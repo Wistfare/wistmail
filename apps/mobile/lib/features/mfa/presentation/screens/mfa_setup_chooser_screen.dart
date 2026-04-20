@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/theme/contrast.dart';
 import '../../../../core/widgets/wm_app_bar.dart';
 
 /// Mobile/MfaSetupChooser — design.lib.pen `lkTsC`. Lists the methods
@@ -140,56 +141,13 @@ class _MethodCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            title,
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: fg,
-                            ),
-                          ),
-                        ),
-                        if (recommended) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            color: AppColors.accent,
-                            child: Text(
-                              'RECOMMENDED',
-                              style: GoogleFonts.jetBrainsMono(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.background,
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (badge != null) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: AppColors.textTertiary,
-                                width: 1,
-                              ),
-                            ),
-                            child: Text(
-                              badge!,
-                              style: GoogleFonts.jetBrainsMono(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textTertiary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                    Text(
+                      title,
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: fg,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -204,11 +162,40 @@ class _MethodCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!disabled)
-                const Icon(
-                  Icons.chevron_right,
-                  size: 18,
-                  color: AppColors.textTertiary,
+              // Status chip lives on the right edge; chevron retired in
+              // favor of the chip + tap-anywhere row affordance.
+              if (recommended)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  color: AppColors.accent,
+                  child: Text(
+                    'RECOMMENDED',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: readableOn(AppColors.accent),
+                    ),
+                  ),
+                )
+              else if (badge != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppColors.textTertiary,
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    badge!,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
                 ),
             ],
           ),
