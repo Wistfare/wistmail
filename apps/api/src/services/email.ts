@@ -168,6 +168,11 @@ export class EmailService {
     page = 1,
     pageSize = 25,
   ): Promise<EmailListPage> {
+    // Hard cap — without this a crafted `?pageSize=10000` request
+    // pulls 10k email rows + their label joins into Node memory in a
+    // single query. Matches the cap in /search.
+    pageSize = Math.max(1, Math.min(pageSize, 100))
+    page = Math.max(1, page)
     const mailboxIds = await this.resolveMailboxIds(userId)
     if (mailboxIds.length === 0) {
       return { data: [], total: 0, page, pageSize, hasMore: false }

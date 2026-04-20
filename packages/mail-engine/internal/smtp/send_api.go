@@ -70,6 +70,31 @@ func StartSendAPI(hostname string, port int, client *Client, dkimLookup DkimLook
 			http.Error(w, "from and to are required", http.StatusBadRequest)
 			return
 		}
+		// Defence-in-depth: strip CR/LF from every header-bound field
+		// before the message builder runs. The API service is the
+		// primary caller and already sanitizes, but the send API is
+		// reachable from anywhere in the internal network — treat
+		// every field as untrusted and refuse to emit malformed
+		// headers. Without this, a caller passing `"\r\nBcc: x"` in
+		// any field would inject arbitrary SMTP headers.
+		req.From = stripCRLF(req.From)
+		req.ReplyTo = stripCRLF(req.ReplyTo)
+		req.Subject = stripCRLF(req.Subject)
+		req.InReplyTo = stripCRLF(req.InReplyTo)
+		for i := range req.To {
+			req.To[i] = stripCRLF(req.To[i])
+		}
+		for i := range req.Cc {
+			req.Cc[i] = stripCRLF(req.Cc[i])
+		}
+		for i := range req.Bcc {
+			req.Bcc[i] = stripCRLF(req.Bcc[i])
+		}
+		if req.Headers != nil {
+			for k, v := range req.Headers {
+				req.Headers[k] = stripCRLF(v)
+			}
+		}
 
 		data, err := buildMessage(hostname, &req)
 		if err != nil {
@@ -139,6 +164,15 @@ func sendAPIJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
+}
+
+// stripCRLF removes CR and LF from a string. Used to neutralise SMTP
+// header injection attempts — any header-bound field can contain only
+// a single line per RFC 5322.
+func stripCRLF(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	return s
 }
 
 // extractBareAddress pulls the bare email address from "Name <addr>" or plain addr format.

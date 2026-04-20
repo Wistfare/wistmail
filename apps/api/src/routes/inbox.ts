@@ -379,6 +379,21 @@ inboxRoutes.post('/emails/:id/dispatch', async (c) => {
  * in the emails table (folder='sent') so the user can find the reply
  * in their Sent list.
  */
+/// Hard cap on ICS bytes we'll parse — `ical.js` has a rich grammar
+/// and regex-catastrophic-backtracking risk on hostile input. 256 KB
+/// covers every real invite (they're ~2 KB) and is small enough that
+/// an attacker crafting a pathological file can't stall the event
+/// loop for long.
+const MAX_ICS_BYTES = 256 * 1024
+
+/// Strip anything that could terminate a header mid-value. Display
+/// names are user-controlled; mail-engine writes them verbatim into
+/// the From header with no sanitization of its own, so header
+/// injection is a live risk without this gate.
+function sanitizeHeaderValue(v: string): string {
+  return v.replace(/[\r\n]+/g, ' ').replace(/"/g, '').trim()
+}
+
 inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
   const emailId = c.req.param('id')
   const attachmentId = c.req.param('aid')
@@ -391,16 +406,40 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
   if (!parsed.success) throw new ValidationError('Invalid response')
   const response = parsed.data.response as RsvpResponse
 
+  // Gate abuse at the door: RSVP replies count against the same
+  // per-user send budget as compose/dispatch. Without this an attacker
+  // who can plant an invite into their own mailbox could drive
+  // unlimited outbound mail by varying the ORGANIZER header.
+  const rate = await checkAndReserveSend(userId)
+  if (!rate.allowed) {
+    return c.json(
+      {
+        error: {
+          code: 'RATE_LIMITED',
+          message: `Send limit reached for the ${rate.scope}.`,
+          details: { scope: rate.scope, retryAfterMs: rate.retryAfterMs },
+        },
+      },
+      429,
+    )
+  }
+
   const db = getDb()
   // Ownership check in one join — email must belong to a mailbox the
   // user owns, AND the attachment must belong to that email. We load
-  // the mailbox address to use as the From on the reply.
+  // the mailbox address to use as the From on the reply. `storageKey`
+  // is also pulled so we read bytes via the stored path instead of
+  // recomputing from id (defence in depth against future callers
+  // passing untrusted ids).
   const rows = await db
     .select({
       attachmentId: attachments.id,
       contentType: attachments.contentType,
+      filename: attachments.filename,
+      storageKey: attachments.storageKey,
       mailboxAddress: mailboxes.address,
       mailboxDisplayName: mailboxes.displayName,
+      senderAddress: emails.fromAddress,
     })
     .from(attachments)
     .innerJoin(emails, eq(emails.id, attachments.emailId))
@@ -415,6 +454,7 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
     .limit(1)
 
   if (rows.length === 0) {
+    await refundSend(userId)
     return c.json(
       { error: { code: 'NOT_FOUND', message: 'Invite not found' } },
       404,
@@ -422,11 +462,33 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
   }
   const row = rows[0]
 
-  // Read the raw ICS bytes from disk, parse, and build a REPLY.
+  // Only genuine calendar attachments are eligible. Without this the
+  // endpoint would happily parse a PDF or PNG as ICS and extract a
+  // ORGANIZER line from any random bytes — turning the endpoint into
+  // an attacker-controlled mailer.
+  const ct = (row.contentType || '').toLowerCase()
+  const isIcs = ct.includes('text/calendar') || row.filename.toLowerCase().endsWith('.ics')
+  if (!isIcs) {
+    await refundSend(userId)
+    return c.json(
+      {
+        error: {
+          code: 'NOT_AN_INVITE',
+          message: 'That attachment is not a calendar invite.',
+        },
+      },
+      422,
+    )
+  }
+
+  // Read the raw ICS bytes from disk (via the stored key, not a
+  // recomputed path), parse, and build a REPLY. Reject oversize files
+  // before handing them to ical.js.
   let icsText: string
   try {
     icsText = await readFile(pathForAttachment(row.attachmentId), 'utf8')
   } catch (err) {
+    await refundSend(userId)
     console.error('[rsvp] storage read failed:', err)
     return c.json(
       {
@@ -438,8 +500,21 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
       410,
     )
   }
+  if (Buffer.byteLength(icsText, 'utf8') > MAX_ICS_BYTES) {
+    await refundSend(userId)
+    return c.json(
+      {
+        error: {
+          code: 'INVITE_TOO_LARGE',
+          message: 'Invite exceeds the safe size limit for parsing.',
+        },
+      },
+      413,
+    )
+  }
   const invite = parseIcs(icsText)
   if (!invite || !invite.organizer?.email) {
+    await refundSend(userId)
     return c.json(
       {
         error: {
@@ -451,10 +526,39 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
     )
   }
 
+  // Only allow sending the REPLY to the organizer that actually sent
+  // the email, or to the sender's domain. This kills the abuse path
+  // where an attacker plants a self-addressed invite with
+  // `ORGANIZER:mailto:victim@external.com` and drives outbound mail
+  // to arbitrary addresses from the user's verified mailbox.
+  const senderLower = (row.senderAddress || '').toLowerCase()
+  const orgLower = invite.organizer.email.toLowerCase()
+  const senderDomain = senderLower.split('@')[1] ?? ''
+  const orgDomain = orgLower.split('@')[1] ?? ''
+  const organizerAllowed =
+    senderLower === orgLower ||
+    (senderDomain.length > 0 && senderDomain === orgDomain)
+  if (!organizerAllowed) {
+    await refundSend(userId)
+    return c.json(
+      {
+        error: {
+          code: 'ORGANIZER_MISMATCH',
+          message:
+            "The invite's organizer doesn't match who sent this email. Refusing to send a reply to a third party.",
+        },
+      },
+      422,
+    )
+  }
+
+  const safeDisplayName = row.mailboxDisplayName
+    ? sanitizeHeaderValue(row.mailboxDisplayName)
+    : ''
   const reply = buildRsvpReply({
     invite,
     attendeeEmail: row.mailboxAddress,
-    attendeeName: row.mailboxDisplayName,
+    attendeeName: safeDisplayName || null,
     response,
   })
 
@@ -468,11 +572,11 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
   }
   const verb = VERBS[response]
   const summary = invite.summary || 'invitation'
-  const subject = `${verb}: ${summary}`
+  const subject = sanitizeHeaderValue(`${verb}: ${summary}`)
   const text = `${verb}: ${summary}\n\nThis is an automated RSVP from WistMail.`
 
-  const fromHeader = row.mailboxDisplayName
-    ? `"${row.mailboxDisplayName}" <${row.mailboxAddress}>`
+  const fromHeader = safeDisplayName
+    ? `"${safeDisplayName}" <${row.mailboxAddress}>`
     : row.mailboxAddress
 
   try {
@@ -482,6 +586,10 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
         'Content-Type': 'application/json',
         'X-Inbound-Secret': INBOUND_SECRET,
       },
+      // Cap the round-trip so a slow/stuck mail-engine doesn't tie up
+      // the user's HTTP connection (and Node event-loop resources)
+      // indefinitely.
+      signal: AbortSignal.timeout(10_000),
       body: JSON.stringify({
         from: fromHeader,
         to: [invite.organizer.email],
@@ -494,6 +602,9 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
     if (!engineRes.ok) {
       const data = (await engineRes.json().catch(() => ({}))) as { error?: string }
       console.error('[rsvp] mail-engine rejected:', data.error || engineRes.status)
+      // Hard rejection — refund the rate-limit slot since nothing went
+      // out. The user can retry later.
+      await refundSend(userId)
       return c.json(
         {
           error: {
@@ -505,15 +616,22 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
       )
     }
   } catch (err) {
-    console.error('[rsvp] mail-engine fetch failed:', err)
+    const isTimeout = err instanceof Error && err.name === 'TimeoutError'
+    console.error(
+      `[rsvp] mail-engine ${isTimeout ? 'timed out' : 'fetch failed'}:`,
+      err,
+    )
+    await refundSend(userId)
     return c.json(
       {
         error: {
           code: 'SEND_FAILED',
-          message: 'Could not reach mail engine.',
+          message: isTimeout
+            ? 'Mail engine timed out. Please retry in a moment.'
+            : 'Could not reach mail engine.',
         },
       },
-      502,
+      isTimeout ? 504 : 502,
     )
   }
 

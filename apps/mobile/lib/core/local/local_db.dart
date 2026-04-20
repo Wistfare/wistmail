@@ -105,10 +105,25 @@ Future<void> _onUpgrade(Database db, int from, int to) async {
   // without a per-row fetch. Default '[]' means older rows just show
   // no labels until the next sync rehydrates them.
   if (from < 2) {
-    await db.execute(
-      "ALTER TABLE emails ADD COLUMN labels_json TEXT NOT NULL DEFAULT '[]'",
-    );
+    // SQLite's ALTER TABLE ADD COLUMN has no IF NOT EXISTS. A QA
+    // device with a preview build may already have the column; an
+    // unconditional ALTER would throw "duplicate column name" and
+    // brick the app permanently. Probe first.
+    if (!await _columnExists(db, 'emails', 'labels_json')) {
+      await db.execute(
+        "ALTER TABLE emails ADD COLUMN labels_json TEXT NOT NULL DEFAULT '[]'",
+      );
+    }
   }
+}
+
+Future<bool> _columnExists(
+  Database db,
+  String table,
+  String column,
+) async {
+  final rows = await db.rawQuery('PRAGMA table_info($table)');
+  return rows.any((r) => (r['name'] as String?) == column);
 }
 
 Future<void> _createSchema(Database db) async {
