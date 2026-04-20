@@ -1,31 +1,26 @@
 import { Hono } from 'hono'
+import { stream } from 'hono/streaming'
 import { and, eq } from 'drizzle-orm'
 import { attachments, emails, mailboxes } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { getDb } from '../lib/db.js'
+import { openAttachmentStream } from '../lib/attachment-storage.js'
 
-/// Mounted at /api/v1/inbox/attachments. The metadata endpoint
-/// returns the row + a download URL the UI can link to. The download
-/// endpoint streams bytes from object storage; right now it stubs out
-/// with 501 because MIME extraction in the mail-engine isn't wired
-/// yet — the row exists in the DB but the bytes haven't been
-/// persisted. Wiring MinIO + MIME extraction is a separate effort;
-/// this endpoint reserves the URL shape so the chips on web/mobile
-/// link consistently once it lands.
+/// Mounted at /api/v1/inbox/attachments. Two endpoints:
+///   - GET /:id            → metadata JSON + download URL
+///   - GET /:id/download   → byte stream from filesystem storage
+///
+/// Both gated by sessionAuth + mailbox ownership join.
 export const attachmentRoutes = new Hono<SessionEnv>()
 
 attachmentRoutes.use('*', sessionAuth)
 
-/**
- * GET /api/v1/inbox/attachments/:id
- * Returns metadata + a download URL. Auth: session must own the
- * mailbox the attachment lives in.
- */
-attachmentRoutes.get('/:id', async (c) => {
-  const id = c.req.param('id')
-  const userId = c.get('userId')
+/// Inner helper — load + auth-check the attachment row in one go.
+/// Returns null if the row doesn't exist OR the user doesn't own
+/// the mailbox it belongs to (we deliberately don't distinguish so
+/// we don't leak existence to unauthorized users).
+async function loadAuthorized(id: string, userId: string) {
   const db = getDb()
-
   const rows = await db
     .select({
       id: attachments.id,
@@ -40,15 +35,21 @@ attachmentRoutes.get('/:id', async (c) => {
     .innerJoin(mailboxes, eq(mailboxes.id, emails.mailboxId))
     .where(and(eq(attachments.id, id), eq(mailboxes.userId, userId)))
     .limit(1)
+  return rows[0] ?? null
+}
 
-  if (rows.length === 0) {
+/**
+ * GET /api/v1/inbox/attachments/:id
+ * Metadata + download URL the UI links to.
+ */
+attachmentRoutes.get('/:id', async (c) => {
+  const att = await loadAuthorized(c.req.param('id'), c.get('userId'))
+  if (!att) {
     return c.json(
       { error: { code: 'NOT_FOUND', message: 'Attachment not found' } },
       404,
     )
   }
-
-  const att = rows[0]
   return c.json({
     id: att.id,
     filename: att.filename,
@@ -61,19 +62,59 @@ attachmentRoutes.get('/:id', async (c) => {
 
 /**
  * GET /api/v1/inbox/attachments/:id/download
- * Streams the attachment bytes. Stubs 501 until the mail-engine
- * extracts MIME parts and uploads them to object storage; the
- * `storage_key` column on `attachments` is the eventual S3/MinIO key.
+ * Streams the attachment bytes from filesystem storage. Sets
+ * Content-Disposition so the browser saves with the original
+ * filename instead of "download".
  */
 attachmentRoutes.get('/:id/download', async (c) => {
-  return c.json(
-    {
-      error: {
-        code: 'NOT_IMPLEMENTED',
-        message:
-          'Attachment downloads aren\'t wired yet — the mail engine needs to extract MIME parts and upload them to object storage.',
+  const att = await loadAuthorized(c.req.param('id'), c.get('userId'))
+  if (!att) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'Attachment not found' } },
+      404,
+    )
+  }
+
+  let opened: Awaited<ReturnType<typeof openAttachmentStream>>
+  try {
+    opened = await openAttachmentStream(att.id)
+  } catch (err) {
+    console.error('[attachments] storage read failed:', err)
+    // Bytes lost (orphaned row, disk corruption, etc.). 410 Gone
+    // tells the caller this is permanent — retrying won't help.
+    return c.json(
+      {
+        error: {
+          code: 'GONE',
+          message: 'Attachment bytes are no longer available.',
+        },
       },
-    },
-    501,
+      410,
+    )
+  }
+
+  // Force download (browser saves the file rather than rendering
+  // it inline) for non-image / non-PDF types. Inline is fine for
+  // browser-renderable content.
+  const inlineable =
+    att.contentType.startsWith('image/') ||
+    att.contentType === 'application/pdf'
+  const disposition = inlineable ? 'inline' : 'attachment'
+  // RFC 5987 — encode the filename so non-ASCII names survive the
+  // header without breaking older browsers.
+  const encodedName = encodeURIComponent(att.filename).replace(/'/g, '%27')
+
+  c.header('Content-Type', att.contentType || 'application/octet-stream')
+  c.header('Content-Length', String(opened.sizeBytes))
+  c.header(
+    'Content-Disposition',
+    `${disposition}; filename*=UTF-8''${encodedName}`,
   )
+  c.header('Cache-Control', 'private, max-age=3600')
+
+  return stream(c, async (writer) => {
+    for await (const chunk of opened.stream) {
+      await writer.write(chunk as Uint8Array)
+    }
+  })
 })

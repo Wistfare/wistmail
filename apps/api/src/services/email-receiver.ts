@@ -1,8 +1,14 @@
 import { eq } from 'drizzle-orm'
-import { emails, mailboxes, domains } from '@wistmail/db'
+import { simpleParser } from 'mailparser'
+import type { Attachment } from 'mailparser'
+import { attachments as attachmentsTable, emails, mailboxes, domains } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 import { eventBus } from '../events/bus.js'
+import {
+  newAttachmentId,
+  putAttachment,
+} from '../lib/attachment-storage.js'
 import { sendEmailNotification } from './fcm.js'
 import { indexEmail } from './search.js'
 
@@ -73,6 +79,16 @@ export class EmailReceiver {
       const subject = parsed.subject || '(no subject)'
       const fromAddress = parsed.from || inbound.from
       const createdAt = parsed.date || new Date()
+
+      // Extract attachments via mailparser. The hand-rolled parser
+      // above only handles top-level text/html, so we layer the
+      // proper MIME walker on top here. Attachment bytes go to disk
+      // (filesystem storage); a row in `attachments` carries the
+      // metadata + storage_key the download endpoint streams from.
+      const extractedAttachments = await this.extractAttachments(
+        inbound.rawData,
+      )
+
       await this.db.insert(emails).values({
         id: emailId,
         messageId: parsed.messageId || `${emailId}@inbound`,
@@ -94,8 +110,22 @@ export class EmailReceiver {
         createdAt,
       })
 
+      if (extractedAttachments.length > 0) {
+        await this.db.insert(attachmentsTable).values(
+          extractedAttachments.map((a) => ({
+            id: a.id,
+            emailId,
+            filename: a.filename,
+            contentType: a.contentType,
+            sizeBytes: a.sizeBytes,
+            storageKey: a.storageKey,
+          })),
+        )
+      }
+
       const snippet = (parsed.textBody ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)
       const preview = snippet.slice(0, 140)
+      const hasAttachments = extractedAttachments.length > 0
 
       // Carry the full slim list-row payload so subscribers (web/mobile)
       // can render the new inbox row without a follow-up fetch.
@@ -113,7 +143,7 @@ export class EmailReceiver {
         isRead: false,
         isStarred: false,
         isDraft: false,
-        hasAttachments: false,
+        hasAttachments,
         sizeBytes: inbound.rawData.length,
         createdAt: createdAt.toISOString(),
         preview,
@@ -134,7 +164,7 @@ export class EmailReceiver {
         isRead: false,
         isStarred: false,
         isDraft: false,
-        hasAttachments: false,
+        hasAttachments,
         sizeBytes: inbound.rawData.length,
         createdAtMs: createdAt.getTime(),
       }).catch((err) => console.error('[email-receiver] indexEmail failed:', err))
@@ -154,6 +184,68 @@ export class EmailReceiver {
     }
 
     return { stored: false, error: 'No matching mailbox found' }
+  }
+
+  /**
+   * Walk the raw MIME and persist every attachment to filesystem
+   * storage. Returns the metadata rows the caller inserts into
+   * `attachments`. Failures here don't abort the email — we log
+   * and continue with whatever attachments DID succeed (better to
+   * deliver the message with a missing PDF than not at all).
+   */
+  private async extractAttachments(raw: string): Promise<
+    Array<{
+      id: string
+      filename: string
+      contentType: string
+      sizeBytes: number
+      storageKey: string
+      cid: string | null
+    }>
+  > {
+    let mimeAttachments: Attachment[]
+    try {
+      const parsed = await simpleParser(raw)
+      mimeAttachments = parsed.attachments ?? []
+    } catch (err) {
+      console.error('[email-receiver] mailparser failed:', err)
+      return []
+    }
+
+    const out: Array<{
+      id: string
+      filename: string
+      contentType: string
+      sizeBytes: number
+      storageKey: string
+      cid: string | null
+    }> = []
+    for (const att of mimeAttachments) {
+      // Skip tiny inline images that some clients ship for tracking.
+      if (att.size === 0 || !att.content) continue
+      const id = newAttachmentId()
+      try {
+        const storageKey = await putAttachment(id, att.content)
+        out.push({
+          id,
+          filename:
+            att.filename ||
+            (att.contentId ? att.contentId.replace(/[<>]/g, '') : 'attachment'),
+          contentType: att.contentType || 'application/octet-stream',
+          sizeBytes: att.size,
+          storageKey,
+          cid: att.contentId
+            ? att.contentId.replace(/[<>]/g, '')
+            : null,
+        })
+      } catch (err) {
+        console.error(
+          `[email-receiver] failed to store attachment ${id}:`,
+          err,
+        )
+      }
+    }
+    return out
   }
 
   /**
