@@ -93,7 +93,12 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
         mailboxId: fromMailboxId,
         inReplyTo: inReplyTo || undefined,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
-        send: !scheduledAt,
+        // Schedule send is still a real send — server flips the draft
+        // into folder='drafts' with scheduledAt set and the dispatcher
+        // picks it up when the timestamp elapses. Passing send:true
+        // here is what tells the server "this is scheduled, not a
+        // saved draft that the user will finish later."
+        send: true,
       })
       onSent?.()
       onClose()

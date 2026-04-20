@@ -254,6 +254,43 @@ inboxRoutes.post('/compose', async (c) => {
 
   if (parsed.data.send) {
     const userId = c.get('userId')
+    const scheduledAt = parsed.data.scheduledAt
+      ? new Date(parsed.data.scheduledAt)
+      : null
+    const isFutureScheduled =
+      scheduledAt !== null && scheduledAt.getTime() > Date.now()
+
+    // Schedule-send path: persist the draft with `scheduledAt` + mark
+    // `isDraft=false` + folder='sent' so the dispatcher picks it up
+    // at the scheduled moment. We DON'T reserve a rate-limit slot
+    // until the actual send attempt happens — scheduling a send far
+    // in the future shouldn't burn today's budget.
+    if (isFutureScheduled) {
+      const result = await emailService.createDraft(userId, {
+        ...parsed.data,
+        mailboxId: parsed.data.mailboxId,
+        scheduledAt: scheduledAt!.toISOString(),
+      })
+      await db
+        .update(emails)
+        .set({
+          isDraft: false,
+          // Keep in drafts folder so it shows in the Drafts + synthetic
+          // Scheduled views; dispatcher will move it to 'sent' when
+          // the send completes.
+          status: EMAIL_STATUS.Idle,
+          updatedAt: new Date(),
+        })
+        .where(eq(emails.id, result.id))
+      return c.json(
+        {
+          id: result.id,
+          status: 'scheduled',
+          scheduledAt: scheduledAt!.toISOString(),
+        },
+        201,
+      )
+    }
 
     // Per-user send rate limit. If we're over budget the draft still
     // gets persisted in 'rate_limited' state — the dispatcher loop

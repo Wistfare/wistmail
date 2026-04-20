@@ -6,7 +6,7 @@
 /// Failed sends are NOT auto-retried; the user must explicitly hit the
 /// /dispatch endpoint after fixing whatever caused the rejection.
 
-import { and, eq, lt, isNotNull, or } from 'drizzle-orm'
+import { and, eq, lt, lte, isNotNull, or } from 'drizzle-orm'
 import { emails, mailboxes } from '@wistmail/db'
 import type { Database } from '@wistmail/db'
 import { EmailSender, EMAIL_STATUS, MAX_SEND_ATTEMPTS, nextAttemptAt } from './email-sender.js'
@@ -64,15 +64,47 @@ export async function tick(db: Database): Promise<void> {
       )
       .limit(TICK_BATCH_SIZE)
 
-    if (candidates.length === 0) return
+    // Scheduled-send candidates. The user picked a future send time
+    // (schedule send in compose), we persisted the row with
+    // status='idle' + scheduledAt=T. Once T <= now we claim + send
+    // through the same pipeline rate_limited rows use.
+    const scheduled = await db
+      .select({
+        id: emails.id,
+        attempts: emails.sendAttempts,
+        lastAttemptAt: emails.lastAttemptAt,
+        userId: mailboxes.userId,
+      })
+      .from(emails)
+      .innerJoin(mailboxes, eq(emails.mailboxId, mailboxes.id))
+      .where(
+        and(
+          eq(emails.status, EMAIL_STATUS.Idle),
+          eq(emails.isDraft, false),
+          isNotNull(emails.scheduledAt),
+          lte(emails.scheduledAt, now),
+        ),
+      )
+      .limit(TICK_BATCH_SIZE)
+
+    const allCandidates = [...candidates, ...scheduled]
+    if (allCandidates.length === 0) return
 
     const sender = new EmailSender(db)
-    for (const row of candidates) {
-      // Per-row backoff check — `nextAttemptAt` consults the schedule
-      // for `attempts`. If the wait window hasn't passed, skip.
-      if (row.attempts >= MAX_SEND_ATTEMPTS) continue
-      const dueAt = nextAttemptAt(row.attempts - 1, row.lastAttemptAt!)
-      if (!dueAt || dueAt > now) continue
+    // Rate-limited rows live in `candidates` above; scheduled rows in
+    // `scheduled`. We track the set via identity to skip the backoff
+    // check for scheduled rows — they have no lastAttemptAt, and
+    // their due moment is already encoded in scheduledAt which the
+    // SELECT already filtered on.
+    const scheduledIds = new Set(scheduled.map((r) => r.id))
+    for (const row of allCandidates) {
+      const isScheduled = scheduledIds.has(row.id)
+      if (!isScheduled) {
+        // Per-row backoff check — only for retry candidates.
+        if (row.attempts >= MAX_SEND_ATTEMPTS) continue
+        const dueAt = nextAttemptAt(row.attempts - 1, row.lastAttemptAt!)
+        if (!dueAt || dueAt > now) continue
+      }
 
       // Re-check the rate limit before claiming so we don't burn an
       // attempt just to fail at the limiter again. If still blocked,

@@ -53,6 +53,11 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
     super.dispose();
   }
 
+  /// Optional scheduled-send target. Populated from the picker in
+  /// the compose toolbar; when non-null the compose sends with
+  /// `scheduledAt` set and lands in drafts with the scheduled pill.
+  DateTime? _scheduledAt;
+
   Future<void> _send(Mailbox mailbox) async {
     if (_to.isEmpty) {
       setState(() => _errorMessage = 'Add at least one recipient.');
@@ -71,6 +76,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
       subject: _subjectController.text,
       textBody: _bodyController.text,
       send: true,
+      scheduledAt: _scheduledAt,
     );
     // Synchronous read — engine is bootstrapped on app start. Falls
     // back to direct repo call when the offline-first stack isn't
@@ -112,7 +118,14 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
             _Header(
               title: _headerTitle(),
               isSending: _isSending,
+              scheduledAt: _scheduledAt,
               onClose: () => context.pop(),
+              onSchedule: () async {
+                final when = await _pickScheduledTime(context);
+                if (!mounted) return;
+                setState(() => _scheduledAt = when);
+              },
+              onClearSchedule: () => setState(() => _scheduledAt = null),
               onSend: () {
                 // Drop focus first so any chip field with a pending
                 // buffer commits its current text into a real chip
@@ -196,13 +209,19 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.title,
     required this.isSending,
+    required this.scheduledAt,
     required this.onClose,
     required this.onSend,
+    required this.onSchedule,
+    required this.onClearSchedule,
   });
   final String title;
   final bool isSending;
+  final DateTime? scheduledAt;
   final VoidCallback onClose;
   final VoidCallback onSend;
+  final VoidCallback onSchedule;
+  final VoidCallback onClearSchedule;
 
   @override
   Widget build(BuildContext context) {
@@ -219,8 +238,30 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Text(title, style: AppTextStyles.titleMedium),
+          const SizedBox(width: 12),
+          if (scheduledAt != null)
+            _ScheduleChip(
+              when: scheduledAt!,
+              onClear: onClearSchedule,
+            ),
           const Spacer(),
-          _SendButton(isSending: isSending, onPressed: onSend),
+          IconButton(
+            tooltip: 'Schedule send',
+            splashRadius: 20,
+            onPressed: onSchedule,
+            icon: Icon(
+              Icons.schedule,
+              size: 20,
+              color: scheduledAt != null
+                  ? AppColors.accent
+                  : AppColors.textSecondary,
+            ),
+          ),
+          _SendButton(
+            isSending: isSending,
+            onPressed: onSend,
+            label: scheduledAt == null ? 'Send' : 'Schedule',
+          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -228,8 +269,63 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Pill rendered between the title and the action group once a
+/// scheduled time is picked. Tapping the ✕ clears the schedule —
+/// the Send button reverts to an immediate send.
+class _ScheduleChip extends StatelessWidget {
+  const _ScheduleChip({required this.when, required this.onClear});
+  final DateTime when;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onClear,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.accentDim,
+          border: Border.all(color: AppColors.accent),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.schedule, size: 12, color: AppColors.accent),
+            const SizedBox(width: 4),
+            Text(
+              _format(when),
+              style: AppTextStyles.monoSmall.copyWith(color: AppColors.accent),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.close, size: 12, color: AppColors.accent),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _format(DateTime dt) {
+    final local = dt.toLocal();
+    const dows = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dow = dows[local.weekday - 1];
+    final hour = local.hour == 0
+        ? 12
+        : local.hour > 12
+            ? local.hour - 12
+            : local.hour;
+    final ampm = local.hour < 12 ? 'AM' : 'PM';
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$dow $hour:$minute $ampm';
+  }
+}
+
 class _SendButton extends StatelessWidget {
-  const _SendButton({required this.isSending, required this.onPressed});
+  const _SendButton({
+    required this.isSending,
+    required this.onPressed,
+    this.label = 'Send',
+  });
+  final String label;
   final bool isSending;
   final VoidCallback onPressed;
 
@@ -255,7 +351,9 @@ class _SendButton extends StatelessWidget {
                       size: 14, color: AppColors.background),
               const SizedBox(width: 6),
               Text(
-                isSending ? 'Sending…' : 'Send',
+                isSending
+                    ? (label == 'Schedule' ? 'Scheduling…' : 'Sending…')
+                    : label,
                 style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -531,4 +629,38 @@ class _ToolbarIcon extends StatelessWidget {
       onPressed: onTap,
     );
   }
+}
+
+/// Two-step date + time picker — we defer to the platform dialogs
+/// instead of inventing our own so the user gets the familiar
+/// iOS cupertino / Android material picker for their phone. Returns
+/// null if the user cancels either step.
+Future<DateTime?> _pickScheduledTime(BuildContext context) async {
+  final now = DateTime.now();
+  final date = await showDatePicker(
+    context: context,
+    initialDate: now.add(const Duration(hours: 1)),
+    firstDate: now,
+    lastDate: now.add(const Duration(days: 365)),
+  );
+  if (date == null || !context.mounted) return null;
+  final time = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(
+      now.add(const Duration(hours: 1)),
+    ),
+  );
+  if (time == null) return null;
+  final scheduled = DateTime(
+    date.year,
+    date.month,
+    date.day,
+    time.hour,
+    time.minute,
+  );
+  // Refuse targets in the past — a past scheduledAt would send
+  // immediately on the next dispatcher tick, which is probably not
+  // what the user meant.
+  if (scheduled.isBefore(DateTime.now())) return null;
+  return scheduled;
 }

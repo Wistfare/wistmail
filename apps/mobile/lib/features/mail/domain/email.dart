@@ -437,6 +437,8 @@ class ComposeDraft {
     this.textBody,
     this.htmlBody,
     this.send = true,
+    this.scheduledAt,
+    this.inReplyTo,
   });
 
   final String fromAddress;
@@ -448,6 +450,12 @@ class ComposeDraft {
   final String? textBody;
   final String? htmlBody;
   final bool send;
+  /// When set, the compose is a schedule-send: the server stores the
+  /// row with folder='drafts' + scheduledAt, and the dispatcher sends
+  /// it at that instant. `send` must stay true for this path so the
+  /// server knows the user intended a send, not a manual draft save.
+  final DateTime? scheduledAt;
+  final String? inReplyTo;
 
   Map<String, dynamic> toJson() => {
         'fromAddress': fromAddress,
@@ -459,6 +467,9 @@ class ComposeDraft {
         if (textBody != null) 'textBody': textBody,
         if (htmlBody != null) 'htmlBody': htmlBody,
         'send': send,
+        if (scheduledAt != null)
+          'scheduledAt': scheduledAt!.toUtc().toIso8601String(),
+        if (inReplyTo != null) 'inReplyTo': inReplyTo,
       };
 }
 

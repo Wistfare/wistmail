@@ -552,9 +552,15 @@ export class EmailService {
     textBody?: string
     htmlBody?: string
     mailboxId: string
+    /// ISO-8601 string — persisted in `emails.scheduledAt`. When set,
+    /// the send dispatcher waits until the timestamp elapses before
+    /// claiming + dispatching the row. The synthetic "scheduled"
+    /// folder filter surfaces these rows to the user.
+    scheduledAt?: string
   }) {
     const emailId = generateId('eml')
     const messageId = `${emailId}@wistmail.local`
+    const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null
 
     await this.db.insert(emails).values({
       id: emailId,
@@ -572,8 +578,9 @@ export class EmailService {
       isRead: true,
       headers: {},
       references: [],
+      scheduledAt,
     })
 
-    return { id: emailId, messageId }
+    return { id: emailId, messageId, scheduledAt }
   }
 }
