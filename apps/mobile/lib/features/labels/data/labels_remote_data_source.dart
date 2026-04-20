@@ -23,6 +23,20 @@ class LabelsRemoteDataSource {
     return response.data!['id'] as String;
   }
 
+  Future<void> update(String id, {String? name, String? color}) async {
+    final data = <String, dynamic>{};
+    if (name != null) data['name'] = name;
+    if (color != null) data['color'] = color;
+    await _client.dio.patch<Map<String, dynamic>>(
+      '/api/v1/labels/$id',
+      data: data,
+    );
+  }
+
+  Future<void> delete(String id) async {
+    await _client.dio.delete<Map<String, dynamic>>('/api/v1/labels/$id');
+  }
+
   Future<List<EmailLabel>> forEmail(String emailId) async {
     final response = await _client.dio.get<Map<String, dynamic>>(
       '/api/v1/labels/email/$emailId',

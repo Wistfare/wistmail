@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_avatar.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
+import '../../../labels/presentation/providers/labels_providers.dart';
 import '../../../mail/presentation/providers/mail_providers.dart';
 
 /// Mobile/Drawer — design.lib.pen node `poQbm`. Matches the design
@@ -72,13 +73,43 @@ class AppDrawer extends ConsumerWidget {
               child: Text('LABELS', style: AppTextStyles.sectionLabel),
             ),
             const SizedBox(height: 4),
-            // Labels are wired up in Phase F; for now keep the design
-            // placeholders so users see the section exists.
-            const _LabelItem(color: AppColors.labelYellow, label: 'Priority'),
-            const _LabelItem(color: AppColors.labelBlue, label: 'Work'),
-            const _LabelItem(color: AppColors.labelOrange, label: 'Newsletters'),
+            // Real labels from the API. AsyncValue.when keeps the drawer
+            // snappy during first paint (we show the previous cached
+            // list if we have one, otherwise an empty gap the user can
+            // scroll past to hit "Manage labels").
+            Consumer(builder: (context, ref, _) {
+              final labelsAsync = ref.watch(labelsListProvider);
+              return labelsAsync.maybeWhen(
+                data: (labels) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (labels.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          'No labels yet',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 10,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      )
+                    else
+                      for (final l in labels)
+                        _LabelItem(color: l.swatch, label: l.name),
+                  ],
+                ),
+                orElse: () => const SizedBox.shrink(),
+              );
+            }),
             const SizedBox(height: 6),
-            _CreateLabelButton(onTap: () {}),
+            _CreateLabelButton(onTap: () {
+              Navigator.of(context).pop();
+              context.push('/settings/labels');
+            }),
             const SizedBox(height: 24),
           ],
         ),
@@ -105,6 +136,10 @@ class AppDrawer extends ConsumerWidget {
         onTwoFactor: () {
           Navigator.of(sheetCtx).pop();
           context.push('/auth/mfa/methods');
+        },
+        onManageLabels: () {
+          Navigator.of(sheetCtx).pop();
+          context.push('/settings/labels');
         },
         onDeleteAccount: () {
           Navigator.of(sheetCtx).pop();
@@ -325,10 +360,12 @@ class _AccountSheet extends StatelessWidget {
   const _AccountSheet({
     required this.onSignOut,
     required this.onTwoFactor,
+    required this.onManageLabels,
     required this.onDeleteAccount,
   });
   final VoidCallback onSignOut;
   final VoidCallback onTwoFactor;
+  final VoidCallback onManageLabels;
   final VoidCallback onDeleteAccount;
 
   @override
@@ -341,6 +378,12 @@ class _AccountSheet extends StatelessWidget {
           const SizedBox(height: 8),
           Container(width: 36, height: 4, color: AppColors.border),
           const SizedBox(height: 8),
+          _SheetAction(
+            icon: Icons.label_outline,
+            label: 'Manage labels',
+            onTap: onManageLabels,
+          ),
+          const Divider(color: AppColors.border, height: 1),
           _SheetAction(
             icon: Icons.shield_outlined,
             label: 'Two-factor authentication',
