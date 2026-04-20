@@ -38,10 +38,14 @@ class Email {
     required this.isDraft,
     this.hasAttachments = false,
     this.sizeBytes = 0,
+    this.status = 'idle',
+    this.sendError,
     required this.createdAt,
+    DateTime? updatedAt,
     this.mailboxId,
     this.attachments = const [],
-  })  : senderName = _extractSenderName(fromAddress),
+  })  : updatedAt = updatedAt ?? createdAt,
+        senderName = _extractSenderName(fromAddress),
         senderEmail = _extractSenderEmail(fromAddress),
         senderInitials = _initialsFor(_extractSenderName(fromAddress)),
         senderAvatarColor = _colorFor(fromAddress),
@@ -62,7 +66,16 @@ class Email {
   final bool isDraft;
   final bool hasAttachments;
   final int sizeBytes;
+  /// Outbound lifecycle status — mirrors the backend column. 'idle'
+  /// for inbound mail; 'sending' / 'sent' / 'failed' / 'rate_limited'
+  /// for emails the user has tried to send.
+  final String status;
+  final String? sendError;
   final DateTime createdAt;
+  /// Server-side mutation timestamp. Drives last-write-wins
+  /// reconciliation in the local store: a server upsert can only
+  /// override the local copy when its updatedAt is strictly newer.
+  final DateTime updatedAt;
   final String? mailboxId;
   final List<EmailAttachment> attachments;
 
@@ -91,8 +104,13 @@ class Email {
       isDraft: (json['isDraft'] as bool?) ?? false,
       hasAttachments: (json['hasAttachments'] as bool?) ?? false,
       sizeBytes: (json['sizeBytes'] as num?)?.toInt() ?? 0,
+      status: (json['status'] as String?) ?? 'idle',
+      sendError: json['sendError'] as String?,
       mailboxId: json['mailboxId'] as String?,
       createdAt: _parseDate(json['createdAt']),
+      updatedAt: json['updatedAt'] != null
+          ? _parseDate(json['updatedAt'])
+          : _parseDate(json['createdAt']),
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
           .map((a) => EmailAttachment.fromJson(a as Map<String, dynamic>))
           .toList(growable: false),
@@ -103,6 +121,9 @@ class Email {
     bool? isRead,
     bool? isStarred,
     String? folder,
+    String? status,
+    String? sendError,
+    DateTime? updatedAt,
   }) =>
       Email(
         id: id,
@@ -120,7 +141,10 @@ class Email {
         isDraft: isDraft,
         hasAttachments: hasAttachments,
         sizeBytes: sizeBytes,
+        status: status ?? this.status,
+        sendError: sendError ?? this.sendError,
         createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
         mailboxId: mailboxId,
         attachments: attachments,
       );
@@ -149,7 +173,10 @@ class Email {
         isDraft: isDraft,
         hasAttachments: attachments?.isNotEmpty ?? hasAttachments,
         sizeBytes: sizeBytes,
+        status: status,
+        sendError: sendError,
         createdAt: createdAt,
+        updatedAt: updatedAt,
         mailboxId: mailboxId,
         attachments: attachments ?? this.attachments,
       );
