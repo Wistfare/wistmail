@@ -1,4 +1,4 @@
-import { eq, and, desc, ilike, or, sql, inArray } from 'drizzle-orm'
+import { eq, and, desc, gt, ilike, isNull, lte, or, sql, inArray } from 'drizzle-orm'
 import { emails, attachments, mailboxes } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
@@ -63,6 +63,60 @@ export class EmailService {
     return rows.map((m) => m.id)
   }
 
+  /// Translate a folder name (literal or synthetic) into a WHERE clause
+  /// against the user's mailboxes.
+  ///
+  /// Literal folders match `folder` directly. Synthetic folders derive
+  /// from columns (`is_starred`, `snooze_until`, `scheduled_at`) so the
+  /// sidebar links the web UI ships actually return data.
+  ///
+  /// `all` is the catch-all view — no folder filter, used by the
+  /// "All Mail" pseudo-folder some users prefer.
+  private buildFolderWhere(folder: string, mailboxIds: string[]) {
+    const inMailbox = inArray(emails.mailboxId, mailboxIds)
+    const now = new Date()
+    switch (folder) {
+      case 'starred':
+        // Starred lives across folders — exclude trash so deleted starred
+        // mail doesn't pollute the view.
+        return and(
+          inMailbox,
+          eq(emails.isStarred, true),
+          sql`${emails.folder} <> 'trash'`,
+        )
+      case 'snoozed':
+        // Snoozed = currently hidden. The row reappears in inbox once
+        // snooze_until passes (a separate housekeeping tick clears the
+        // column when due — for now, the inbox folder simply excludes
+        // snoozed rows; see the `inbox` branch below).
+        return and(
+          inMailbox,
+          sql`${emails.snoozeUntil} IS NOT NULL`,
+          gt(emails.snoozeUntil, now),
+        )
+      case 'scheduled':
+        // Outbound mail with a future send time. Status is 'sending'
+        // until the dispatcher picks it up at the scheduled moment.
+        return and(
+          inMailbox,
+          sql`${emails.scheduledAt} IS NOT NULL`,
+          gt(emails.scheduledAt, now),
+        )
+      case 'all':
+        return inMailbox
+      case 'inbox':
+        // Inbox naturally hides currently-snoozed rows.
+        return and(
+          inMailbox,
+          eq(emails.folder, 'inbox'),
+          or(isNull(emails.snoozeUntil), lte(emails.snoozeUntil, now)),
+        )
+      default:
+        // Literal folder match (sent, drafts, trash, spam, archive, …).
+        return and(inMailbox, eq(emails.folder, folder))
+    }
+  }
+
   async listByFolder(
     userId: string,
     folder: string,
@@ -84,10 +138,7 @@ export class EmailService {
     }), '')`
     const hasAttExpr = sql<boolean>`exists(select 1 from ${attachments} where ${attachments.emailId} = ${emails.id})`
 
-    const where = and(
-      inArray(emails.mailboxId, mailboxIds),
-      eq(emails.folder, folder),
-    )
+    const where = this.buildFolderWhere(folder, mailboxIds)
 
     const [rows, [{ count }]] = await Promise.all([
       this.db

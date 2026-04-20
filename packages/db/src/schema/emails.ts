@@ -54,6 +54,13 @@ export const emails = pgTable(
     sendAttempts: integer('send_attempts').notNull().default(0),
     /// Last attempt timestamp — drives the backoff schedule.
     lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+    /// When set in the future, the email is hidden from inbox until
+    /// the timestamp passes. Used by the synthetic "Snoozed" folder.
+    snoozeUntil: timestamp('snooze_until', { withTimezone: true }),
+    /// When set in the future and status='sending', the dispatcher
+    /// holds the send until this timestamp. Drives the synthetic
+    /// "Scheduled" folder for outbound mail.
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
     threadId: varchar('thread_id', { length: 64 }).references(() => threads.id, {
       onDelete: 'set null',
     }),

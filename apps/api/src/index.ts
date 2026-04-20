@@ -142,7 +142,13 @@ async function ensureSchema() {
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS send_attempts int NOT NULL DEFAULT 0`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS last_attempt_at timestamptz`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS snooze_until timestamptz`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS scheduled_at timestamptz`,
     `CREATE INDEX IF NOT EXISTS emails_status_idx ON emails(status) WHERE status IN ('sending','rate_limited','failed')`,
+    // Synthetic folder support — partial indexes for hot reads.
+    `CREATE INDEX IF NOT EXISTS emails_snooze_until_idx ON emails(snooze_until) WHERE snooze_until IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS emails_scheduled_at_idx ON emails(scheduled_at) WHERE scheduled_at IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS emails_starred_idx ON emails(mailbox_id, created_at DESC) WHERE is_starred = true`,
     `CREATE TABLE IF NOT EXISTS labels (
       id varchar(64) PRIMARY KEY, name varchar(255) NOT NULL,
       color varchar(7) NOT NULL DEFAULT '#999999',
