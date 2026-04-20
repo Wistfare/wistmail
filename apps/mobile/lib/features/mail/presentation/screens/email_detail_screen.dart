@@ -15,6 +15,7 @@ import '../../data/mail_actions.dart';
 import '../../domain/compose_args.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
+import '../widgets/attachments_strip.dart';
 import '../widgets/email_body.dart';
 
 /// Mobile/EmailDetail — design.lib.pen node `aZAGV`.
@@ -248,6 +249,8 @@ class _Body extends ConsumerWidget {
           ],
           const SizedBox(height: 20),
           const Divider(color: AppColors.border, height: 1),
+          if (email.attachments.isNotEmpty)
+            AttachmentsStrip(attachments: email.attachments),
           const SizedBox(height: 20),
           // Real HTML rendering — flutter_html with our typography +
           // cid: attachment resolution + remote-image privacy gate.

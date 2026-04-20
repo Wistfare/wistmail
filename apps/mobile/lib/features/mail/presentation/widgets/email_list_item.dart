@@ -7,6 +7,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_tag.dart';
 import '../../../labels/presentation/providers/labels_providers.dart';
 import '../../domain/email.dart';
+import 'attachments_strip.dart';
 
 /// Mobile/Inbox row — sharp, full-width, separated by 1px hairlines.
 class EmailListItem extends ConsumerWidget {
@@ -59,6 +60,10 @@ class EmailListItem extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (email.hasAttachments) ...[
+                    const AttachmentBadge(count: 1),
+                    const SizedBox(width: 6),
+                  ],
                   // Lifecycle pill — shows nothing for normal inbound /
                   // sent rows; flips to "Sending" / "Queued" / "Failed"
                   // when the user has tried to send.

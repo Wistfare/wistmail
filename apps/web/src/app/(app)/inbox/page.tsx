@@ -22,6 +22,10 @@ import { Button } from '@/components/ui/button'
 import { useCompose } from '@/components/email/compose-provider'
 import { EmailBody } from '@/components/email/email-body'
 import { LabelAssignPopover } from '@/components/email/label-assign-popover'
+import {
+  AttachmentBadge,
+  AttachmentsStrip,
+} from '@/components/email/attachments-strip'
 import { api } from '@/lib/api-client'
 import { useLabelsForEmail } from '@/lib/labels'
 import { cn, formatRelativeTime } from '@/lib/utils'
@@ -350,16 +354,19 @@ export default function InboxPage() {
                 </span>
               </div>
 
-              <span
-                className={cn(
-                  'truncate text-[13px]',
-                  !email.isRead
-                    ? 'font-medium text-wm-text-primary'
-                    : 'font-normal text-wm-text-secondary',
-                )}
-              >
-                {email.subject || '(no subject)'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'flex-1 truncate text-[13px]',
+                    !email.isRead
+                      ? 'font-medium text-wm-text-primary'
+                      : 'font-normal text-wm-text-secondary',
+                  )}
+                >
+                  {email.subject || '(no subject)'}
+                </span>
+                {email.hasAttachments && <AttachmentBadge count={1} />}
+              </div>
 
               <div className="flex items-center gap-2">
                 <span className="line-clamp-2 flex-1 font-mono text-[11px] leading-[1.4] text-wm-text-muted">
@@ -464,6 +471,9 @@ export default function InboxPage() {
               </div>
             </div>
 
+            <AttachmentsStrip
+              attachments={selectedFull.attachments ?? []}
+            />
             <div className="flex-1 overflow-y-auto px-6 py-6">{renderEmailBody(selectedFull)}</div>
           </>
         )}

@@ -15,6 +15,7 @@ import { authRoutes } from './routes/auth.js'
 import { setupRoutes } from './routes/setup.js'
 import { adminRoutes } from './routes/admin.js'
 import { inboxRoutes } from './routes/inbox.js'
+import { attachmentRoutes } from './routes/attachments.js'
 import { inboundRoutes } from './routes/inbound.js'
 import { userRoutes } from './routes/user.js'
 import { chatRoutes } from './routes/chat.js'
@@ -103,6 +104,7 @@ v1.route('/analytics', analyticsRoutes)
 v1.route('/setup', setupRoutes)
 v1.route('/admin', adminRoutes)
 v1.route('/inbox', inboxRoutes)
+v1.route('/inbox/attachments', attachmentRoutes)
 v1.route('/internal', inboundRoutes)
 v1.route('/user', userRoutes)
 v1.route('/chat', chatRoutes)
