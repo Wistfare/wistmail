@@ -83,6 +83,12 @@ class MailRemoteDataSource {
     return response.data!['id'] as String;
   }
 
+  Future<void> dispatch(String emailId) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/dispatch',
+    );
+  }
+
   Future<List<Mailbox>> getMailboxes() async {
     final response = await _client.dio.get<Map<String, dynamic>>(
       '/api/v1/user/mailboxes',

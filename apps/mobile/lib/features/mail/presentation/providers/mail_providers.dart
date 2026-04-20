@@ -185,6 +185,14 @@ class InboxController extends StateNotifier<InboxState> {
         }
       case EmailDeletedEvent e:
         removeLocal(e.emailId);
+      case EmailSendStatusEvent e:
+        // Drafts-as-outbox lifecycle — flip the row's pill to its
+        // server-confirmed terminal state without a refetch.
+        final next = state.emails.map((em) {
+          if (em.id != e.emailId) return em;
+          return em.copyWith(status: e.status, sendError: e.error);
+        }).toList(growable: false);
+        state = state.copyWith(emails: next);
       default:
         break;
     }

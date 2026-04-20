@@ -34,7 +34,7 @@ final syncEngineProvider = FutureProvider<SyncEngine>((ref) async {
   ref.keepAlive();
   final outbox = await ref.watch(outboxProvider.future);
   final store = await ref.watch(emailLocalStoreProvider.future);
-  final repo = await ref.watch(mailRepositoryProvider.future) as MailRepository;
+  final repo = await ref.watch(mailRepositoryProvider.future);
   final engine = SyncEngine(
     outbox: outbox,
     store: store,

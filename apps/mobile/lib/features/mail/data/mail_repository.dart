@@ -13,6 +13,10 @@ abstract class MailRepository {
   Future<String> compose(ComposeDraft draft);
   Future<List<Mailbox>> getMailboxes();
   Future<EmailPage> search(String query);
+  /// User-initiated retry for an email currently in 'failed' or
+  /// 'rate_limited'. Backend transitions it back to 'sending' and
+  /// the WS event flips the row's pill.
+  Future<void> dispatch(String emailId);
 }
 
 class MailRepositoryImpl implements MailRepository {
@@ -56,4 +60,7 @@ class MailRepositoryImpl implements MailRepository {
 
   @override
   Future<EmailPage> search(String query) => _remote.search(query);
+
+  @override
+  Future<void> dispatch(String emailId) => _remote.dispatch(emailId);
 }

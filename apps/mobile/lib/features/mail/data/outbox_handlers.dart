@@ -43,8 +43,10 @@ Map<OutboxOp, OutboxHandler> buildMailHandlers(MailRepository repo) {
       throw UnimplementedError('move_folder not wired');
     },
     OutboxOp.dispatchSend: (row, store) async {
-      // Will be wired in Phase 3d when compose becomes outbox-based.
-      throw UnimplementedError('dispatch_send not wired');
+      // User-initiated retry of a failed/rate-limited send. Backend
+      // transitions the email to 'sending' and the WS event flips
+      // the row's pill once delivery resolves.
+      await repo.dispatch(row.entityId);
     },
   };
 }

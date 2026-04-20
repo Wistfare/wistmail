@@ -226,6 +226,13 @@ class FakeMailRepository implements MailRepository {
       hasMore: false,
     );
   }
+
+  int dispatchCalls = 0;
+
+  @override
+  Future<void> dispatch(String emailId) async {
+    dispatchCalls++;
+  }
 }
 
 User sampleUser({String id = 'u_1'}) => User(

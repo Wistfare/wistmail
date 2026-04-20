@@ -67,6 +67,24 @@ class MailActions {
       op: OutboxOp.delete,
     );
   }
+
+  /// Re-enqueue a failed or rate-limited send. The UI flips the pill
+  /// to 'sending' immediately; the engine fires the dispatch HTTP
+  /// call and the WS event reconciles to the terminal state.
+  Future<void> retrySend(Email email) async {
+    _inboxNotifier
+        .applyLocal(email.copyWith(status: 'sending', sendError: null));
+    await _store.applyLocalMutation(
+      id: email.id,
+      status: 'sending',
+      sendError: null,
+    );
+    await _engine.enqueue(
+      entityType: 'email',
+      entityId: email.id,
+      op: OutboxOp.dispatchSend,
+    );
+  }
 }
 
 /// Riverpod accessor — composes the engine + store + controller. The

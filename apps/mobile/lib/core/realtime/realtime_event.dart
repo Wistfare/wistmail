@@ -39,6 +39,12 @@ sealed class RealtimeEvent {
         );
       case 'email.deleted':
         return EmailDeletedEvent(emailId: json['emailId'] as String);
+      case 'email.send_status':
+        return EmailSendStatusEvent(
+          emailId: json['emailId'] as String,
+          status: (json['status'] as String?) ?? 'idle',
+          error: json['error'] as String?,
+        );
       case 'chat.message.new':
         return ChatMessageNewEvent(
           conversationId: json['conversationId'] as String,
@@ -116,6 +122,20 @@ class EmailUpdatedEvent extends RealtimeEvent {
 class EmailDeletedEvent extends RealtimeEvent {
   const EmailDeletedEvent({required this.emailId});
   final String emailId;
+}
+
+/// Lifecycle transition for an outbound email — flips the row's
+/// "Sending…" pill to Sent / Failed / Queued without a refetch.
+class EmailSendStatusEvent extends RealtimeEvent {
+  const EmailSendStatusEvent({
+    required this.emailId,
+    required this.status,
+    this.error,
+  });
+
+  final String emailId;
+  final String status; // 'idle' | 'sending' | 'sent' | 'failed' | 'rate_limited'
+  final String? error;
 }
 
 class ChatMessageNewEvent extends RealtimeEvent {

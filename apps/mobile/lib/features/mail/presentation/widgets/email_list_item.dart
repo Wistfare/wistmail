@@ -57,6 +57,13 @@ class EmailListItem extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  // Lifecycle pill — shows nothing for normal inbound /
+                  // sent rows; flips to "Sending" / "Queued" / "Failed"
+                  // when the user has tried to send.
+                  if (_SendStatusPill.shouldShow(email.status)) ...[
+                    _SendStatusPill(status: email.status),
+                    const SizedBox(width: 6),
+                  ],
                   Text(email.timeAgo, style: AppTextStyles.meta),
                 ],
               ),
@@ -115,5 +122,62 @@ class EmailListItem extends StatelessWidget {
       return const WmTag(label: 'Digest', color: AppColors.tagDigest);
     }
     return null;
+  }
+}
+
+/// Tiny status pill rendered next to the timestamp. Hidden for
+/// 'idle'/'sent' so received mail rows stay clean.
+class _SendStatusPill extends StatelessWidget {
+  const _SendStatusPill({required this.status});
+
+  final String status;
+
+  static bool shouldShow(String status) =>
+      status == 'sending' || status == 'rate_limited' || status == 'failed';
+
+  @override
+  Widget build(BuildContext context) {
+    late final Color bg;
+    late final Color fg;
+    late final String label;
+    late final IconData icon;
+    switch (status) {
+      case 'sending':
+        bg = AppColors.accent.withValues(alpha: 0.15);
+        fg = AppColors.accent;
+        label = 'Sending';
+        icon = Icons.sync;
+      case 'rate_limited':
+        bg = AppColors.tagDigest.withValues(alpha: 0.15);
+        fg = AppColors.tagDigest;
+        label = 'Queued';
+        icon = Icons.schedule;
+      case 'failed':
+      default:
+        bg = AppColors.danger.withValues(alpha: 0.15);
+        fg = AppColors.danger;
+        label = 'Failed';
+        icon = Icons.error_outline;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: bg),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: fg,
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
