@@ -1,4 +1,4 @@
-import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, gte, desc, inArray, isNull } from 'drizzle-orm'
 import { emails, threads } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
@@ -85,13 +85,18 @@ export class ThreadService {
       const thirtyDaysAgo = new Date(
         createdAt.getTime() - 30 * 24 * 60 * 60 * 1000,
       )
+      // Use the typed `gte` helper rather than a raw sql template —
+      // the latter hands the Date to postgres.js as an unencoded
+      // parameter and crashes with "string argument must be ... but
+      // received an instance of Date". `gte` routes through the
+      // column's encoder (timestamp with timezone → ISO string).
       const candidates = await this.db
         .select({ id: threads.id, subject: threads.subject })
         .from(threads)
         .where(
           and(
             eq(threads.mailboxId, mailboxId),
-            sql`${threads.lastEmailAt} >= ${thirtyDaysAgo}`,
+            gte(threads.lastEmailAt, thirtyDaysAgo),
           ),
         )
         .orderBy(desc(threads.lastEmailAt))

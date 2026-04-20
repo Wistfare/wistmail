@@ -150,11 +150,35 @@ async function ensureSchema() {
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS snooze_until timestamptz`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS scheduled_at timestamptz`,
+    // Threading: the `threads` table + `thread_id` FK were declared
+    // inside the CREATE TABLE block above, but a production DB with
+    // an existing `emails` table treats that CREATE as a no-op so
+    // the column never gets added. Without this ALTER the new
+    // email-receiver code writes `thread_id: <id>` into an INSERT
+    // that silently fails — inbound messages are lost.
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS thread_id varchar(64)`,
+    // FK is added in a separate statement so the ALTER can land
+    // even if the threads table hasn't been created yet on some
+    // older deployment. Safe to run repeatedly because of the
+    // IF NOT EXISTS guard on the constraint name.
+    `DO $$
+     BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+         WHERE conname = 'emails_thread_id_fkey'
+       ) THEN
+         ALTER TABLE emails
+           ADD CONSTRAINT emails_thread_id_fkey
+           FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE SET NULL;
+       END IF;
+     END
+     $$;`,
     `CREATE INDEX IF NOT EXISTS emails_status_idx ON emails(status) WHERE status IN ('sending','rate_limited','failed')`,
     // Synthetic folder support — partial indexes for hot reads.
     `CREATE INDEX IF NOT EXISTS emails_snooze_until_idx ON emails(snooze_until) WHERE snooze_until IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS emails_scheduled_at_idx ON emails(scheduled_at) WHERE scheduled_at IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS emails_starred_idx ON emails(mailbox_id, created_at DESC) WHERE is_starred = true`,
+    `CREATE INDEX IF NOT EXISTS emails_thread_id_idx ON emails(thread_id) WHERE thread_id IS NOT NULL`,
     `CREATE TABLE IF NOT EXISTS labels (
       id varchar(64) PRIMARY KEY, name varchar(255) NOT NULL,
       color varchar(7) NOT NULL DEFAULT '#999999',
