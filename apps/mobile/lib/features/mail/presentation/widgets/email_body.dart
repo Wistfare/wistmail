@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/dio_image_provider.dart';
+import '../../../../core/network/providers.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/email.dart';
 
@@ -16,17 +21,29 @@ import '../../domain/email.dart';
 /// - Tables, lists, blockquotes, links, font-family, font-size, and
 ///   inline color all render via flutter_html with our project styles
 ///   layered on top.
-class EmailBody extends StatefulWidget {
+class EmailBody extends ConsumerStatefulWidget {
   const EmailBody({super.key, required this.email});
 
   final Email email;
 
   @override
-  State<EmailBody> createState() => _EmailBodyState();
+  ConsumerState<EmailBody> createState() => _EmailBodyState();
 }
 
-class _EmailBodyState extends State<EmailBody> {
+class _EmailBodyState extends ConsumerState<EmailBody> {
   bool _loadRemote = false;
+  ApiClient? _apiClient;
+
+  @override
+  void initState() {
+    super.initState();
+    // Eagerly resolve the API client so attachment + remote image
+    // loads can start the moment the user taps "Load images" without
+    // waiting on a provider future.
+    ref.read(apiClientProvider.future).then((c) {
+      if (mounted) setState(() => _apiClient = c);
+    });
+  }
 
   Iterable<EmailAttachment> get _inlineAttachments =>
       widget.email.attachments;
@@ -63,9 +80,13 @@ class _EmailBodyState extends State<EmailBody> {
             ),
           ],
           onLinkTap: (href, _, _) {
-            // We don't open links automatically — the consumer can
-            // wire url_launcher when they want that. For now, we just
-            // ignore the tap so flutter_html doesn't throw.
+            if (href == null || href.isEmpty) return;
+            // Open in the device browser. mode=externalApplication
+            // prevents in-app webview shenanigans.
+            launchUrl(
+              Uri.parse(href),
+              mode: LaunchMode.externalApplication,
+            );
           },
         ),
       ],
@@ -89,12 +110,23 @@ class _EmailBodyState extends State<EmailBody> {
         ),
       );
       if (attachment.id.isNotEmpty) {
-        // Backend exposes attachment bytes at this path. Image.network
-        // hits it with the user's session cookie automatically (Dio
-        // not used here — flutter's http stack carries cookies on
-        // Apple/Android via the platform store).
-        return Image.network(
-          '/api/v1/inbox/attachments/${attachment.id}',
+        final apiClient = _apiClient;
+        if (apiClient == null) {
+          // Resolving the API client; show placeholder this frame
+          // and the next setState rebuild will swap in the real image.
+          return _ImagePlaceholder(label: alt.isEmpty ? cid : alt);
+        }
+        // Route through Dio so the user's session cookie carries on
+        // the request. Flutter's built-in Image.network uses a
+        // separate HTTP stack (no cookies) and the URL would have
+        // to be absolute too — DioImageProvider handles both.
+        return Image(
+          image: DioImageProvider(
+            url: apiClient.absoluteUrl(
+              '/api/v1/inbox/attachments/${attachment.id}/download',
+            ),
+            dio: apiClient.dio,
+          ),
           width: width,
           height: height,
           errorBuilder: (_, _, _) => _ImagePlaceholder(label: alt),
@@ -107,6 +139,9 @@ class _EmailBodyState extends State<EmailBody> {
       if (!_loadRemote) {
         return _RemoteImagePlaceholder(label: alt.isEmpty ? src : alt);
       }
+      // Remote images go through Flutter's network image — no Dio,
+      // no cookies, which is correct: third-party hosts shouldn't
+      // see our session.
       return Image.network(
         src,
         width: width,
@@ -115,8 +150,8 @@ class _EmailBodyState extends State<EmailBody> {
       );
     }
 
-    // data: URLs and other schemes — render only when the user opted
-    // in to remote loading. Otherwise treat as a placeholder.
+    // data: URLs render only when the user opted in to remote
+    // loading. Otherwise treat as a placeholder.
     if (src.startsWith('data:') && _loadRemote) {
       return Image.network(
         src,

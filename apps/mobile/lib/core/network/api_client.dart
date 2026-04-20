@@ -14,6 +14,27 @@ class ApiClient {
 
   Dio get dio => _dio;
 
+  /// Absolute base URL the app talks to. Used by anything that needs
+  /// to construct an absolute URL outside Dio's request flow — e.g.
+  /// `Image.network` for inline `cid:` images, or url_launcher for
+  /// attachment downloads. Both bypass Dio so they need the prefix
+  /// rather than the relative path.
+  String get baseUrl => _dio.options.baseUrl;
+
+  /// Construct an absolute URL from a relative API path. Defensive:
+  /// returns the input unchanged if it's already absolute.
+  String absoluteUrl(String pathOrUrl) {
+    if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
+      return pathOrUrl;
+    }
+    final trimmedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    final trimmedPath =
+        pathOrUrl.startsWith('/') ? pathOrUrl : '/$pathOrUrl';
+    return '$trimmedBase$trimmedPath';
+  }
+
   static ApiClient create({required String baseUrl, required CookieJar cookieJar}) {
     final dio = Dio(
       BaseOptions(

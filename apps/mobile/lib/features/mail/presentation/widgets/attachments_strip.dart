@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/network/providers.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/email.dart';
 
@@ -105,19 +108,28 @@ class AttachmentsStrip extends StatelessWidget {
   }
 }
 
-class _AttachmentChip extends StatelessWidget {
+class _AttachmentChip extends ConsumerWidget {
   const _AttachmentChip({required this.attachment});
   final EmailAttachment attachment;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final iconData = _iconFor(attachment);
     final color = _colorFor(attachment);
     return InkWell(
-      onTap: () {
-        // Download lands in Phase I follow-up; for now we acknowledge
-        // the tap so the user gets feedback. The endpoint URL is
-        // ready: /api/v1/inbox/attachments/:id/download.
+      onTap: () async {
+        // Open the download URL in the device browser so the platform
+        // download manager handles the bytes (resumable, progress,
+        // file picker for save location). The URL has to be absolute
+        // because url_launcher doesn't know the API host.
+        final client = await ref.read(apiClientProvider.future);
+        final url = client.absoluteUrl(
+          '/api/v1/inbox/attachments/${attachment.id}/download',
+        );
+        await launchUrl(
+          Uri.parse(url),
+          mode: LaunchMode.externalApplication,
+        );
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
