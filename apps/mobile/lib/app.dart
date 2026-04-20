@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/deep_links/deep_link_handler.dart';
 import 'core/local/local_providers.dart';
 import 'core/messaging/root_messenger.dart';
 import 'core/theme/app_theme.dart';
@@ -25,6 +26,10 @@ class _Root extends ConsumerWidget {
     // is running by the time the inbox renders. The provider is
     // keepAlive so it survives screen disposals.
     ref.watch(syncEngineProvider);
+    // Start the deep-link listener now so cold-start links (the
+    // password-reset URL the user tapped in their email) reach the
+    // router as soon as it's ready. keepAlive on the provider.
+    ref.watch(deepLinkHandlerProvider);
     return MaterialApp.router(
       title: 'Wistfare Mail',
       debugShowCheckedModeBanner: false,

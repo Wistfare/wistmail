@@ -66,5 +66,29 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!--
+	  Custom URL scheme so wistmail://auth/reset-password?token=... opens
+	  the app. Used as a fallback in password-reset emails when the
+	  Universal Link path (https://wistfare.com/reset-password) doesn't
+	  resolve — e.g. a mail client that strips app-link metadata, or a
+	  development build where the apple-app-site-association isn't
+	  published yet.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.wistfare.wistmail</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>wistmail</string>
+			</array>
+		</dict>
+	</array>
+	<!--
+	  Universal Links entitlements themselves live in Runner.entitlements
+	  (applinks:wistfare.com / applinks:app.wistfare.com). This key is
+	  not strictly required but declares intent for auditors.
+	-->
 </dict>
 </plist>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Universal Links entitlement. iOS consults the
+	  /.well-known/apple-app-site-association JSON on each of these
+	  domains to decide whether a tap on a matching https:// link should
+	  open the app or the browser. The AASA file must list
+	  appID "TEAMID.com.wistfare.wistmail" with `paths: ["/reset-password*"]`.
+
+	  Shipping this entitlement is safe even before the AASA is
+	  published — iOS just falls back to opening the link in Safari
+	  (which is what happens today). Once the AASA lands, existing
+	  installs pick it up on next cold start.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:wistfare.com</string>
+		<string>applinks:app.wistfare.com</string>
+	</array>
+</dict>
+</plist>
