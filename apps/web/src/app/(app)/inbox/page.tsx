@@ -149,30 +149,63 @@ export default function InboxPage() {
 
   const folderName = folderParam.charAt(0).toUpperCase() + folderParam.slice(1)
 
+  /// Idempotent subject prefix — "Re: Hello" stays "Re: Hello".
+  function prefixSubject(prefix: string, subject: string): string {
+    const trimmed = subject.trim()
+    if (trimmed.toLowerCase().startsWith(prefix.toLowerCase())) {
+      return trimmed
+    }
+    return `${prefix} ${trimmed.length === 0 ? '(no subject)' : trimmed}`
+  }
+
+  function extractAddress(raw: string): string {
+    const match = /<([^>]+)>/.exec(raw)
+    return (match ? match[1] : raw).trim()
+  }
+
+  /// "On <date>, <sender> wrote:" header + line-by-line `> ` prefixed
+  /// original. Same shape as Gmail / Apple Mail / mobile compose so
+  /// recipients see a familiar thread.
+  function quotedReplyBody(email: FullEmail): string {
+    const dt = new Date(email.createdAt)
+    const fmt = dt.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+    const header = `On ${fmt}, ${email.fromAddress} wrote:`
+    const original = (email.textBody ?? '')
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n')
+    return `\n\n${header}\n${original}`
+  }
+
   function handleReply() {
     if (!selectedFull) return
     openCompose({
-      to: [selectedFull.fromAddress],
-      subject: selectedFull.subject.startsWith('Re:')
-        ? selectedFull.subject
-        : `Re: ${selectedFull.subject}`,
+      to: [extractAddress(selectedFull.fromAddress)],
+      subject: prefixSubject('Re:', selectedFull.subject),
+      body: quotedReplyBody(selectedFull),
       inReplyTo: selectedFull.id,
     })
   }
 
   function handleReplyAll() {
     if (!selectedFull) return
-    const allRecipients = [
-      selectedFull.fromAddress,
-      ...(selectedFull.toAddresses || []),
-      ...(selectedFull.cc || []),
-    ]
-    const unique = [...new Set(allRecipients)]
+    const sender = extractAddress(selectedFull.fromAddress)
+    const others = new Set<string>([
+      ...(selectedFull.toAddresses ?? []).map(extractAddress),
+      ...(selectedFull.cc ?? []).map(extractAddress),
+    ])
+    others.delete(sender)
     openCompose({
-      to: unique,
-      subject: selectedFull.subject.startsWith('Re:')
-        ? selectedFull.subject
-        : `Re: ${selectedFull.subject}`,
+      to: [sender],
+      cc: [...others].filter((a) => a.length > 0),
+      subject: prefixSubject('Re:', selectedFull.subject),
+      body: quotedReplyBody(selectedFull),
       inReplyTo: selectedFull.id,
     })
   }
@@ -180,12 +213,14 @@ export default function InboxPage() {
   function handleForward() {
     if (!selectedFull) return
     openCompose({
-      subject: selectedFull.subject.startsWith('Fwd:')
-        ? selectedFull.subject
-        : `Fwd: ${selectedFull.subject}`,
+      subject: prefixSubject('Fwd:', selectedFull.subject),
       body: `\n\n---------- Forwarded message ----------\nFrom: ${selectedFull.fromAddress}\nDate: ${new Date(
         selectedFull.createdAt,
-      ).toLocaleString()}\nSubject: ${selectedFull.subject}\n\n${selectedFull.textBody || ''}`,
+      ).toLocaleString()}\nSubject: ${selectedFull.subject}\nTo: ${(selectedFull.toAddresses ?? []).join(', ')}${
+        (selectedFull.cc ?? []).length > 0
+          ? `\nCc: ${(selectedFull.cc ?? []).join(', ')}`
+          : ''
+      }\n\n${selectedFull.textBody || ''}`,
     })
   }
 

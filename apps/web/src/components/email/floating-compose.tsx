@@ -29,6 +29,8 @@ function formatSchedulePreview(iso: string): string {
 
 export type ComposeData = {
   to?: string[]
+  cc?: string[]
+  bcc?: string[]
   subject?: string
   inReplyTo?: string
   body?: string
@@ -48,8 +50,11 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
   const [to, setTo] = useState('')
   const [toChips, setToChips] = useState<string[]>(initialData?.to || [])
   const [cc, setCc] = useState('')
-  const [ccChips, setCcChips] = useState<string[]>([])
-  const [showCc, setShowCc] = useState(false)
+  const [ccChips, setCcChips] = useState<string[]>(initialData?.cc || [])
+  const [bcc, setBcc] = useState('')
+  const [bccChips, setBccChips] = useState<string[]>(initialData?.bcc || [])
+  const [showCc, setShowCc] = useState((initialData?.cc?.length ?? 0) > 0)
+  const [showBcc, setShowBcc] = useState((initialData?.bcc?.length ?? 0) > 0)
   const [subject, setSubject] = useState(initialData?.subject || '')
   const [body, setBody] = useState(initialData?.body || '')
   const [inReplyTo] = useState(initialData?.inReplyTo || '')
@@ -95,6 +100,13 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
     }
   }
 
+  function handleBccKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+      e.preventDefault()
+      addChip(bcc, bccChips, setBccChips, () => setBcc(''))
+    }
+  }
+
   async function handleSend() {
     const finalTo = [...toChips]
     if (to.trim() && to.includes('@')) finalTo.push(to.trim())
@@ -108,6 +120,7 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
         fromAddress,
         toAddresses: finalTo,
         cc: ccChips.length > 0 ? ccChips : undefined,
+        bcc: bccChips.length > 0 ? bccChips : undefined,
         subject,
         textBody: body,
         mailboxId: fromMailboxId,
@@ -188,9 +201,10 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
           </select>
         </div>
 
-        {/* To */}
-        <div className="flex items-center gap-2 border-b border-wm-border px-4 py-2">
-          <span className="w-14 font-mono text-[11px] text-wm-text-muted">To</span>
+        {/* To — min-h keeps the row at a stable height regardless of
+            how many chips wrap, so the compose modal doesn't jump. */}
+        <div className="flex min-h-[40px] items-start gap-2 border-b border-wm-border px-4 py-2">
+          <span className="mt-1 w-14 font-mono text-[11px] text-wm-text-muted">To</span>
           <div className="flex flex-1 flex-wrap items-center gap-1">
             {toChips.map((chip) => (
               <span key={chip} className="flex items-center gap-1 border border-wm-border px-1.5 py-0.5 font-mono text-[10px] text-wm-text-primary">
@@ -208,15 +222,22 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
               className="min-w-[100px] flex-1 bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none"
             />
           </div>
-          {!showCc && (
-            <button onClick={() => setShowCc(true)} className="cursor-pointer font-mono text-[10px] text-wm-text-muted hover:text-wm-text-secondary">Cc</button>
+          {(!showCc || !showBcc) && (
+            <div className="mt-1 flex items-center gap-2">
+              {!showCc && (
+                <button onClick={() => setShowCc(true)} className="cursor-pointer font-mono text-[10px] text-wm-text-muted hover:text-wm-text-secondary">Cc</button>
+              )}
+              {!showBcc && (
+                <button onClick={() => setShowBcc(true)} className="cursor-pointer font-mono text-[10px] text-wm-text-muted hover:text-wm-text-secondary">Bcc</button>
+              )}
+            </div>
           )}
         </div>
 
         {/* Cc (optional) */}
         {showCc && (
-          <div className="flex items-center gap-2 border-b border-wm-border px-4 py-2">
-            <span className="w-14 font-mono text-[11px] text-wm-text-muted">Cc</span>
+          <div className="flex min-h-[40px] items-start gap-2 border-b border-wm-border px-4 py-2">
+            <span className="mt-1 w-14 font-mono text-[11px] text-wm-text-muted">Cc</span>
             <div className="flex flex-1 flex-wrap items-center gap-1">
               {ccChips.map((chip) => (
                 <span key={chip} className="flex items-center gap-1 border border-wm-border px-1.5 py-0.5 font-mono text-[10px] text-wm-text-primary">
@@ -224,7 +245,39 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
                   <X className="h-2.5 w-2.5 cursor-pointer text-wm-text-muted" onClick={() => setCcChips(ccChips.filter((c) => c !== chip))} />
                 </span>
               ))}
-              <input type="text" value={cc} onChange={(e) => setCc(e.target.value)} onKeyDown={handleCcKeyDown} placeholder="Add Cc..." className="min-w-[100px] flex-1 bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none" />
+              <input
+                type="text"
+                value={cc}
+                onChange={(e) => setCc(e.target.value)}
+                onKeyDown={handleCcKeyDown}
+                onBlur={() => addChip(cc, ccChips, setCcChips, () => setCc(''))}
+                placeholder="Add Cc..."
+                className="min-w-[100px] flex-1 bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Bcc (optional) */}
+        {showBcc && (
+          <div className="flex min-h-[40px] items-start gap-2 border-b border-wm-border px-4 py-2">
+            <span className="mt-1 w-14 font-mono text-[11px] text-wm-text-muted">Bcc</span>
+            <div className="flex flex-1 flex-wrap items-center gap-1">
+              {bccChips.map((chip) => (
+                <span key={chip} className="flex items-center gap-1 border border-wm-border px-1.5 py-0.5 font-mono text-[10px] text-wm-text-primary">
+                  {chip}
+                  <X className="h-2.5 w-2.5 cursor-pointer text-wm-text-muted" onClick={() => setBccChips(bccChips.filter((c) => c !== chip))} />
+                </span>
+              ))}
+              <input
+                type="text"
+                value={bcc}
+                onChange={(e) => setBcc(e.target.value)}
+                onKeyDown={handleBccKeyDown}
+                onBlur={() => addChip(bcc, bccChips, setBccChips, () => setBcc(''))}
+                placeholder="Add Bcc..."
+                className="min-w-[100px] flex-1 bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+              />
             </div>
           </div>
         )}
