@@ -57,9 +57,30 @@ export default function LabelsSettingsPage() {
     setNewName('')
   }
 
+  // New users with no provisioned mailbox can't create labels — labels
+  // are scoped per-mailbox at the schema level. Show a clear path back
+  // to /settings/domains rather than leaving a disabled form behind.
+  const noMailbox = mailboxes.length === 0
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold text-wm-text-primary">Labels</h1>
+
+      {noMailbox && (
+        <div className="border border-wm-warning/40 bg-wm-warning/10 px-4 py-3">
+          <p className="font-mono text-xs text-wm-text-secondary">
+            You need at least one verified mailbox before you can create
+            labels. Set one up under{' '}
+            <a
+              href="/settings/domains"
+              className="font-semibold text-wm-warning underline"
+            >
+              Settings → Domains
+            </a>
+            .
+          </p>
+        </div>
+      )}
 
       <SettingsCard
         title="Create label"

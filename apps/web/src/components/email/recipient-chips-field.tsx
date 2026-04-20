@@ -49,14 +49,27 @@ export function RecipientChipsField({
   }, [suggestions.length])
 
   function commit(raw: string) {
-    const trimmed = raw.trim().replace(/[,;]+$/, '').trim()
-    if (trimmed.length === 0) return
-    if (!trimmed.includes('@')) return // permissive — keep typing
-    if (values.includes(trimmed)) {
+    // Split on commas/semicolons/newlines so paste of "a@x.com,
+    // b@y.com" produces two chips, not one. Single-address commits
+    // hit the same code path (the split returns one element).
+    const parts = raw
+      .split(/[,;\n]+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0 && p.includes('@'))
+    if (parts.length === 0) return
+    const seen = new Set(values)
+    const additions: string[] = []
+    for (const p of parts) {
+      if (!seen.has(p)) {
+        seen.add(p)
+        additions.push(p)
+      }
+    }
+    if (additions.length === 0) {
       setBuffer('')
       return
     }
-    onChange([...values, trimmed])
+    onChange([...values, ...additions])
     setBuffer('')
   }
 
@@ -164,7 +177,9 @@ export function RecipientChipsField({
 
       {focused && suggestions.length > 0 && (
         <div
-          className="absolute left-20 top-full z-50 mt-1 w-[calc(100%-6rem)] max-w-md border border-wm-border bg-wm-surface shadow-lg"
+          // z-[60] beats every existing modal layer (z-50 max), so the
+          // dropdown stays visible above the floating-compose chrome.
+          className="absolute left-20 top-full z-[60] mt-1 w-[calc(100%-6rem)] max-w-md border border-wm-border bg-wm-surface shadow-lg"
           // Prevent the input's onBlur from firing on click — we
           // commit explicitly via onMouseDown below.
           onMouseDown={(e) => e.preventDefault()}

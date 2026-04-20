@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+// useRef serves the click-outside wrapper AND the seeded-once guard
+// in Picker — both are documented inline.
 import { Check, Tag, X } from 'lucide-react'
 import {
   useLabels,
@@ -64,11 +66,21 @@ function Picker({
   const setLabels = useSetLabelsForEmail()
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Track whether the initial seed has run. Without this guard a slow
+  // /labels/email/:id fetch that resolves AFTER the user toggles
+  // would clobber their state with the server's "before" snapshot.
+  const seededRef = useRef(false)
   useEffect(() => {
-    if (assigned.data) setSelected(new Set(assigned.data.map((l) => l.id)))
+    if (assigned.data && !seededRef.current) {
+      setSelected(new Set(assigned.data.map((l) => l.id)))
+      seededRef.current = true
+    }
   }, [assigned.data])
 
   function toggle(label: Label) {
+    // First user interaction wins — flag the seed so a late-arriving
+    // assigned.data can't undo this.
+    seededRef.current = true
     const next = new Set(selected)
     if (next.has(label.id)) next.delete(label.id)
     else next.add(label.id)

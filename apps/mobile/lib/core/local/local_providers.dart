@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/auth/presentation/providers/auth_controller.dart';
 import '../../features/mail/data/outbox_handlers.dart';
 import '../../features/mail/presentation/providers/mail_providers.dart';
 import 'email_local_store.dart';
@@ -28,7 +29,9 @@ final outboxProvider = FutureProvider<Outbox>((ref) async {
 
 /// SyncEngine — singleton, drain loop owned. `keepAlive` prevents
 /// disposal when no widget is watching, so the engine keeps draining
-/// in the background.
+/// in the background. We also tear it down when the user logs out so
+/// it doesn't keep firing requests with stale auth cookies and
+/// flooding the API with 401s.
 final syncEngineProvider = FutureProvider<SyncEngine>((ref) async {
   ref.keepAlive();
   final outbox = await ref.watch(outboxProvider.future);
@@ -40,9 +43,20 @@ final syncEngineProvider = FutureProvider<SyncEngine>((ref) async {
     handlers: buildMailHandlers(repo),
   );
   engine.start();
+
+  // Auth-aware lifecycle: stop draining the moment the user logs out
+  // so we don't fire any more API calls with stale cookies. The engine
+  // restarts naturally on next sign-in because the provider gets
+  // re-watched after auth state changes.
+  ref.listen<AuthState>(authControllerProvider, (prev, next) {
+    final wasAuthed = prev?.user != null;
+    final isAuthed = next.user != null;
+    if (wasAuthed && !isAuthed) {
+      engine.stop();
+    }
+  });
+
   ref.onDispose(() {
-    // Best-effort stop — ref disposal happens on app shutdown only,
-    // since we keepAlive above.
     engine.stop();
   });
   return engine;

@@ -128,20 +128,36 @@ class _RecipientChipsFieldState extends ConsumerState<RecipientChipsField> {
   }
 
   void _commit(String raw) {
-    final trimmed = raw.trim().replaceAll(RegExp(r'[,;]+$'), '').trim();
-    if (trimmed.isEmpty) return;
-    if (!trimmed.contains('@')) return;
-    if (widget.values.contains(trimmed)) {
+    // Split on commas/semicolons/newlines so paste of "a@x.com,
+    // b@y.com" produces two chips, not one. Single-address commits
+    // hit the same code path (the split returns one element).
+    final parts = raw
+        .split(RegExp(r'[,;\n]+'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty && p.contains('@'))
+        .toList();
+    if (parts.isEmpty) return;
+    final existing = widget.values.toSet();
+    final additions = <String>[];
+    for (final p in parts) {
+      if (existing.add(p)) additions.add(p);
+    }
+    if (additions.isEmpty) {
       _controller.clear();
       return;
     }
-    widget.onChanged([...widget.values, trimmed]);
+    widget.onChanged([...widget.values, ...additions]);
     _controller.clear();
     setState(() => _suggestions = const []);
     _refreshOverlay();
   }
 
   void _commitSuggestion(ContactSuggestion s) {
+    // Re-anchor focus to the input so any in-flight blur on the
+    // overlay doesn't fire `_handleFocusChange` and try to commit
+    // the typed buffer (which would override the suggestion). The
+    // explicit clear below resets the buffer either way.
+    _focusNode.requestFocus();
     if (widget.values.contains(s.email)) {
       _controller.clear();
       return;
