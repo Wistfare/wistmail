@@ -309,24 +309,25 @@ export function usePurge() {
   })
 }
 
-/// Empty the entire Trash folder in one go — the nuclear option the
-/// user reaches via a visible button above the trash list. Optimistic
-/// at the cache level (nukes the trash list immediately); rollback on
-/// error.
-export function useEmptyTrash() {
+/// Empty the entire Trash or Spam folder in one go — the nuclear
+/// option the user reaches via a visible button above the list.
+/// Optimistic at the cache level (nukes the target list immediately);
+/// rollback on error.
+export function useEmptyFolder() {
   const qc = useQueryClient()
-  return useMutation<unknown, Error, void, OptimisticContext>({
-    mutationFn: () => api.post(`/api/v1/inbox/trash/empty`),
-    onMutate: async () => {
+  return useMutation<
+    unknown,
+    Error,
+    { folder: 'trash' | 'spam' },
+    OptimisticContext
+  >({
+    mutationFn: ({ folder }) =>
+      api.post(`/api/v1/inbox/folders/${folder}/empty`),
+    onMutate: async ({ folder }) => {
       await qc.cancelQueries({ queryKey: inboxKeys.all })
       const ctx = snapshotLists(qc)
-      // Drop every row in every cached trash list page. We don't
-      // distinguish which folder the row sits in because the server
-      // scopes to `folder='trash'` server-side; any other list that
-      // happens to include a trashed row will reconcile on its next
-      // refetch.
       qc.setQueriesData<InfiniteListCache>(
-        { queryKey: inboxKeys.list('trash') },
+        { queryKey: inboxKeys.list(folder) },
         (old) =>
           old
             ? { ...old, pages: old.pages.map((p) => ({ ...p, data: [], total: 0 })) }
@@ -335,10 +336,22 @@ export function useEmptyTrash() {
       return ctx
     },
     onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: inboxKeys.list('trash') })
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: inboxKeys.list(vars.folder) })
     },
   })
+}
+
+/// Legacy alias — pre-existing callers expected a void-mutation that
+/// only hit trash. Kept as a thin wrapper so we don't churn all call
+/// sites at once.
+export function useEmptyTrash() {
+  const mutation = useEmptyFolder()
+  return {
+    ...mutation,
+    mutate: () => mutation.mutate({ folder: 'trash' }),
+    mutateAsync: () => mutation.mutateAsync({ folder: 'trash' }),
+  }
 }
 
 /// Bulk action against many emails at once. The server accepts one
@@ -417,14 +430,23 @@ export function useBulkAction() {
   })
 }
 
-/// Trash retention window (e.g. 30 days). Tiny read that powers the
-/// "Emails in Trash are permanently deleted after N days" banner.
-export function useTrashRetention() {
+/// Retention window (e.g. 30 days) for a folder that auto-purges.
+/// Powers the "Emails here are permanently deleted after N days"
+/// banner on Trash and Spam.
+export function useFolderRetention(folder: 'trash' | 'spam') {
   return useQuery({
-    queryKey: ['inbox', 'trash', 'config'],
-    queryFn: () => api.get<{ retentionDays: number }>(`/api/v1/inbox/trash/config`),
+    queryKey: ['inbox', folder, 'config'],
+    queryFn: () =>
+      api.get<{ retentionDays: number }>(
+        `/api/v1/inbox/folders/${folder}/config`,
+      ),
     staleTime: 60 * 60 * 1000, // never really changes in a session
   })
+}
+
+/// Legacy alias — same shape as the old useTrashRetention.
+export function useTrashRetention() {
+  return useFolderRetention('trash')
 }
 
 /// Apply a server-pushed status change (from the email.send_status

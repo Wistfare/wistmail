@@ -39,7 +39,8 @@ class InboxScreen extends ConsumerWidget {
           else
             _TopBar(unreadCount: unreadCount),
           if (showMfaBanner && !inSelectionMode) const _MfaBanner(),
-          if (folder.id == 'trash' && !inSelectionMode) const _TrashBanner(),
+          if ((folder.id == 'trash' || folder.id == 'spam') && !inSelectionMode)
+            _CleanupBanner(folderId: folder.id),
           Expanded(child: _InboxBody(inbox: inbox)),
         ],
       ),
@@ -380,22 +381,25 @@ class _SelectionBar extends ConsumerWidget {
   }
 }
 
-/// Banner rendered above the trash list — tells the user their
-/// messages auto-purge after N days and gives them the nuclear "empty
-/// trash now" affordance. Keep it compact: an extra 32px of header
-/// in a list they're already in to delete things has to earn its
-/// screen real estate.
-class _TrashBanner extends ConsumerStatefulWidget {
-  const _TrashBanner();
+/// Banner rendered above Trash or Spam — both folders auto-purge, so
+/// they get the same "auto-deletes after N days + EMPTY now"
+/// treatment. Folder id drives the wording and the API call; the
+/// rest of the chrome is identical.
+class _CleanupBanner extends ConsumerStatefulWidget {
+  const _CleanupBanner({required this.folderId});
+  final String folderId;
 
   @override
-  ConsumerState<_TrashBanner> createState() => _TrashBannerState();
+  ConsumerState<_CleanupBanner> createState() => _CleanupBannerState();
 }
 
-class _TrashBannerState extends ConsumerState<_TrashBanner> {
+class _CleanupBannerState extends ConsumerState<_CleanupBanner> {
   int _retentionDays = 30;
   bool _loading = true;
   bool _emptying = false;
+
+  String get _folderLabel =>
+      widget.folderId == 'spam' ? 'Spam' : 'Trash';
 
   @override
   void initState() {
@@ -403,10 +407,19 @@ class _TrashBannerState extends ConsumerState<_TrashBanner> {
     _loadRetention();
   }
 
+  @override
+  void didUpdateWidget(covariant _CleanupBanner old) {
+    super.didUpdateWidget(old);
+    if (old.folderId != widget.folderId) {
+      setState(() => _loading = true);
+      _loadRetention();
+    }
+  }
+
   Future<void> _loadRetention() async {
     try {
       final repo = await ref.read(mailRepositoryProvider.future);
-      final days = await repo.getTrashRetention();
+      final days = await repo.getFolderRetention(widget.folderId);
       if (!mounted) return;
       setState(() {
         _retentionDays = days;
@@ -418,23 +431,23 @@ class _TrashBannerState extends ConsumerState<_TrashBanner> {
     }
   }
 
-  Future<void> _emptyTrash() async {
+  Future<void> _empty() async {
     if (_emptying) return;
     final messenger = ScaffoldMessenger.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text(
-          'Empty Trash?',
-          style: TextStyle(
+        title: Text(
+          'Empty $_folderLabel?',
+          style: const TextStyle(
             color: AppColors.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
-        content: const Text(
-          'Permanently delete everything in Trash. This bypasses the recovery window and cannot be undone.',
-          style: TextStyle(color: AppColors.textSecondary),
+        content: Text(
+          'Permanently delete everything in $_folderLabel. This bypasses the recovery window and cannot be undone.',
+          style: const TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
@@ -443,9 +456,9 @@ class _TrashBannerState extends ConsumerState<_TrashBanner> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'EMPTY TRASH',
-              style: TextStyle(color: AppColors.danger),
+            child: Text(
+              'EMPTY ${_folderLabel.toUpperCase()}',
+              style: const TextStyle(color: AppColors.danger),
             ),
           ),
         ],
@@ -455,14 +468,16 @@ class _TrashBannerState extends ConsumerState<_TrashBanner> {
     setState(() => _emptying = true);
     try {
       final repo = await ref.read(mailRepositoryProvider.future);
-      final result = await repo.emptyTrash();
+      final result = await repo.emptyFolder(widget.folderId);
       if (!mounted) return;
       ref.read(inboxControllerProvider.notifier).refresh();
       final n = result['purgedEmails'] ?? 0;
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            n == 0 ? 'Trash was already empty.' : 'Deleted $n email${n == 1 ? '' : 's'}.',
+            n == 0
+                ? '$_folderLabel was already empty.'
+                : 'Deleted $n email${n == 1 ? '' : 's'}.',
           ),
         ),
       );
@@ -470,7 +485,7 @@ class _TrashBannerState extends ConsumerState<_TrashBanner> {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Empty trash failed: $err'),
+          content: Text('Empty ${_folderLabel.toLowerCase()} failed: $err'),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -496,7 +511,7 @@ class _TrashBannerState extends ConsumerState<_TrashBanner> {
           Expanded(
             child: Text(
               _loading
-                  ? 'Trash auto-cleans regularly.'
+                  ? '$_folderLabel auto-cleans regularly.'
                   : 'Auto-deletes after $_retentionDays days.',
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 11,
@@ -505,7 +520,7 @@ class _TrashBannerState extends ConsumerState<_TrashBanner> {
             ),
           ),
           TextButton.icon(
-            onPressed: _emptying ? null : _emptyTrash,
+            onPressed: _emptying ? null : _empty,
             icon: _emptying
                 ? const SizedBox(
                     height: 12,

@@ -41,12 +41,12 @@ import {
   useBulkAction,
   useDelete,
   useEmailDetail,
-  useEmptyTrash,
+  useEmptyFolder,
+  useFolderRetention,
   useInboxList,
   useMarkRead,
   usePurge,
   useToggleStar,
-  useTrashRetention,
 } from '@/lib/email-queries'
 
 const FILTER_TABS = [
@@ -84,8 +84,13 @@ export default function InboxPage() {
   const archive = useArchive()
   const remove = useDelete()
   const purge = usePurge()
-  const emptyTrash = useEmptyTrash()
-  const trashConfig = useTrashRetention()
+  const emptyFolder = useEmptyFolder()
+  // The retention banner + Empty button only show on folders that
+  // auto-purge. For everything else the folder config query is idle.
+  const cleanableFolder = folderParam === 'trash' || folderParam === 'spam'
+  const retention = useFolderRetention(
+    (cleanableFolder ? folderParam : 'trash') as 'trash' | 'spam',
+  )
   const bulk = useBulkAction()
   const toast = useToast()
 
@@ -261,18 +266,20 @@ export default function InboxPage() {
     if (selectedId === emailId) setSelectedId(null)
   }
 
-  function handleEmptyTrash() {
+  function handleEmptyFolder() {
+    if (!cleanableFolder) return
     if (emails.length === 0) return
+    const folderNameCap = folderParam === 'trash' ? 'Trash' : 'Spam'
     if (
       !confirm(
         `Permanently delete all ${emails.length} email${
           emails.length === 1 ? '' : 's'
-        } in Trash? This can't be undone.`,
+        } in ${folderNameCap}? This can't be undone.`,
       )
     ) {
       return
     }
-    emptyTrash.mutate()
+    emptyFolder.mutate({ folder: folderParam as 'trash' | 'spam' })
     setSelectedId(null)
   }
 
@@ -423,16 +430,18 @@ export default function InboxPage() {
           <div className="flex items-center border-b border-wm-border px-5 py-3">
             <span className="text-sm font-semibold text-wm-text-primary">{folderName}</span>
             <div className="flex-1" />
-            {folderParam === 'trash' && emails.length > 0 && (
+            {cleanableFolder && emails.length > 0 && (
               <button
                 type="button"
-                onClick={handleEmptyTrash}
-                disabled={emptyTrash.isPending}
+                onClick={handleEmptyFolder}
+                disabled={emptyFolder.isPending}
                 className="mr-3 inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20 disabled:cursor-wait disabled:opacity-60"
-                title="Permanently delete every email in Trash"
+                title={`Permanently delete every email in ${folderName}`}
               >
                 <Trash2 className="h-3 w-3" />
-                {emptyTrash.isPending ? 'Emptying…' : 'Empty trash'}
+                {emptyFolder.isPending
+                  ? 'Emptying…'
+                  : `Empty ${folderParam}`}
               </button>
             )}
             <ArrowUpDown className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
@@ -440,12 +449,12 @@ export default function InboxPage() {
           </div>
         )}
 
-        {folderParam === 'trash' && (
+        {cleanableFolder && (
           <div className="border-b border-wm-border bg-wm-warning/5 px-5 py-2">
             <p className="font-mono text-[10px] text-wm-text-muted">
               Emails here are permanently deleted after{' '}
               <span className="font-semibold text-wm-text-secondary">
-                {trashConfig.data?.retentionDays ?? 30}
+                {retention.data?.retentionDays ?? 30}
               </span>{' '}
               days.
             </p>

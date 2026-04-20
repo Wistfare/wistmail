@@ -13,8 +13,12 @@ abstract class MailRepository {
   Future<void> purge(String emailId);
   /// Empty the whole Trash folder. Returns purged counts for toasts.
   Future<Map<String, int>> emptyTrash();
+  /// Empty any folder that auto-purges (trash or spam).
+  Future<Map<String, int>> emptyFolder(String folder);
   /// How many days emails linger in Trash before auto-purge.
   Future<int> getTrashRetention();
+  /// Retention for any auto-purging folder (trash or spam).
+  Future<int> getFolderRetention(String folder);
   /// Bulk mutation helper. Returns the number of affected rows.
   Future<int> batchAction({
     required List<String> ids,
@@ -69,7 +73,15 @@ class MailRepositoryImpl implements MailRepository {
   Future<Map<String, int>> emptyTrash() => _remote.emptyTrash();
 
   @override
+  Future<Map<String, int>> emptyFolder(String folder) =>
+      _remote.emptyFolder(folder);
+
+  @override
   Future<int> getTrashRetention() => _remote.getTrashRetention();
+
+  @override
+  Future<int> getFolderRetention(String folder) =>
+      _remote.getFolderRetention(folder);
 
   @override
   Future<int> batchAction({

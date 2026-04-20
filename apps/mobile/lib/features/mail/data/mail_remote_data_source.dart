@@ -72,9 +72,13 @@ class MailRemoteDataSource {
 
   /// Empty the user's entire Trash folder. Returns the server's
   /// reported counts for telemetry / success toasts.
-  Future<Map<String, int>> emptyTrash() async {
+  Future<Map<String, int>> emptyTrash() => emptyFolder('trash');
+
+  /// Empty any folder with a retention policy (trash or spam). The
+  /// server 400s on anything else.
+  Future<Map<String, int>> emptyFolder(String folder) async {
     final response = await _client.dio.post<Map<String, dynamic>>(
-      '/api/v1/inbox/trash/empty',
+      '/api/v1/inbox/folders/$folder/empty',
     );
     final data = response.data ?? const <String, dynamic>{};
     return {
@@ -83,10 +87,12 @@ class MailRemoteDataSource {
     };
   }
 
-  /// Retention window in days. Shown on the trash banner.
-  Future<int> getTrashRetention() async {
+  /// Retention window in days. Shown on the banner for trash / spam.
+  Future<int> getTrashRetention() => getFolderRetention('trash');
+
+  Future<int> getFolderRetention(String folder) async {
     final response = await _client.dio.get<Map<String, dynamic>>(
-      '/api/v1/inbox/trash/config',
+      '/api/v1/inbox/folders/$folder/config',
     );
     return (response.data?['retentionDays'] as num?)?.toInt() ?? 30;
   }

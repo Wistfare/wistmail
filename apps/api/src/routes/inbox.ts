@@ -13,8 +13,9 @@ import { eventBus } from '../events/bus.js'
 import { parseIcsSafely, buildRsvpReply, type RsvpResponse } from '../lib/ics.js'
 import { pathForAttachment } from '../lib/attachment-storage.js'
 import {
+  SPAM_RETENTION_DAYS,
   TRASH_RETENTION_DAYS,
-  emptyTrashForUser,
+  emptyFolderForUser,
   purgeOneFromTrash,
 } from '../services/trash-retention.js'
 import {
@@ -663,27 +664,64 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
   return c.json({ ok: true, response })
 })
 
-// ───────────────────────────────── Trash retention ────────────────────────
+// ───────────────────── Trash + Spam retention / emptying ─────────────────
+
+/// Folders the emptying / retention endpoints will act on. Everything
+/// else 400s — we refuse to let the UI accidentally hard-delete a
+/// folder full of real mail.
+const EMPTYABLE_FOLDERS = new Set(['trash', 'spam'])
 
 /**
- * GET /api/v1/inbox/trash/config
- * How long emails linger in Trash before we hard-delete them. The UI
- * renders this as the retention banner on the trash folder.
+ * GET /api/v1/inbox/folders/:folder/config
+ * Retention policy for folders that auto-purge (trash + spam).
+ * UI renders this as the retention banner above the list.
+ */
+inboxRoutes.get('/folders/:folder/config', async (c) => {
+  const folder = c.req.param('folder')
+  if (!EMPTYABLE_FOLDERS.has(folder)) {
+    return c.json(
+      { error: { code: 'INVALID_FOLDER', message: `${folder} has no retention policy.` } },
+      400,
+    )
+  }
+  const retentionDays =
+    folder === 'trash' ? TRASH_RETENTION_DAYS : SPAM_RETENTION_DAYS
+  return c.json({ folder, retentionDays })
+})
+
+/**
+ * POST /api/v1/inbox/folders/:folder/empty
+ * Hard-delete everything in the user's trash or spam folder. Unlike
+ * the hourly retention cron, this bypasses the N-day window — it's
+ * explicit user intent. Also removes on-disk attachments.
+ */
+inboxRoutes.post('/folders/:folder/empty', async (c) => {
+  const folder = c.req.param('folder')
+  if (!EMPTYABLE_FOLDERS.has(folder)) {
+    return c.json(
+      { error: { code: 'INVALID_FOLDER', message: `Cannot empty ${folder}.` } },
+      400,
+    )
+  }
+  const userId = c.get('userId')
+  const db = getDb()
+  const result = await emptyFolderForUser(db, userId, folder)
+  return c.json({ ok: true, folder, ...result })
+})
+
+/**
+ * Legacy trash-specific endpoints — kept as thin aliases so any
+ * client that's still hitting `/inbox/trash/config` or
+ * `/inbox/trash/empty` from a previous build keeps working. New
+ * callers should use the folder-scoped versions above.
  */
 inboxRoutes.get('/trash/config', async (c) => {
   return c.json({ retentionDays: TRASH_RETENTION_DAYS })
 })
-
-/**
- * POST /api/v1/inbox/trash/empty
- * Hard-delete everything currently in the user's trash. Unlike the
- * hourly retention cron, this bypasses the N-day window — it's
- * explicit user intent. Also removes on-disk attachments.
- */
 inboxRoutes.post('/trash/empty', async (c) => {
   const userId = c.get('userId')
   const db = getDb()
-  const result = await emptyTrashForUser(db, userId)
+  const result = await emptyFolderForUser(db, userId, 'trash')
   return c.json({ ok: true, ...result })
 })
 

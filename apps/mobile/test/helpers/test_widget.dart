@@ -226,6 +226,15 @@ class FakeMailRepository implements MailRepository {
   @override
   Future<int> getTrashRetention() async => 30;
 
+  @override
+  Future<Map<String, int>> emptyFolder(String folder) async {
+    emptyTrashCalls++;
+    return const {'purgedEmails': 0, 'purgedBytes': 0};
+  }
+
+  @override
+  Future<int> getFolderRetention(String folder) async => 30;
+
   int batchActionCalls = 0;
 
   @override
