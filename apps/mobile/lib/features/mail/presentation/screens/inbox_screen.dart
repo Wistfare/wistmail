@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
+import '../../../labels/presentation/providers/labels_providers.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_list_item.dart';
 import '../widgets/email_list_skeleton.dart';
@@ -181,6 +182,101 @@ class _MfaBanner extends StatelessWidget {
 class _SelectionBar extends ConsumerWidget {
   const _SelectionBar({required this.folder});
   final InboxFolder folder;
+
+  Future<void> _runMove(
+    WidgetRef ref,
+    BuildContext context,
+  ) async {
+    final ids = ref.read(selectedEmailIdsProvider).toList();
+    if (ids.isEmpty) return;
+    final target = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => _MoveSheet(currentFolder: folder.id),
+    );
+    if (target == null) return;
+    if (!context.mounted) return;
+    ref.read(selectedEmailIdsProvider.notifier).state = const <String>{};
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      await repo.batchAction(ids: ids, action: 'move', folder: target);
+      ref.read(inboxControllerProvider.notifier).refresh();
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Moved ${ids.length} to $target.'),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'UNDO',
+            textColor: AppColors.accent,
+            onPressed: () async {
+              try {
+                final r = await ref.read(mailRepositoryProvider.future);
+                await r.batchAction(
+                  ids: ids,
+                  action: 'move',
+                  folder: folder.id,
+                );
+                ref.read(inboxControllerProvider.notifier).refresh();
+              } catch (_) {}
+            },
+          ),
+        ),
+      );
+    } catch (err) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Move failed: $err'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  Future<void> _runLabel(
+    WidgetRef ref,
+    BuildContext context,
+  ) async {
+    final ids = ref.read(selectedEmailIdsProvider).toList();
+    if (ids.isEmpty) return;
+    final pick = await showModalBottomSheet<_LabelPick>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(),
+      isScrollControlled: true,
+      builder: (ctx) => const _LabelSheet(),
+    );
+    if (pick == null || !context.mounted) return;
+    ref.read(selectedEmailIdsProvider.notifier).state = const <String>{};
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      await repo.batchAction(
+        ids: ids,
+        action: pick.remove ? 'label-remove' : 'label-add',
+        labelIds: [pick.labelId],
+      );
+      ref.read(inboxControllerProvider.notifier).refresh();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            pick.remove
+                ? 'Removed label from ${ids.length}.'
+                : 'Added label to ${ids.length}.',
+          ),
+        ),
+      );
+    } catch (err) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Label change failed: $err'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
 
   Future<void> _runBulk(
     WidgetRef ref,
@@ -361,6 +457,18 @@ class _SelectionBar extends ConsumerWidget {
                     color: AppColors.textPrimary),
                 onPressed: () => _runBulk(ref, context, 'archive'),
               ),
+            IconButton(
+              tooltip: 'Move to',
+              icon: const Icon(Icons.drive_file_move_outline,
+                  color: AppColors.textPrimary),
+              onPressed: () => _runMove(ref, context),
+            ),
+            IconButton(
+              tooltip: 'Labels',
+              icon: const Icon(Icons.label_outline,
+                  color: AppColors.textPrimary),
+              onPressed: () => _runLabel(ref, context),
+            ),
             if (inTrash)
               IconButton(
                 tooltip: 'Delete forever',
@@ -375,6 +483,180 @@ class _SelectionBar extends ConsumerWidget {
                     color: AppColors.textPrimary),
                 onPressed: () => _runBulk(ref, context, 'delete'),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Modal bottom sheet that lists folder destinations for the Move
+/// bulk action. Skips the current folder so the user can't no-op
+/// move into itself.
+class _MoveSheet extends StatelessWidget {
+  const _MoveSheet({required this.currentFolder});
+  final String currentFolder;
+
+  static const _targets = <({String id, String label, IconData icon})>[
+    (id: 'inbox', label: 'Inbox', icon: Icons.inbox_outlined),
+    (id: 'archive', label: 'Archive', icon: Icons.archive_outlined),
+    (id: 'spam', label: 'Spam', icon: Icons.report_gmailerrorred_outlined),
+    (id: 'trash', label: 'Trash', icon: Icons.delete_outline),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final options = _targets.where((t) => t.id != currentFolder).toList();
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          Container(width: 36, height: 4, color: AppColors.border),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'MOVE TO',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ),
+          for (final t in options)
+            ListTile(
+              leading: Icon(t.icon, color: AppColors.textPrimary),
+              title: Text(
+                t.label,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              onTap: () => Navigator.pop(context, t.id),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+/// Result tuple from _LabelSheet — label id + whether to remove or add.
+class _LabelPick {
+  const _LabelPick({required this.labelId, required this.remove});
+  final String labelId;
+  final bool remove;
+}
+
+/// Bottom sheet of the user's labels. Tap adds; swipe-left / long-
+/// press removes. Small label set → small sheet.
+class _LabelSheet extends ConsumerWidget {
+  const _LabelSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final labelsAsync = ref.watch(labelsListProvider);
+    return SafeArea(
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.55,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(width: 36, height: 4, color: AppColors.border),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Row(
+                children: [
+                  Text(
+                    'LABELS',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textMuted,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'TAP ADDS · HOLD REMOVES',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 9,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: labelsAsync.when(
+                data: (labels) {
+                  if (labels.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'No labels yet. Create one in Settings → Labels.',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      for (final l in labels)
+                        ListTile(
+                          leading: Container(
+                            width: 14,
+                            height: 14,
+                            color: l.swatch,
+                          ),
+                          title: Text(
+                            l.name,
+                            style: GoogleFonts.inter(
+                              fontSize: 14,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          onTap: () => Navigator.pop(
+                            context,
+                            _LabelPick(labelId: l.id, remove: false),
+                          ),
+                          onLongPress: () => Navigator.pop(
+                            context,
+                            _LabelPick(labelId: l.id, remove: true),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: AppColors.accent),
+                ),
+                error: (err, _) => Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    'Failed to load labels: $err',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 11,
+                      color: AppColors.danger,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

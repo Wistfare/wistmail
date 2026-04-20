@@ -20,8 +20,10 @@ import {
   Square,
   MailOpen,
   Mail,
+  FolderInput,
   X,
 } from 'lucide-react'
+import { useLabels } from '@/lib/labels'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useCompose } from '@/components/email/compose-provider'
@@ -228,6 +230,36 @@ export default function InboxPage() {
       })
     } else if (action.action === 'purge') {
       toast.show({ message: `Permanently deleted ${count} ${plural}.` })
+    } else if (action.action === 'move') {
+      toast.show({
+        message: `Moved ${count} ${plural} to ${action.folder}.`,
+        undo: () =>
+          bulk.mutateAsync({
+            ids: affectedIds,
+            action: 'move',
+            folder: folderParam,
+          }).then(() => {}),
+      })
+    } else if (action.action === 'label-add') {
+      toast.show({
+        message: `Added label to ${count} ${plural}.`,
+        undo: () =>
+          bulk.mutateAsync({
+            ids: affectedIds,
+            action: 'label-remove',
+            labelIds: action.labelIds,
+          }).then(() => {}),
+      })
+    } else if (action.action === 'label-remove') {
+      toast.show({
+        message: `Removed label from ${count} ${plural}.`,
+        undo: () =>
+          bulk.mutateAsync({
+            ids: affectedIds,
+            action: 'label-add',
+            labelIds: action.labelIds,
+          }).then(() => {}),
+      })
     }
   }
 
@@ -849,6 +881,19 @@ type BulkActionVars =
   | { action: 'archive' }
   | { action: 'delete' }
   | { action: 'purge' }
+  | { action: 'move'; folder: string }
+  | { action: 'label-add'; labelIds: string[] }
+  | { action: 'label-remove'; labelIds: string[] }
+
+/// Destination folders the "Move to" dropdown offers. We intentionally
+/// skip source folders that a bulk move would imply (the current
+/// folder) — the toolbar strips those at render time.
+const MOVE_TARGETS: { id: string; label: string }[] = [
+  { id: 'inbox', label: 'Inbox' },
+  { id: 'archive', label: 'Archive' },
+  { id: 'spam', label: 'Spam' },
+  { id: 'trash', label: 'Trash' },
+]
 
 /// Top-of-list action bar that replaces the folder title when one or
 /// more rows are selected. Keeps the same height so the list below
@@ -873,8 +918,10 @@ function BulkActionToolbar({
   onRun: (action: BulkActionVars) => void
 }) {
   const allSelected = count >= visibleCount && visibleCount > 0
+  const [openMenu, setOpenMenu] = useState<'move' | 'labels' | null>(null)
+  const labels = useLabels()
   return (
-    <div className="flex items-center gap-2 border-b border-wm-border bg-wm-accent/5 px-5 py-2.5">
+    <div className="relative flex items-center gap-2 border-b border-wm-border bg-wm-accent/5 px-5 py-2.5">
       <button
         type="button"
         onClick={allSelected ? onClear : onSelectAllVisible}
@@ -909,6 +956,57 @@ function BulkActionToolbar({
           onClick={() => onRun({ action: 'archive' })}
         />
       )}
+
+      {/* Move-to-folder popover. Opens a small menu of destinations
+          that excludes the current folder so the user can't no-op
+          move into itself. */}
+      <div className="relative">
+        <BulkBtn
+          icon={<FolderInput className="h-3.5 w-3.5" />}
+          label="Move"
+          onClick={() =>
+            setOpenMenu((m) => (m === 'move' ? null : 'move'))
+          }
+        />
+        {openMenu === 'move' && (
+          <MoveMenu
+            currentFolder={folder}
+            onPick={(target) => {
+              setOpenMenu(null)
+              onRun({ action: 'move', folder: target })
+            }}
+            onDismiss={() => setOpenMenu(null)}
+          />
+        )}
+      </div>
+
+      {/* Labels popover. Tapping a label toggles add/remove on the
+          whole selection in one API call. Fast-open: we read the
+          label list from the already-cached /labels query. */}
+      <div className="relative">
+        <BulkBtn
+          icon={<Tag className="h-3.5 w-3.5" />}
+          label="Labels"
+          onClick={() =>
+            setOpenMenu((m) => (m === 'labels' ? null : 'labels'))
+          }
+        />
+        {openMenu === 'labels' && (
+          <LabelMenu
+            labels={labels.data ?? []}
+            onPickAdd={(id) => {
+              setOpenMenu(null)
+              onRun({ action: 'label-add', labelIds: [id] })
+            }}
+            onPickRemove={(id) => {
+              setOpenMenu(null)
+              onRun({ action: 'label-remove', labelIds: [id] })
+            }}
+            onDismiss={() => setOpenMenu(null)}
+          />
+        )}
+      </div>
+
       {folder === 'trash' ? (
         <BulkBtn
           icon={<Trash2 className="h-3.5 w-3.5" />}
@@ -941,6 +1039,105 @@ function BulkActionToolbar({
         <X className="h-3 w-3" />
       </button>
     </div>
+  )
+}
+
+/// Tiny dropdown listing folder destinations. Light-touch: no
+/// outside-click detection beyond a full-screen invisible backdrop
+/// because the dropdown is small and the selection flow is linear.
+function MoveMenu({
+  currentFolder,
+  onPick,
+  onDismiss,
+}: {
+  currentFolder: string
+  onPick: (folder: string) => void
+  onDismiss: () => void
+}) {
+  const targets = MOVE_TARGETS.filter((t) => t.id !== currentFolder)
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[60]"
+        onClick={onDismiss}
+        aria-hidden="true"
+      />
+      <div className="absolute right-0 top-full z-[70] mt-1 min-w-[160px] border border-wm-border bg-wm-surface shadow-lg">
+        <p className="border-b border-wm-border px-3 py-1.5 font-mono text-[9px] font-semibold uppercase text-wm-text-muted">
+          Move to
+        </p>
+        {targets.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onPick(t.id)}
+            className="block w-full cursor-pointer px-3 py-2 text-left font-mono text-[11px] text-wm-text-primary hover:bg-wm-surface-hover"
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
+/// Tiny multi-select for labels. Tapping a label dispatches one bulk
+/// action per tap (add or remove) — we don't batch across multiple
+/// labels because the user typically only flips one chip at a time;
+/// if they pick three we just fire three calls, which is still one
+/// round-trip per label thanks to the batch endpoint.
+function LabelMenu({
+  labels,
+  onPickAdd,
+  onPickRemove,
+  onDismiss,
+}: {
+  labels: { id: string; name: string; color: string }[]
+  onPickAdd: (id: string) => void
+  onPickRemove: (id: string) => void
+  onDismiss: () => void
+}) {
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[60]"
+        onClick={onDismiss}
+        aria-hidden="true"
+      />
+      <div className="absolute right-0 top-full z-[70] mt-1 min-w-[220px] border border-wm-border bg-wm-surface shadow-lg">
+        <p className="border-b border-wm-border px-3 py-1.5 font-mono text-[9px] font-semibold uppercase text-wm-text-muted">
+          Add label · shift-click to remove
+        </p>
+        {labels.length === 0 ? (
+          <p className="px-3 py-2 font-mono text-[11px] text-wm-text-muted">
+            No labels yet. Create one in Settings.
+          </p>
+        ) : (
+          <div className="max-h-[240px] overflow-y-auto">
+            {labels.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={(e) => {
+                  if (e.shiftKey) onPickRemove(l.id)
+                  else onPickAdd(l.id)
+                }}
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left hover:bg-wm-surface-hover"
+                title="Click to add, Shift+click to remove"
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0"
+                  style={{ backgroundColor: l.color }}
+                />
+                <span className="truncate font-mono text-[11px] text-wm-text-primary">
+                  {l.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
