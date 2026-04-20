@@ -243,6 +243,13 @@ class FakeMailRepository implements MailRepository {
     return 0;
   }
 
+  int snoozeCalls = 0;
+
+  @override
+  Future<void> snooze(String emailId, DateTime? until) async {
+    snoozeCalls++;
+  }
+
   int batchActionCalls = 0;
 
   @override

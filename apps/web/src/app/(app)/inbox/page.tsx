@@ -21,6 +21,7 @@ import {
   MailOpen,
   Mail,
   FolderInput,
+  Clock,
   X,
 } from 'lucide-react'
 import { useLabels } from '@/lib/labels'
@@ -49,6 +50,7 @@ import {
   useMarkAllRead,
   useMarkRead,
   usePurge,
+  useSnooze,
   useToggleStar,
 } from '@/lib/email-queries'
 
@@ -101,7 +103,9 @@ export default function InboxPage() {
   )
   const bulk = useBulkAction()
   const markAllRead = useMarkAllRead()
+  const snooze = useSnooze()
   const toast = useToast()
+  const [snoozeOpen, setSnoozeOpen] = useState(false)
 
   // Reset selection when the folder changes.
   useEffect(() => {
@@ -814,6 +818,33 @@ export default function InboxPage() {
                 className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
                 onClick={() => handleArchive(selectedFull.id)}
               />
+              <div className="relative">
+                <Clock
+                  className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
+                  onClick={() => setSnoozeOpen((o) => !o)}
+                />
+                {snoozeOpen && (
+                  <SnoozeMenu
+                    onPick={(until) => {
+                      setSnoozeOpen(false)
+                      snooze.mutate({ id: selectedFull.id, until })
+                      setSelectedId(null)
+                      toast.show({
+                        message: until
+                          ? `Snoozed until ${new Date(until).toLocaleString()}.`
+                          : 'Unsnoozed.',
+                        undo: () =>
+                          api.post(
+                            `/api/v1/inbox/emails/${selectedFull.id}/snooze`,
+                            { until: null },
+                          ),
+                      })
+                    }}
+                    onDismiss={() => setSnoozeOpen(false)}
+                    currentlySnoozed={selectedFull.folder === 'inbox' && Boolean((selectedFull as unknown as { snoozeUntil?: string | null }).snoozeUntil)}
+                  />
+                )}
+              </div>
               <LabelAssignPopover
                 emailId={selectedFull.id}
                 trigger={
@@ -1273,5 +1304,108 @@ function BulkBtn({
       {icon}
       {label}
     </button>
+  )
+}
+
+/// Shared presets for the snooze dropdown. The times are computed at
+/// render time so "Tomorrow morning" is tomorrow from the user's
+/// wall-clock perspective, not the server's UTC.
+function computeSnoozePresets(now: Date = new Date()) {
+  const d = (year: number, month: number, date: number, h: number, m = 0) =>
+    new Date(year, month, date, h, m, 0, 0)
+  const today = d(now.getFullYear(), now.getMonth(), now.getDate(), 0)
+  const laterToday = new Date(today)
+  // "Later today" = 3 hours from now, rounded up to the next hour.
+  laterToday.setTime(now.getTime() + 3 * 60 * 60 * 1000)
+  laterToday.setMinutes(0, 0, 0)
+  const tomorrowMorning = d(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + 1,
+    8,
+  )
+  // Saturday 9am. If it's already Saturday / Sunday we push to next week.
+  const saturday = new Date(today)
+  const dow = today.getDay()
+  const daysUntilSat = dow === 6 ? 7 : (6 - dow + 7) % 7 || 7
+  saturday.setDate(today.getDate() + daysUntilSat)
+  saturday.setHours(9, 0, 0, 0)
+  const nextWeek = d(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + 7,
+    8,
+  )
+  return [
+    { label: 'Later today', hint: formatWallTime(laterToday), at: laterToday },
+    {
+      label: 'Tomorrow',
+      hint: formatWallTime(tomorrowMorning),
+      at: tomorrowMorning,
+    },
+    {
+      label: 'This weekend',
+      hint: formatWallTime(saturday),
+      at: saturday,
+    },
+    { label: 'Next week', hint: formatWallTime(nextWeek), at: nextWeek },
+  ]
+}
+
+function formatWallTime(d: Date): string {
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function SnoozeMenu({
+  onPick,
+  onDismiss,
+  currentlySnoozed,
+}: {
+  onPick: (until: string | null) => void
+  onDismiss: () => void
+  currentlySnoozed: boolean
+}) {
+  const presets = computeSnoozePresets()
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[60]"
+        onClick={onDismiss}
+        aria-hidden="true"
+      />
+      <div className="absolute right-0 top-full z-[70] mt-1 min-w-[220px] border border-wm-border bg-wm-surface shadow-lg">
+        <p className="border-b border-wm-border px-3 py-1.5 font-mono text-[9px] font-semibold uppercase text-wm-text-muted">
+          Snooze until
+        </p>
+        {presets.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => onPick(p.at.toISOString())}
+            className="flex w-full cursor-pointer items-center justify-between px-3 py-2 text-left hover:bg-wm-surface-hover"
+          >
+            <span className="font-mono text-[11px] text-wm-text-primary">
+              {p.label}
+            </span>
+            <span className="font-mono text-[10px] text-wm-text-muted">
+              {p.hint}
+            </span>
+          </button>
+        ))}
+        {currentlySnoozed && (
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            className="block w-full cursor-pointer border-t border-wm-border px-3 py-2 text-left font-mono text-[11px] text-wm-accent hover:bg-wm-accent/10"
+          >
+            Unsnooze now
+          </button>
+        )}
+      </div>
+    </>
   )
 }

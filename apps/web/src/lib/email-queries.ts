@@ -354,6 +354,42 @@ export function useEmptyTrash() {
   }
 }
 
+/// Snooze / unsnooze a single email. `until` null unsnoozes. The
+/// row stays in its existing folder but hides from the inbox view
+/// until the timestamp elapses (synthetic folder filter on the
+/// server handles that — no background job needed).
+export function useSnooze() {
+  const qc = useQueryClient()
+  return useMutation<
+    unknown,
+    Error,
+    { id: string; until: string | null },
+    OptimisticContext
+  >({
+    mutationFn: ({ id, until }) =>
+      api.post(`/api/v1/inbox/emails/${id}/snooze`, { until }),
+    onMutate: async ({ id, until }) => {
+      await qc.cancelQueries({ queryKey: inboxKeys.all })
+      const ctx = snapshotLists(qc)
+      // Drop the row from inbox immediately when snoozing — it
+      // reappears when the timestamp elapses (next list refetch).
+      // For unsnooze (until === null), we don't know the original
+      // folder from just the list rows, so we let the refetch
+      // settle the real state.
+      if (until !== null) {
+        applyToAllLists(qc, id, (row) =>
+          row.folder === 'inbox' ? null : row,
+        )
+      }
+      return ctx
+    },
+    onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: inboxKeys.all })
+    },
+  })
+}
+
 /// Bulk action against many emails at once. The server accepts one
 /// action per call + a list of ids; we optimistically apply the same
 /// mutation to every matching row in every cached list page so the

@@ -44,6 +44,13 @@ export interface EmailUpdatedEvent {
     isRead?: boolean
     isStarred?: boolean
     folder?: string
+    // ISO timestamp while snoozed, null once unsnoozed. Clients use
+    // this to flip the row into / out of the synthetic "snoozed"
+    // folder without a refetch.
+    snoozeUntil?: string | null
+    // ISO timestamp while a send is scheduled, null once dispatched
+    // or cancelled.
+    scheduledAt?: string | null
   }
 }
 

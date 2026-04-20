@@ -726,6 +726,55 @@ inboxRoutes.post('/trash/empty', async (c) => {
 })
 
 /**
+ * POST /api/v1/inbox/emails/:id/snooze
+ * Body: { until: ISO-8601 string }
+ *
+ * Flip the email into the synthetic "snoozed" folder until the given
+ * timestamp. Passing `null` (or an empty body) unsnoozes.
+ *
+ * Snoozed rows disappear from inbox until `snoozeUntil <= now()`,
+ * at which point the `buildFolderWhere('inbox', …)` filter starts
+ * returning them again. No background job is needed — the synthetic
+ * filter already does the work.
+ */
+inboxRoutes.post('/emails/:id/snooze', async (c) => {
+  const emailId = c.req.param('id')
+  const userId = c.get('userId')
+  const body = await c.req.json().catch(() => ({}))
+  const parsed = z
+    .object({ until: z.string().datetime().nullable().optional() })
+    .safeParse(body)
+  if (!parsed.success) throw new ValidationError('Invalid until')
+  const until = parsed.data.until ? new Date(parsed.data.until) : null
+
+  const db = getDb()
+  // Ownership check in one join.
+  const rows = await db
+    .select({ id: emails.id })
+    .from(emails)
+    .innerJoin(mailboxes, eq(emails.mailboxId, mailboxes.id))
+    .where(and(eq(emails.id, emailId), eq(mailboxes.userId, userId)))
+    .limit(1)
+  if (rows.length === 0) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'Email not found' } },
+      404,
+    )
+  }
+  await db
+    .update(emails)
+    .set({ snoozeUntil: until, updatedAt: new Date() })
+    .where(eq(emails.id, emailId))
+  eventBus.publish({
+    type: 'email.updated',
+    userId,
+    emailId,
+    changes: { snoozeUntil: until?.toISOString() ?? null },
+  })
+  return c.json({ ok: true, until: until?.toISOString() ?? null })
+})
+
+/**
  * POST /api/v1/inbox/folders/:folder/mark-all-read
  * Flip every email in the folder to `isRead = true`. We intentionally
  * don't route this through the batch endpoint because the client

@@ -23,6 +23,9 @@ abstract class MailRepository {
   /// filter against the user's mailboxes. `folder='all'` clears
   /// the unread dot across every folder.
   Future<int> markAllRead(String folder);
+  /// Snooze a single email until the given UTC instant, or pass
+  /// null to clear a previous snooze.
+  Future<void> snooze(String emailId, DateTime? until);
   /// Bulk mutation helper. Returns the number of affected rows.
   Future<int> batchAction({
     required List<String> ids,
@@ -89,6 +92,10 @@ class MailRepositoryImpl implements MailRepository {
 
   @override
   Future<int> markAllRead(String folder) => _remote.markAllRead(folder);
+
+  @override
+  Future<void> snooze(String emailId, DateTime? until) =>
+      _remote.snooze(emailId, until);
 
   @override
   Future<int> batchAction({

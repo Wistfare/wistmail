@@ -106,6 +106,14 @@ class MailRemoteDataSource {
     return (response.data?['affected'] as num?)?.toInt() ?? 0;
   }
 
+  /// Snooze / unsnooze a single email. Passing null clears the snooze.
+  Future<void> snooze(String emailId, DateTime? until) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/snooze',
+      data: {'until': until?.toUtc().toIso8601String()},
+    );
+  }
+
   /// Run one action against many emails in a single round-trip.
   /// `action` is one of 'read' | 'unread' | 'star' | 'unstar' |
   /// 'archive' | 'delete' | 'purge' | 'move' | 'label-add' |

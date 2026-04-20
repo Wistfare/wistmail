@@ -69,6 +69,53 @@ class EmailDetailScreen extends ConsumerWidget {
               onPressed: () => context.push('/email/${email.id}/labels'),
             ),
             _IconAction(
+              icon: Icons.schedule,
+              onPressed: () async {
+                final until = await _pickSnoozeTime(context);
+                if (until == null || !context.mounted) return;
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  final repo =
+                      await ref.read(mailRepositoryProvider.future);
+                  await repo.snooze(email.id, until);
+                  ref
+                      .read(inboxControllerProvider.notifier)
+                      .removeLocal(email.id);
+                } catch (err) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Snooze failed: $err'),
+                      backgroundColor: AppColors.danger,
+                    ),
+                  );
+                  return;
+                }
+                showRootSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Snoozed until ${_snoozeLabel(until)}.',
+                    ),
+                    duration: const Duration(seconds: 6),
+                    action: SnackBarAction(
+                      label: 'UNDO',
+                      textColor: AppColors.accent,
+                      onPressed: () async {
+                        try {
+                          final r = await ref
+                              .read(mailRepositoryProvider.future);
+                          await r.snooze(email.id, null);
+                          ref
+                              .read(inboxControllerProvider.notifier)
+                              .refresh();
+                        } catch (_) {}
+                      },
+                    ),
+                  ),
+                );
+                if (context.mounted) context.pop();
+              },
+            ),
+            _IconAction(
               icon: Icons.archive_outlined,
               onPressed: () async {
                 // Synchronous read — engine is bootstrapped on app
@@ -423,4 +470,121 @@ class _LabelsRow extends ConsumerWidget {
       children: [for (final l in list) WmTag(label: l.name, color: l.swatch)],
     );
   }
+}
+
+/// Bottom sheet of snooze presets. Each computes its target at
+/// render time so "Tomorrow morning" is relative to the user's
+/// wall clock, not the server's UTC.
+Future<DateTime?> _pickSnoozeTime(BuildContext context) async {
+  final now = DateTime.now();
+  final laterToday = DateTime(
+    now.year,
+    now.month,
+    now.day,
+    now.hour,
+  ).add(const Duration(hours: 3));
+  final tomorrowMorning = DateTime(
+    now.year,
+    now.month,
+    now.day + 1,
+    8,
+  );
+  final daysUntilSat = now.weekday == DateTime.saturday
+      ? 7
+      : (DateTime.saturday - now.weekday + 7) % 7 == 0
+          ? 7
+          : (DateTime.saturday - now.weekday + 7) % 7;
+  final thisWeekend =
+      DateTime(now.year, now.month, now.day + daysUntilSat, 9);
+  final nextWeek = DateTime(now.year, now.month, now.day + 7, 8);
+  final presets = <({String label, String hint, DateTime at})>[
+    (
+      label: 'Later today',
+      hint: _snoozeLabel(laterToday),
+      at: laterToday,
+    ),
+    (
+      label: 'Tomorrow',
+      hint: _snoozeLabel(tomorrowMorning),
+      at: tomorrowMorning,
+    ),
+    (
+      label: 'This weekend',
+      hint: _snoozeLabel(thisWeekend),
+      at: thisWeekend,
+    ),
+    (
+      label: 'Next week',
+      hint: _snoozeLabel(nextWeek),
+      at: nextWeek,
+    ),
+  ];
+  return showModalBottomSheet<DateTime>(
+    context: context,
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(),
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          Container(width: 36, height: 4, color: AppColors.border),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'SNOOZE UNTIL',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ),
+          for (final p in presets)
+            ListTile(
+              leading: const Icon(
+                Icons.access_time,
+                color: AppColors.textPrimary,
+              ),
+              title: Text(
+                p.label,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              trailing: Text(
+                p.hint,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                ),
+              ),
+              onTap: () => Navigator.pop(ctx, p.at),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+String _snoozeLabel(DateTime dt) {
+  final local = dt.toLocal();
+  // "Fri 8:00 AM" style — short and readable.
+  const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final dow = daysOfWeek[local.weekday - 1];
+  final hour = local.hour == 0
+      ? 12
+      : local.hour > 12
+          ? local.hour - 12
+          : local.hour;
+  final ampm = local.hour < 12 ? 'AM' : 'PM';
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$dow $hour:$minute $ampm';
 }
