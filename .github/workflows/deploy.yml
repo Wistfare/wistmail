@@ -236,6 +236,28 @@ jobs:
                echo 'MFA_SECRETS_KEY=$MFA_SECRETS_KEY' >> /opt/wistmail/.env"
           fi
 
+          # Run DB migrations BEFORE restarting the api. The newly-
+          # built image is pulled first so drizzle-kit sees the
+          # latest checked-in migration files baked in at build time
+          # (packages/db/drizzle). The migrate-runner is idempotent:
+          # on a fresh DB it creates everything; on an existing DB
+          # it bootstraps __drizzle_migrations with the current
+          # snapshot and exits clean. Failure here aborts the
+          # deploy — we do NOT want a half-migrated schema reachable
+          # from a freshly-restarted api.
+          if [ "$CHANGED_API" = "true" ]; then
+            ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" "
+              set -e
+              cd /opt/wistmail
+              docker compose pull api
+              docker compose run --rm \
+                -w /app/packages/db \
+                --entrypoint '' \
+                api \
+                node --import tsx/esm src/migrate-runner.ts
+            "
+          fi
+
           # Deploy only what changed
           ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" "
             set -e
