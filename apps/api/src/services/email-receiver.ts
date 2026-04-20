@@ -123,17 +123,32 @@ export class EmailReceiver {
       // Resolve (or create) the thread this message belongs to.
       // Done before the insert so the email row carries thread_id
       // from the start rather than needing a follow-up UPDATE.
+      //
+      // Defensive: a bug in threading must NEVER cost us the inbound
+      // email. If assignThread throws for any reason (broken query,
+      // FK violation, unexpected input shape), we log it and fall
+      // back to `threadId = null` — the message still lands in the
+      // inbox as its own single-message thread, and the backfill
+      // endpoint can stitch it into the right conversation later.
       const threads = new ThreadService(this.db)
-      const threadId = await threads.assignThread({
-        mailboxId: mailbox.id,
-        subject,
-        fromAddress,
-        toAddresses: parsed.to.length > 0 ? parsed.to : inbound.to,
-        cc: parsed.cc,
-        inReplyTo: parsed.inReplyTo,
-        references: parsed.references,
-        createdAt,
-      })
+      let threadId: string | null = null
+      try {
+        threadId = await threads.assignThread({
+          mailboxId: mailbox.id,
+          subject,
+          fromAddress,
+          toAddresses: parsed.to.length > 0 ? parsed.to : inbound.to,
+          cc: parsed.cc,
+          inReplyTo: parsed.inReplyTo,
+          references: parsed.references,
+          createdAt,
+        })
+      } catch (err) {
+        console.error(
+          '[email-receiver] threading failed — storing as singleton:',
+          err,
+        )
+      }
 
       await this.db.insert(emails).values({
         id: emailId,
