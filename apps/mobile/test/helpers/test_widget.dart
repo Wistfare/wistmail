@@ -235,6 +235,14 @@ class FakeMailRepository implements MailRepository {
   @override
   Future<int> getFolderRetention(String folder) async => 30;
 
+  int markAllReadCalls = 0;
+
+  @override
+  Future<int> markAllRead(String folder) async {
+    markAllReadCalls++;
+    return 0;
+  }
+
   int batchActionCalls = 0;
 
   @override

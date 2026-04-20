@@ -41,6 +41,7 @@ class InboxScreen extends ConsumerWidget {
           if (showMfaBanner && !inSelectionMode) const _MfaBanner(),
           if ((folder.id == 'trash' || folder.id == 'spam') && !inSelectionMode)
             _CleanupBanner(folderId: folder.id),
+          if (!inSelectionMode) _FilterBar(folder: folder),
           Expanded(child: _InboxBody(inbox: inbox)),
         ],
       ),
@@ -547,6 +548,186 @@ class _CleanupBannerState extends ConsumerState<_CleanupBanner> {
   }
 }
 
+/// Chip row + trailing "Mark all read" action that sits between the
+/// top bar and the email list. Filters are client-side — they narrow
+/// whatever rows the controller has already loaded — so flipping
+/// between All / Unread / Starred / Has files is instant.
+class _FilterBar extends ConsumerWidget {
+  const _FilterBar({required this.folder});
+  final InboxFolder folder;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(inboxFilterProvider);
+    final state = ref.watch(inboxControllerProvider);
+    final hasUnread = state.emails.any((e) => !e.isRead);
+
+    return Container(
+      color: AppColors.background,
+      padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppColors.border, width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _FilterChip(
+                    label: 'All',
+                    active: filter == InboxFilter.all,
+                    onTap: () => ref
+                        .read(inboxFilterProvider.notifier)
+                        .state = InboxFilter.all,
+                  ),
+                  _FilterChip(
+                    label: 'Unread',
+                    active: filter == InboxFilter.unread,
+                    onTap: () => ref
+                        .read(inboxFilterProvider.notifier)
+                        .state = InboxFilter.unread,
+                  ),
+                  _FilterChip(
+                    label: 'Starred',
+                    active: filter == InboxFilter.starred,
+                    onTap: () => ref
+                        .read(inboxFilterProvider.notifier)
+                        .state = InboxFilter.starred,
+                  ),
+                  _FilterChip(
+                    label: 'Files',
+                    active: filter == InboxFilter.attachments,
+                    onTap: () => ref
+                        .read(inboxFilterProvider.notifier)
+                        .state = InboxFilter.attachments,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (hasUnread)
+            _MarkAllReadButton(folderId: folder.id),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: active ? AppColors.accentDim : Colors.transparent,
+            border: Border.all(
+              color: active ? AppColors.accent : AppColors.border,
+            ),
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: active ? AppColors.accent : AppColors.textSecondary,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MarkAllReadButton extends ConsumerStatefulWidget {
+  const _MarkAllReadButton({required this.folderId});
+  final String folderId;
+
+  @override
+  ConsumerState<_MarkAllReadButton> createState() =>
+      _MarkAllReadButtonState();
+}
+
+class _MarkAllReadButtonState extends ConsumerState<_MarkAllReadButton> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      final n = await repo.markAllRead(widget.folderId);
+      ref.read(inboxControllerProvider.notifier).refresh();
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            n == 0 ? 'Nothing to mark.' : 'Marked $n as read.',
+          ),
+        ),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Mark-all-read failed: $err'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: _busy ? null : _run,
+      icon: _busy
+          ? const SizedBox(
+              height: 12,
+              width: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                valueColor: AlwaysStoppedAnimation(AppColors.textSecondary),
+              ),
+            )
+          : const Icon(
+              Icons.mark_email_read_outlined,
+              size: 14,
+              color: AppColors.textSecondary,
+            ),
+      label: Text(
+        _busy ? '…' : 'READ ALL',
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
 class _InboxBody extends ConsumerStatefulWidget {
   const _InboxBody({required this.inbox});
   final InboxState inbox;
@@ -602,6 +783,25 @@ class _InboxBodyState extends ConsumerState<_InboxBody> {
 
     if (inbox.emails.isEmpty) return const _EmptyState();
 
+    final filter = ref.watch(inboxFilterProvider);
+    // Client-side filter against the loaded page. Same pattern as
+    // web — when the user flips to "Unread" and there's nothing
+    // unread on the current page we'll paginate until we have some.
+    final visible = inbox.emails.where((e) {
+      switch (filter) {
+        case InboxFilter.all:
+          return true;
+        case InboxFilter.unread:
+          return !e.isRead;
+        case InboxFilter.starred:
+          return e.isStarred;
+        case InboxFilter.attachments:
+          return e.hasAttachments;
+      }
+    }).toList();
+
+    if (visible.isEmpty) return const _EmptyState();
+
     return RefreshIndicator(
       color: AppColors.accent,
       backgroundColor: AppColors.surface,
@@ -615,14 +815,14 @@ class _InboxBodyState extends ConsumerState<_InboxBody> {
           physics: const AlwaysScrollableScrollPhysics(),
           // +1 row reserved for the load-more spinner / end marker so the
           // separator pattern stays consistent.
-          itemCount: inbox.emails.length + (inbox.hasMore ? 1 : 0),
+          itemCount: visible.length + (inbox.hasMore ? 1 : 0),
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AppColors.border),
           itemBuilder: (context, index) {
-            if (index >= inbox.emails.length) {
+            if (index >= visible.length) {
               return const _LoadMoreFooter();
             }
-            return EmailListItem(email: inbox.emails[index]);
+            return EmailListItem(email: visible[index]);
           },
         ),
       ),

@@ -449,6 +449,49 @@ export function useTrashRetention() {
   return useFolderRetention('trash')
 }
 
+/// Mark every unread email in a given folder as read. The server
+/// scopes to the user's mailboxes; no client-side id set needed.
+/// `folder` can also be 'all' to mark read across every folder at
+/// once (the Gmail-style "clear the dot").
+export function useMarkAllRead() {
+  const qc = useQueryClient()
+  return useMutation<
+    { affected: number },
+    Error,
+    { folder: string },
+    OptimisticContext
+  >({
+    mutationFn: ({ folder }) =>
+      api.post<{ affected: number }>(
+        `/api/v1/inbox/folders/${folder}/mark-all-read`,
+      ),
+    onMutate: async ({ folder }) => {
+      await qc.cancelQueries({ queryKey: inboxKeys.all })
+      const ctx = snapshotLists(qc)
+      // Flip isRead on every cached row in the target folder (or
+      // everywhere if 'all'). Keeps the UI snappy; the server
+      // response just confirms the count.
+      qc.setQueriesData<InfiniteListCache>(
+        { queryKey: folder === 'all' ? inboxKeys.all : inboxKeys.list(folder) },
+        (old) =>
+          old
+            ? {
+                ...old,
+                pages: old.pages.map((p) => ({
+                  ...p,
+                  data: p.data.map((row) =>
+                    row.isRead ? row : { ...row, isRead: true },
+                  ),
+                })),
+              }
+            : old,
+      )
+      return ctx
+    },
+    onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+  })
+}
+
 /// Apply a server-pushed status change (from the email.send_status
 /// WS event) to every cached list. Doesn't touch network.
 export function applySendStatus(

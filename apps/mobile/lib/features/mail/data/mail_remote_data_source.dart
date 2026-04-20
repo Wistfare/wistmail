@@ -97,6 +97,15 @@ class MailRemoteDataSource {
     return (response.data?['retentionDays'] as num?)?.toInt() ?? 30;
   }
 
+  /// Mark every unread email in `folder` as read. Pass 'all' to clear
+  /// the unread dot across every folder at once.
+  Future<int> markAllRead(String folder) async {
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/folders/$folder/mark-all-read',
+    );
+    return (response.data?['affected'] as num?)?.toInt() ?? 0;
+  }
+
   /// Run one action against many emails in a single round-trip.
   /// `action` is one of 'read' | 'unread' | 'star' | 'unstar' |
   /// 'archive' | 'delete' | 'purge' | 'move' | 'label-add' |

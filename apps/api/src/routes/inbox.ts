@@ -726,6 +726,66 @@ inboxRoutes.post('/trash/empty', async (c) => {
 })
 
 /**
+ * POST /api/v1/inbox/folders/:folder/mark-all-read
+ * Flip every email in the folder to `isRead = true`. We intentionally
+ * don't route this through the batch endpoint because the client
+ * doesn't have the full id set and we want the server to do the
+ * filter — same auth model (user's mailboxes), no cap.
+ */
+inboxRoutes.post('/folders/:folder/mark-all-read', async (c) => {
+  const folder = c.req.param('folder')
+  const userId = c.get('userId')
+  const db = getDb()
+
+  const mailboxRows = await db
+    .select({ id: mailboxes.id })
+    .from(mailboxes)
+    .where(eq(mailboxes.userId, userId))
+  const mailboxIds = mailboxRows.map((m) => m.id)
+  if (mailboxIds.length === 0) {
+    return c.json({ ok: true, affected: 0 })
+  }
+
+  const where =
+    folder === 'all'
+      ? and(
+          inArray(emails.mailboxId, mailboxIds),
+          eq(emails.isRead, false),
+        )
+      : and(
+          inArray(emails.mailboxId, mailboxIds),
+          eq(emails.folder, folder),
+          eq(emails.isRead, false),
+        )
+
+  // Collect ids first so we can publish WS events; the UPDATE then
+  // touches exactly those rows. Avoids any drift if a new unread
+  // arrives between the SELECT and the UPDATE (the new row just
+  // isn't included; it'll show up as unread on the user's next
+  // inbox refresh).
+  const rows = await db.select({ id: emails.id }).from(emails).where(where)
+  const ids = rows.map((r) => r.id)
+  if (ids.length === 0) {
+    return c.json({ ok: true, affected: 0 })
+  }
+  await db
+    .update(emails)
+    .set({ isRead: true, updatedAt: new Date() })
+    .where(inArray(emails.id, ids))
+
+  for (const id of ids) {
+    eventBus.publish({
+      type: 'email.updated',
+      userId,
+      emailId: id,
+      changes: { isRead: true },
+    })
+  }
+
+  return c.json({ ok: true, affected: ids.length })
+})
+
+/**
  * POST /api/v1/inbox/emails/batch
  * Body: { ids: string[], action: 'read'|'unread'|'star'|'unstar'
  *         |'archive'|'delete'|'purge'|'move'|'label-add'|'label-remove',

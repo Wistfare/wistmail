@@ -55,6 +55,21 @@ final currentFolderProvider = StateProvider<InboxFolder>(
   (ref) => InboxFolder.inbox,
 );
 
+/// Row-level filter over the current folder's list. Applied
+/// client-side against the page already loaded (same pattern as
+/// web) — no extra network, filters compose naturally with folder
+/// selection. Clearing the folder resets this to 'all'.
+enum InboxFilter { all, unread, starred, attachments }
+
+final inboxFilterProvider = StateProvider<InboxFilter>((ref) {
+  ref.listen<InboxFolder>(currentFolderProvider, (prev, next) {
+    if (prev?.id != next.id) {
+      ref.controller.state = InboxFilter.all;
+    }
+  });
+  return InboxFilter.all;
+});
+
 /// Set of email ids currently marked by the user for a bulk action.
 /// Non-empty → the inbox renders its "selection mode" app bar and
 /// rows toggle on tap instead of opening. Kept as a StateProvider

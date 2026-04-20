@@ -44,17 +44,21 @@ import {
   useEmptyFolder,
   useFolderRetention,
   useInboxList,
+  useMarkAllRead,
   useMarkRead,
   usePurge,
   useToggleStar,
 } from '@/lib/email-queries'
 
+// Row-level filter tabs above the list. Applied client-side against
+// the page already loaded — no extra network — so filters compose
+// with the folder param naturally.
 const FILTER_TABS = [
   { id: 'all', label: 'All' },
   { id: 'unread', label: 'Unread' },
-  { id: 'primary', label: 'Primary' },
-  { id: 'updates', label: 'Updates' },
-]
+  { id: 'starred', label: 'Starred' },
+  { id: 'attachments', label: 'Has files' },
+] as const
 
 export default function InboxPage() {
   const searchParams = useSearchParams()
@@ -92,6 +96,7 @@ export default function InboxPage() {
     (cleanableFolder ? folderParam : 'trash') as 'trash' | 'spam',
   )
   const bulk = useBulkAction()
+  const markAllRead = useMarkAllRead()
   const toast = useToast()
 
   // Reset selection when the folder changes.
@@ -123,6 +128,8 @@ export default function InboxPage() {
   const filteredEmails = useMemo(() => {
     return emails.filter((email) => {
       if (activeFilter === 'unread' && email.isRead) return false
+      if (activeFilter === 'starred' && !email.isStarred) return false
+      if (activeFilter === 'attachments' && !email.hasAttachments) return false
       if (searchQuery) {
         const q = searchQuery.toLowerCase()
         return (
@@ -264,6 +271,21 @@ export default function InboxPage() {
     }
     purge.mutate({ id: emailId })
     if (selectedId === emailId) setSelectedId(null)
+  }
+
+  function handleMarkAllRead() {
+    const unreadCount = emails.filter((e) => !e.isRead).length
+    if (unreadCount === 0) return
+    markAllRead.mutate(
+      { folder: folderParam },
+      {
+        onSuccess: (res) => {
+          toast.show({
+            message: `Marked ${res.affected} as read.`,
+          })
+        },
+      },
+    )
   }
 
   function handleEmptyFolder() {
@@ -430,6 +452,18 @@ export default function InboxPage() {
           <div className="flex items-center border-b border-wm-border px-5 py-3">
             <span className="text-sm font-semibold text-wm-text-primary">{folderName}</span>
             <div className="flex-1" />
+            {emails.some((e) => !e.isRead) && (
+              <button
+                type="button"
+                onClick={handleMarkAllRead}
+                disabled={markAllRead.isPending}
+                className="mr-3 inline-flex cursor-pointer items-center gap-1 border border-wm-border px-2 py-1 font-mono text-[10px] font-semibold text-wm-text-secondary transition-colors hover:bg-wm-surface-hover disabled:cursor-wait disabled:opacity-60"
+                title="Mark everything in this folder as read"
+              >
+                <MailOpen className="h-3 w-3" />
+                {markAllRead.isPending ? 'Marking…' : 'Mark all read'}
+              </button>
+            )}
             {cleanableFolder && emails.length > 0 && (
               <button
                 type="button"

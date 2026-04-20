@@ -19,6 +19,10 @@ abstract class MailRepository {
   Future<int> getTrashRetention();
   /// Retention for any auto-purging folder (trash or spam).
   Future<int> getFolderRetention(String folder);
+  /// Mark every unread email in `folder` as read — server-side
+  /// filter against the user's mailboxes. `folder='all'` clears
+  /// the unread dot across every folder.
+  Future<int> markAllRead(String folder);
   /// Bulk mutation helper. Returns the number of affected rows.
   Future<int> batchAction({
     required List<String> ids,
@@ -82,6 +86,9 @@ class MailRepositoryImpl implements MailRepository {
   @override
   Future<int> getFolderRetention(String folder) =>
       _remote.getFolderRetention(folder);
+
+  @override
+  Future<int> markAllRead(String folder) => _remote.markAllRead(folder);
 
   @override
   Future<int> batchAction({
