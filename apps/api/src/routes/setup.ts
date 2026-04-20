@@ -506,15 +506,6 @@ setupRoutes.post('/account', async (c) => {
     createdAt: now,
   })
 
-  // Initialize billing credits for the new org (100 free credits)
-  try {
-    const { BillingService } = await import('../services/billing.js')
-    const billing = new BillingService(db)
-    await billing.initializeCredits(orgId)
-  } catch (err) {
-    console.error('Failed to initialize billing credits:', err)
-  }
-
   const sessionId = generateId('ses')
   const sessionToken = randomBytes(32).toString('hex')
   const sessionExpiry = new Date(Date.now() + SESSION_DURATION_MS)

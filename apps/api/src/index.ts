@@ -203,20 +203,10 @@ async function ensureSchema() {
       ip_address varchar(45), user_agent text,
       created_at timestamptz NOT NULL DEFAULT now()
     )`,
-    `CREATE TABLE IF NOT EXISTS org_credits (
-      id varchar(64) PRIMARY KEY,
-      org_id varchar(64) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE UNIQUE,
-      balance bigint NOT NULL DEFAULT 100, total_purchased bigint NOT NULL DEFAULT 0,
-      total_used bigint NOT NULL DEFAULT 0,
-      created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
-    )`,
-    `CREATE TABLE IF NOT EXISTS credit_transactions (
-      id varchar(64) PRIMARY KEY,
-      org_id varchar(64) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      amount bigint NOT NULL, type varchar(30) NOT NULL,
-      description text, email_id varchar(64),
-      created_at timestamptz NOT NULL DEFAULT now()
-    )`,
+    // Note: org_credits and credit_transactions tables exist in prod from
+    // an earlier billing model; we no longer write to them. The legacy
+    // tables stay so we don't ALTER + lose any historical rows. Drop in
+    // a future migration once we're confident nothing references them.
     `CREATE TABLE IF NOT EXISTS device_tokens (
       id varchar(64) PRIMARY KEY,
       user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,

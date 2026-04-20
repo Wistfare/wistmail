@@ -6,7 +6,7 @@ import { mailboxes } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
 import { EmailSender } from '../services/email-sender.js'
-import { BillingService } from '../services/billing.js'
+import { checkAndReserveSend, refundSend } from '../services/send-rate-limit.js'
 import { getDb } from '../lib/db.js'
 import { eventBus } from '../events/bus.js'
 import {
@@ -241,50 +241,52 @@ inboxRoutes.post('/compose', async (c) => {
   }
 
   if (parsed.data.send) {
-    const orgId = c.get('orgId')
+    const userId = c.get('userId')
 
-    // Atomic deduct-or-fail: avoids the TOCTOU window where a precheck
-    // says "yes" but a concurrent send drains the balance before we
-    // actually charge. If there are no credits we never even queue.
-    if (orgId) {
-      const billing = new BillingService(db)
-      const deducted = await billing.deductCredit(orgId, 'pre-send')
-      if (!deducted) {
-        throw new ValidationError(
-          'Insufficient email credits. Please purchase more credits to continue sending.',
-        )
-      }
+    // Per-user send rate limit replaces the old credit gate. If the
+    // user is over budget we don't even create the draft as 'sending';
+    // we hand back a `rate_limited` status so the client (or the
+    // outbox sync engine) can retry when the window rolls over.
+    const rate = await checkAndReserveSend(userId)
+    if (!rate.allowed) {
+      const retrySec = Math.ceil(rate.retryAfterMs / 1000)
+      return c.json(
+        {
+          error: {
+            code: 'RATE_LIMITED',
+            message: `Send limit reached for the ${rate.scope}. Try again in ${retrySec}s.`,
+            details: {
+              scope: rate.scope,
+              retryAfterMs: rate.retryAfterMs,
+              hourCount: rate.hourCount,
+              dayCount: rate.dayCount,
+            },
+          },
+        },
+        429,
+      )
     }
 
-    // Create email as draft first
-    const result = await emailService.createDraft(c.get('userId'), {
+    // Create the draft, then dispatch via mail-engine in the
+    // background. If the send fails we refund the rate-limit slot so
+    // a transient network failure doesn't burn the user's hourly
+    // budget.
+    const result = await emailService.createDraft(userId, {
       ...parsed.data,
       mailboxId: parsed.data.mailboxId,
     })
 
-    // Send via mail engine in the background. Refund the credit if the
-    // send fails so users aren't charged for messages we couldn't deliver.
     const sender = new EmailSender(db)
     sender
       .sendEmail(result.id)
       .then(async (sendResult) => {
-        if (!sendResult.success && orgId) {
-          await new BillingService(db).addCredits(
-            orgId,
-            1,
-            `Refund for failed send ${result.id}`,
-          )
+        if (!sendResult.success) {
+          await refundSend(userId)
         }
       })
       .catch(async (err) => {
         console.error(`Failed to send email ${result.id}:`, err)
-        if (orgId) {
-          await new BillingService(db).addCredits(
-            orgId,
-            1,
-            `Refund for failed send ${result.id}`,
-          )
-        }
+        await refundSend(userId)
       })
 
     return c.json({ id: result.id, status: 'sending' }, 201)
