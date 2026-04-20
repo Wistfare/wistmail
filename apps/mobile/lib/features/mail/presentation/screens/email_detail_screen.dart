@@ -15,6 +15,7 @@ import '../../data/mail_actions.dart';
 import '../../domain/compose_args.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
+import '../widgets/email_body.dart';
 
 /// Mobile/EmailDetail — design.lib.pen node `aZAGV`.
 class EmailDetailScreen extends ConsumerWidget {
@@ -248,13 +249,11 @@ class _Body extends ConsumerWidget {
           const SizedBox(height: 20),
           const Divider(color: AppColors.border, height: 1),
           const SizedBox(height: 20),
-          // Body — JetBrains Mono, gray, generous line-height (matches design)
-          SelectableText(
-            email.textBody ?? '',
-            style: AppTextStyles.monoMedium.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
+          // Real HTML rendering — flutter_html with our typography +
+          // cid: attachment resolution + remote-image privacy gate.
+          // Falls back to formatted text-with-quotes when there's no
+          // htmlBody (plain-text emails, e.g. from CLI senders).
+          EmailBody(email: email),
         ],
       ),
     );

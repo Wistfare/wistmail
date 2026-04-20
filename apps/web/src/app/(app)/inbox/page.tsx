@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import DOMPurify from 'isomorphic-dompurify'
 import {
   Search,
   ArrowUpDown,
@@ -21,6 +20,7 @@ import {
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useCompose } from '@/components/email/compose-provider'
+import { EmailBody } from '@/components/email/email-body'
 import { LabelAssignPopover } from '@/components/email/label-assign-popover'
 import { api } from '@/lib/api-client'
 import { useLabelsForEmail } from '@/lib/labels'
@@ -226,55 +226,17 @@ export default function InboxPage() {
     })
   }
 
+  /// Renders the email body via the sandboxed iframe component, which
+  /// handles HTML sanitization, cid: attachment resolution, and the
+  /// remote-image privacy gate. Plain-text emails are rendered by the
+  /// EmailBody component's text-fallback path.
   function renderEmailBody(email: FullEmail) {
-    if (email.htmlBody) {
-      const sanitized = DOMPurify.sanitize(email.htmlBody, {
-        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
-        FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
-        ALLOW_DATA_ATTR: false,
-        ADD_ATTR: ['target', 'rel'],
-      })
-      return (
-        <div
-          className="email-body max-w-none text-sm leading-relaxed text-wm-text-secondary"
-          dangerouslySetInnerHTML={{ __html: sanitized }}
-        />
-      )
-    }
-    const text = email.textBody || 'No content'
-    const lines = text.split('\n')
-    const parts: Array<{ quoted: boolean; text: string }> = []
-    let currentQuoted = false
-    let currentLines: string[] = []
-    for (const line of lines) {
-      const isQuoted = line.startsWith('>')
-      if (isQuoted !== currentQuoted && currentLines.length > 0) {
-        parts.push({ quoted: currentQuoted, text: currentLines.join('\n') })
-        currentLines = []
-      }
-      currentQuoted = isQuoted
-      currentLines.push(isQuoted ? line.replace(/^>+\s?/, '') : line)
-    }
-    if (currentLines.length > 0)
-      parts.push({ quoted: currentQuoted, text: currentLines.join('\n') })
-
     return (
-      <div className="text-sm leading-relaxed text-wm-text-secondary">
-        {parts.map((part, i) =>
-          part.quoted ? (
-            <blockquote
-              key={i}
-              className="my-2 border-l-2 border-wm-text-muted/30 pl-3 text-wm-text-muted"
-            >
-              <pre className="whitespace-pre-wrap font-mono text-xs">{part.text}</pre>
-            </blockquote>
-          ) : (
-            <pre key={i} className="whitespace-pre-wrap font-mono text-sm">
-              {part.text}
-            </pre>
-          ),
-        )}
-      </div>
+      <EmailBody
+        htmlBody={email.htmlBody}
+        textBody={email.textBody}
+        attachments={email.attachments}
+      />
     )
   }
 
