@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/messaging/root_messenger.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_tag.dart';
+import '../../data/mail_actions.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
 import 'attachments_strip.dart';
@@ -33,14 +35,88 @@ class EmailListItem extends ConsumerWidget {
     ref.read(selectedEmailIdsProvider.notifier).state = next;
   }
 
+  /// Fire-and-forget archive that matches the outbox / optimistic
+  /// behaviour of the detail-screen action. Used by the swipe
+  /// gesture when the Dismissible commits.
+  Future<void> _swipeArchive(WidgetRef ref) async {
+    final actions = ref.read(mailActionsProvider).valueOrNull;
+    if (actions != null) {
+      await actions.archive(email);
+    } else {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      await repo.archive(email.id);
+      ref.read(inboxControllerProvider.notifier).removeLocal(email.id);
+    }
+    showRootSnackBar(
+      SnackBar(
+        content: const Text('Archived.'),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'UNDO',
+          textColor: AppColors.accent,
+          onPressed: () async {
+            try {
+              final r = await ref.read(mailRepositoryProvider.future);
+              await r.batchAction(
+                ids: [email.id],
+                action: 'move',
+                folder: 'inbox',
+              );
+              ref.read(inboxControllerProvider.notifier).refresh();
+            } catch (_) {}
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _swipeDelete(WidgetRef ref) async {
+    final actions = ref.read(mailActionsProvider).valueOrNull;
+    if (actions != null) {
+      await actions.delete(email);
+    } else {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      await repo.delete(email.id);
+      ref.read(inboxControllerProvider.notifier).removeLocal(email.id);
+    }
+    showRootSnackBar(
+      SnackBar(
+        content: const Text('Moved to Trash.'),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'UNDO',
+          textColor: AppColors.accent,
+          onPressed: () async {
+            try {
+              final r = await ref.read(mailRepositoryProvider.future);
+              await r.batchAction(
+                ids: [email.id],
+                action: 'move',
+                folder: 'inbox',
+              );
+              ref.read(inboxControllerProvider.notifier).refresh();
+            } catch (_) {}
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final unread = !email.isRead;
     final selection = ref.watch(selectedEmailIdsProvider);
     final inSelectionMode = selection.isNotEmpty;
     final isSelected = selection.contains(email.id);
+    final folder = ref.watch(currentFolderProvider);
+    // Swipe actions are suppressed in selection mode (tap toggles
+    // instead) and in Trash (the row is already trashed; swiping
+    // to delete again would be confusing). Otherwise:
+    //   • Swipe right (startToEnd) → archive.
+    //   • Swipe left (endToStart)  → delete (soft → trash).
+    final swipeEnabled = !inSelectionMode && folder.id != 'trash';
 
-    return Material(
+    final rowContent = Material(
       color: isSelected ? AppColors.accentDim : Colors.transparent,
       child: InkWell(
         onTap: () {
@@ -160,6 +236,80 @@ class EmailListItem extends ConsumerWidget {
             ],
           ),
         ),
+      ),
+    );
+
+    if (!swipeEnabled) return rowContent;
+
+    return Dismissible(
+      key: ValueKey('swipe-${email.id}'),
+      // confirmDismiss fires the action; we never actually let the
+      // row stay dismissed because the inbox controller's state
+      // already dropped the row via removeLocal. Returning false
+      // keeps Flutter's animation tidy and avoids a brief flicker
+      // before the controller rebuild completes.
+      background: _swipeBg(
+        align: Alignment.centerLeft,
+        color: AppColors.accent,
+        icon: Icons.archive_outlined,
+        label: 'Archive',
+      ),
+      secondaryBackground: _swipeBg(
+        align: Alignment.centerRight,
+        color: AppColors.danger,
+        icon: Icons.delete_outline,
+        label: 'Delete',
+      ),
+      // A full drag to fire — matches iOS Mail behaviour where
+      // partial swipes don't commit. Also avoids accidental archives
+      // when the user's just trying to scroll horizontally.
+      dismissThresholds: const {
+        DismissDirection.startToEnd: 0.4,
+        DismissDirection.endToStart: 0.4,
+      },
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd) {
+          await _swipeArchive(ref);
+        } else {
+          await _swipeDelete(ref);
+        }
+        // We return true so Dismissible animates the row off-screen
+        // cleanly; the controller's removeLocal keeps it from
+        // reappearing on the next rebuild.
+        return true;
+      },
+      child: rowContent,
+    );
+  }
+
+  /// Colour + icon + label block rendered behind the row as the user
+  /// drags. We show both so even a short drag signals which action
+  /// is about to commit.
+  Widget _swipeBg({
+    required AlignmentGeometry align,
+    required Color color,
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      color: color.withValues(alpha: 0.25),
+      alignment: align,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label.toUpperCase(),
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
       ),
     );
   }
