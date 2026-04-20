@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import DOMPurify from 'isomorphic-dompurify'
 import {
@@ -14,48 +14,25 @@ import {
   Reply,
   ReplyAll,
   Forward,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useCompose } from '@/components/email/compose-provider'
 import { api } from '@/lib/api-client'
 import { cn, formatRelativeTime } from '@/lib/utils'
-
-const PAGE_SIZE = 50
-
-/// Slim list-row shape returned by `/api/v1/inbox/emails`. Bodies are
-/// fetched only when the user opens an email — see `loadFullEmail`.
-type EmailListItem = {
-  id: string
-  mailboxId: string
-  fromAddress: string
-  toAddresses: string[]
-  cc: string[]
-  subject: string
-  snippet: string
-  folder: string
-  isRead: boolean
-  isStarred: boolean
-  isDraft: boolean
-  hasAttachments: boolean
-  sizeBytes: number
-  createdAt: string
-}
-
-/// Full email — fetched on demand for the detail pane.
-type FullEmail = EmailListItem & {
-  textBody: string | null
-  htmlBody: string | null
-  attachments: Array<{ id: string; filename: string; contentType: string; sizeBytes: number }>
-}
-
-type EmailPage = {
-  data: EmailListItem[]
-  total: number
-  page: number
-  pageSize: number
-  hasMore: boolean
-}
+import {
+  type EmailListItem,
+  type FullEmail,
+  useArchive,
+  useDelete,
+  useEmailDetail,
+  useInboxList,
+  useMarkRead,
+  useToggleStar,
+} from '@/lib/email-queries'
 
 const FILTER_TABS = [
   { id: 'all', label: 'All' },
@@ -69,64 +46,46 @@ export default function InboxPage() {
   const { openCompose } = useCompose()
   const folderParam = searchParams.get('folder') || 'inbox'
 
-  const [emails, setEmails] = useState<EmailListItem[]>([])
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [selectedFull, setSelectedFull] = useState<FullEmail | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
-
-  const detailCache = useRef<Map<string, FullEmail>>(new Map())
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  const fetchPage = useCallback(
-    async (nextPage: number, replace: boolean) => {
-      if (replace) setLoading(true)
-      else setLoadingMore(true)
-      try {
-        const res = await api.get<EmailPage>(
-          `/api/v1/inbox/emails?folder=${folderParam}&page=${nextPage}&pageSize=${PAGE_SIZE}`,
-        )
-        setEmails((prev) => {
-          if (replace) return res.data
-          const seen = new Set(prev.map((e) => e.id))
-          return [...prev, ...res.data.filter((e) => !seen.has(e.id))]
-        })
-        setPage(res.page)
-        setHasMore(res.hasMore)
-      } catch (err) {
-        console.error('inbox: fetch failed', err)
-      } finally {
-        setLoading(false)
-        setLoadingMore(false)
-      }
-    },
-    [folderParam],
-  )
+  // Cache-driven data: list (paginated) + selected detail.
+  const list = useInboxList(folderParam)
+  const detail = useEmailDetail(selectedId)
+  const selectedFull = detail.data ?? null
 
+  // Optimistic mutation hooks.
+  const star = useToggleStar()
+  const markRead = useMarkRead()
+  const archive = useArchive()
+  const remove = useDelete()
+
+  // Reset selection when the folder changes.
   useEffect(() => {
-    detailCache.current.clear()
     setSelectedId(null)
-    setSelectedFull(null)
-    fetchPage(1, true)
-  }, [fetchPage])
+  }, [folderParam])
+
+  // Flatten the infinite-query pages into a single array for rendering.
+  const emails: EmailListItem[] = useMemo(() => {
+    if (!list.data) return []
+    return list.data.pages.flatMap((p) => p.data)
+  }, [list.data])
 
   // Lazy load-more on scroll. Trigger ~600px before the bottom.
   useEffect(() => {
     const el = listRef.current
     if (!el) return
     const onScroll = () => {
-      if (loadingMore || loading || !hasMore) return
+      if (list.isFetchingNextPage || !list.hasNextPage) return
       if (el.scrollTop + el.clientHeight >= el.scrollHeight - 600) {
-        fetchPage(page + 1, false)
+        list.fetchNextPage()
       }
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [fetchPage, hasMore, loading, loadingMore, page])
+  }, [list])
 
   const filteredEmails = useMemo(() => {
     return emails.filter((email) => {
@@ -143,90 +102,30 @@ export default function InboxPage() {
     })
   }, [emails, activeFilter, searchQuery])
 
-  async function loadFullEmail(id: string): Promise<FullEmail> {
-    const cached = detailCache.current.get(id)
-    if (cached) return cached
-    const full = await api.get<FullEmail>(`/api/v1/inbox/emails/${id}`)
-    detailCache.current.set(id, full)
-    return full
-  }
-
-  function prefetchEmail(id: string) {
-    if (detailCache.current.has(id)) return
-    api
-      .get<FullEmail>(`/api/v1/inbox/emails/${id}`)
-      .then((full) => detailCache.current.set(id, full))
-      .catch(() => {})
-  }
-
-  async function selectEmail(email: EmailListItem) {
+  function selectEmail(email: EmailListItem) {
     setSelectedId(email.id)
-    setSelectedFull(null)
-    try {
-      const full = await loadFullEmail(email.id)
-      setSelectedFull(full)
-    } catch (err) {
-      console.error('inbox: failed to load email body', err)
-    }
-    if (!email.isRead) handleMarkRead(email.id)
+    if (!email.isRead) markRead.mutate({ id: email.id })
   }
 
-  async function handleStar(emailId: string) {
-    try {
-      await api.post(`/api/v1/inbox/emails/${emailId}/star`)
-      setEmails((prev) =>
-        prev.map((e) => (e.id === emailId ? { ...e, isStarred: !e.isStarred } : e)),
-      )
-      const cached = detailCache.current.get(emailId)
-      if (cached) {
-        detailCache.current.set(emailId, { ...cached, isStarred: !cached.isStarred })
-      }
-      if (selectedFull?.id === emailId) {
-        setSelectedFull((prev) =>
-          prev ? { ...prev, isStarred: !prev.isStarred } : null,
-        )
-      }
-    } catch (err) {
-      console.error('inbox: star failed', err)
-    }
+  function handleStar(email: EmailListItem) {
+    star.mutate(email)
   }
 
-  async function handleArchive(emailId: string) {
-    try {
-      await api.post(`/api/v1/inbox/emails/${emailId}/archive`)
-      setEmails((prev) => prev.filter((e) => e.id !== emailId))
-      detailCache.current.delete(emailId)
-      if (selectedId === emailId) {
-        setSelectedId(null)
-        setSelectedFull(null)
-      }
-    } catch (err) {
-      console.error('inbox: archive failed', err)
-    }
+  function handleArchive(emailId: string) {
+    archive.mutate({ id: emailId })
+    if (selectedId === emailId) setSelectedId(null)
   }
 
-  async function handleDelete(emailId: string) {
-    try {
-      await api.post(`/api/v1/inbox/emails/${emailId}/delete`)
-      setEmails((prev) => prev.filter((e) => e.id !== emailId))
-      detailCache.current.delete(emailId)
-      if (selectedId === emailId) {
-        setSelectedId(null)
-        setSelectedFull(null)
-      }
-    } catch (err) {
-      console.error('inbox: delete failed', err)
-    }
+  function handleDelete(emailId: string) {
+    remove.mutate({ id: emailId })
+    if (selectedId === emailId) setSelectedId(null)
   }
 
-  async function handleMarkRead(emailId: string) {
+  async function handleRetrySend(emailId: string) {
     try {
-      await api.post(`/api/v1/inbox/emails/${emailId}/read`)
-      setEmails((prev) =>
-        prev.map((e) => (e.id === emailId ? { ...e, isRead: true } : e)),
-      )
+      await api.post(`/api/v1/inbox/emails/${emailId}/dispatch`)
     } catch (err) {
-      console.error('inbox: mark-read failed', err)
+      console.error('inbox: retry failed', err)
     }
   }
 
@@ -292,22 +191,15 @@ export default function InboxPage() {
 
   function renderEmailBody(email: FullEmail) {
     if (email.htmlBody) {
-      // DOMPurify config: strip every script-like execution surface.
-      // Allow common email styling but no event handlers, no iframes,
-      // no form/object/embed.
       const sanitized = DOMPurify.sanitize(email.htmlBody, {
         FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
         FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
         ALLOW_DATA_ATTR: false,
-        // Force every link to a new tab and tell crawlers we don't endorse it.
         ADD_ATTR: ['target', 'rel'],
       })
       return (
         <div
           className="email-body max-w-none text-sm leading-relaxed text-wm-text-secondary"
-          // The HTML has been sanitized by DOMPurify above — every
-          // execution surface is forbidden so dangerouslySetInnerHTML
-          // is the right tool here.
           dangerouslySetInnerHTML={{ __html: sanitized }}
         />
       )
@@ -389,13 +281,25 @@ export default function InboxPage() {
         </div>
 
         <div ref={listRef} className="flex-1 overflow-y-auto">
-          {loading && (
+          {list.isPending && (
             <div className="flex items-center justify-center py-16">
-              <div className="h-5 w-5 animate-spin border-2 border-wm-accent border-t-transparent" />
+              <Loader2 className="h-5 w-5 animate-spin text-wm-accent" />
             </div>
           )}
 
-          {!loading && filteredEmails.length === 0 && (
+          {list.isError && (
+            <div className="flex flex-col items-center justify-center gap-2 py-16">
+              <AlertTriangle className="h-5 w-5 text-wm-error" />
+              <p className="font-mono text-xs text-wm-text-muted">
+                Couldn&rsquo;t load emails
+              </p>
+              <Button variant="ghost" size="sm" onClick={() => list.refetch()}>
+                Try again
+              </Button>
+            </div>
+          )}
+
+          {!list.isPending && !list.isError && filteredEmails.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 py-16">
               <p className="text-sm text-wm-text-muted">
                 {searchQuery
@@ -411,7 +315,6 @@ export default function InboxPage() {
             <button
               key={email.id}
               onClick={() => selectEmail(email)}
-              onMouseEnter={() => prefetchEmail(email.id)}
               className={cn(
                 'flex w-full cursor-pointer flex-col gap-1.5 border-b border-wm-border px-5 py-3.5 text-left transition-colors',
                 selectedId === email.id
@@ -440,7 +343,7 @@ export default function InboxPage() {
                   )}
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleStar(email.id)
+                    handleStar(email)
                   }}
                 />
                 <span className="shrink-0 font-mono text-[10px] text-wm-text-muted">
@@ -459,15 +362,21 @@ export default function InboxPage() {
                 {email.subject || '(no subject)'}
               </span>
 
-              <span className="line-clamp-2 font-mono text-[11px] leading-[1.4] text-wm-text-muted">
-                {email.snippet}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="line-clamp-2 flex-1 font-mono text-[11px] leading-[1.4] text-wm-text-muted">
+                  {email.snippet}
+                </span>
+                <SendStatusPill
+                  status={email.status}
+                  onRetry={() => handleRetrySend(email.id)}
+                />
+              </div>
             </button>
           ))}
 
-          {loadingMore && (
+          {list.isFetchingNextPage && (
             <div className="flex items-center justify-center py-6">
-              <div className="h-4 w-4 animate-spin border-2 border-wm-accent border-t-transparent" />
+              <Loader2 className="h-4 w-4 animate-spin text-wm-accent" />
             </div>
           )}
         </div>
@@ -489,7 +398,7 @@ export default function InboxPage() {
           </div>
         ) : !selectedFull ? (
           <div className="flex flex-1 items-center justify-center">
-            <div className="h-5 w-5 animate-spin border-2 border-wm-accent border-t-transparent" />
+            <Loader2 className="h-5 w-5 animate-spin text-wm-accent" />
           </div>
         ) : (
           <>
@@ -497,6 +406,10 @@ export default function InboxPage() {
               <h2 className="flex-1 truncate text-base font-semibold text-wm-text-primary">
                 {selectedFull.subject || '(no subject)'}
               </h2>
+              <SendStatusPill
+                status={selectedFull.status}
+                onRetry={() => handleRetrySend(selectedFull.id)}
+              />
               <Archive
                 className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
                 onClick={() => handleArchive(selectedFull.id)}
@@ -575,5 +488,49 @@ export default function InboxPage() {
         }
       `}</style>
     </div>
+  )
+}
+
+/// Renders the lifecycle pill on email rows + the detail header. Idle
+/// (the common case for inbound mail) shows nothing — we don't clutter
+/// the row with "Sent" labels for normal received mail.
+function SendStatusPill({
+  status,
+  onRetry,
+}: {
+  status: EmailListItem['status']
+  onRetry: () => void
+}) {
+  if (status === 'idle' || status === 'sent') return null
+  if (status === 'sending') {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 bg-wm-accent/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-wm-accent">
+        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+        Sending
+      </span>
+    )
+  }
+  if (status === 'rate_limited') {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 bg-wm-warning/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-wm-warning">
+        <Loader2 className="h-2.5 w-2.5" />
+        Queued
+      </span>
+    )
+  }
+  // status === 'failed'
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onRetry()
+      }}
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1 bg-wm-error/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-wm-error hover:bg-wm-error/20"
+      title="Couldn't send — tap to retry"
+    >
+      <RefreshCw className="h-2.5 w-2.5" />
+      Retry
+    </button>
   )
 }
