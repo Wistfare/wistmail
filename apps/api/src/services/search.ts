@@ -256,6 +256,11 @@ export async function searchEmails(
       // they re-appear when the user clicks through to the detail view
       // or when the inbox list reloads.
       labels: [],
+      // Meili doesn't index threadId — the detail fetch + the
+      // regular list endpoint both surface it fresh, so search
+      // hits ship without and the UI treats them as their own
+      // single-message thread until the row is opened.
+      threadId: null,
     }))
 
     const total =

@@ -5,6 +5,7 @@ import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 import { parseIcsSafely } from '../lib/ics.js'
 import { pathForAttachment } from '../lib/attachment-storage.js'
+import { ThreadService } from './thread-service.js'
 
 const PREVIEW_CHARS = 200
 
@@ -49,6 +50,12 @@ export interface EmailListItem {
   /// inbox row renderer never has to fire a per-row fetch — that was
   /// the old N+1 pattern (50 rows ⇒ 50 `/labels/email/:id` calls).
   labels: EmailLabelRef[]
+  /// Thread id the email belongs to. Clients can use this to group
+  /// rows in the list view, or to fetch the full conversation via
+  /// `GET /inbox/emails/:id/thread`. Null on rows that predate the
+  /// threading backfill — the UI falls back to treating those as
+  /// single-message threads.
+  threadId: string | null
 }
 
 export interface EmailListPage {
@@ -208,6 +215,7 @@ export class EmailService {
           sizeBytes: emails.sizeBytes,
           status: emails.status,
           sendError: emails.sendError,
+          threadId: emails.threadId,
           updatedAt: emails.updatedAt,
           createdAt: emails.createdAt,
         })
@@ -242,6 +250,7 @@ export class EmailService {
       updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
       labels: labelMap.get(r.id) ?? [],
+      threadId: r.threadId,
     }))
 
     const total = Number(count ?? 0)
@@ -330,6 +339,7 @@ export class EmailService {
         sizeBytes: emails.sizeBytes,
         status: emails.status,
         sendError: emails.sendError,
+        threadId: emails.threadId,
         updatedAt: emails.updatedAt,
         createdAt: emails.createdAt,
       })
@@ -367,6 +377,7 @@ export class EmailService {
       updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
       labels: labelMap.get(emailId) ?? [],
+      threadId: r.threadId,
     }
   }
 
@@ -476,6 +487,7 @@ export class EmailService {
         sizeBytes: emails.sizeBytes,
         status: emails.status,
         sendError: emails.sendError,
+        threadId: emails.threadId,
         updatedAt: emails.updatedAt,
         createdAt: emails.createdAt,
       })
@@ -505,6 +517,7 @@ export class EmailService {
       updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
       labels: labelMap.get(r.id) ?? [],
+      threadId: r.threadId,
     }))
 
     return {
@@ -552,6 +565,9 @@ export class EmailService {
     textBody?: string
     htmlBody?: string
     mailboxId: string
+    /// Message-id of the email being replied to (if any). Used to
+    /// thread the draft with its parent.
+    inReplyTo?: string
     /// ISO-8601 string — persisted in `emails.scheduledAt`. When set,
     /// the send dispatcher waits until the timestamp elapses before
     /// claiming + dispatching the row. The synthetic "scheduled"
@@ -561,6 +577,24 @@ export class EmailService {
     const emailId = generateId('eml')
     const messageId = `${emailId}@wistmail.local`
     const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null
+    const createdAt = new Date()
+
+    // Thread resolution: a reply (has inReplyTo) stitches into the
+    // parent's thread; a brand-new compose starts its own. Either
+    // way the draft carries thread_id from insert time so the sent
+    // mail appears in the conversation view even before it's
+    // dispatched.
+    const threadSvc = new ThreadService(this.db)
+    const threadId = await threadSvc.assignThread({
+      mailboxId: data.mailboxId,
+      subject: data.subject,
+      fromAddress: data.fromAddress,
+      toAddresses: data.toAddresses,
+      cc: data.cc || [],
+      inReplyTo: data.inReplyTo ?? null,
+      references: [],
+      createdAt,
+    })
 
     await this.db.insert(emails).values({
       id: emailId,
@@ -576,11 +610,14 @@ export class EmailService {
       folder: 'drafts',
       isDraft: true,
       isRead: true,
+      inReplyTo: data.inReplyTo,
       headers: {},
       references: [],
       scheduledAt,
+      threadId,
+      createdAt,
     })
 
-    return { id: emailId, messageId, scheduledAt }
+    return { id: emailId, messageId, scheduledAt, threadId }
   }
 }

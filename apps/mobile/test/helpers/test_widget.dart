@@ -250,6 +250,11 @@ class FakeMailRepository implements MailRepository {
     snoozeCalls++;
   }
 
+  @override
+  Future<List<Map<String, dynamic>>> getThread(String emailId) async {
+    return const [];
+  }
+
   int batchActionCalls = 0;
 
   @override

@@ -425,6 +425,7 @@ class _Body extends ConsumerWidget {
           const Divider(color: AppColors.border, height: 1),
           if (email.attachments.isNotEmpty)
             AttachmentsStrip(emailId: email.id, attachments: email.attachments),
+          _ThreadStrip(anchorId: email.id),
           const SizedBox(height: 20),
           // Real HTML rendering — flutter_html with our typography +
           // cid: attachment resolution + remote-image privacy gate.
@@ -587,4 +588,168 @@ String _snoozeLabel(DateTime dt) {
   final ampm = local.hour < 12 ? 'AM' : 'PM';
   final minute = local.minute.toString().padLeft(2, '0');
   return '$dow $hour:$minute $ampm';
+}
+
+/// Compact list of sibling messages in the same thread. Renders
+/// nothing when the thread has one message (the common case), so
+/// the detail view stays clean for standalone emails. Tapping a
+/// row routes to that message's detail. Anchor is highlighted.
+class _ThreadStrip extends ConsumerStatefulWidget {
+  const _ThreadStrip({required this.anchorId});
+  final String anchorId;
+
+  @override
+  ConsumerState<_ThreadStrip> createState() => _ThreadStripState();
+}
+
+class _ThreadStripState extends ConsumerState<_ThreadStrip> {
+  List<Map<String, dynamic>>? _messages;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThreadStrip old) {
+    super.didUpdateWidget(old);
+    if (old.anchorId != widget.anchorId) {
+      setState(() {
+        _messages = null;
+        _loading = true;
+      });
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    try {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      final msgs = await repo.getThread(widget.anchorId);
+      if (!mounted) return;
+      setState(() {
+        _messages = msgs;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messages = const [];
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const SizedBox.shrink();
+    final msgs = _messages ?? const [];
+    if (msgs.length <= 1) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'THREAD · ${msgs.length} MESSAGES',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textMuted,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final m in msgs) _ThreadRow(msg: m, anchorId: widget.anchorId),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThreadRow extends StatelessWidget {
+  const _ThreadRow({required this.msg, required this.anchorId});
+  final Map<String, dynamic> msg;
+  final String anchorId;
+
+  @override
+  Widget build(BuildContext context) {
+    final id = msg['id'] as String;
+    final isAnchor = id == anchorId;
+    final isRead = (msg['isRead'] as bool?) ?? true;
+    return InkWell(
+      onTap: isAnchor
+          ? null
+          : () {
+              // Replace route so the back gesture pops the whole
+              // thread rather than bouncing through every message.
+              context.replace('/email/$id');
+            },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        decoration: BoxDecoration(
+          color: isAnchor ? AppColors.accentDim : Colors.transparent,
+          border: isAnchor
+              ? Border.all(color: AppColors.accent.withValues(alpha: 0.4))
+              : null,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (msg['fromAddress'] as String?) ?? '',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight:
+                          !isRead ? FontWeight.w700 : FontWeight.w500,
+                      color: AppColors.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    (msg['snippet'] as String?) ?? '',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                      height: 1.3,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _shortDate(msg['createdAt'] as String?),
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 10,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _shortDate(String? iso) {
+  if (iso == null) return '';
+  final dt = DateTime.tryParse(iso)?.toLocal();
+  if (dt == null) return '';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${months[dt.month - 1]} ${dt.day}';
 }

@@ -10,6 +10,7 @@ import {
 } from '../lib/attachment-storage.js'
 import { sendEmailNotification } from './fcm.js'
 import { indexEmail } from './search.js'
+import { ThreadService } from './thread-service.js'
 
 interface InboundEmail {
   from: string
@@ -119,6 +120,21 @@ export class EmailReceiver {
         parsed.attachments,
       )
 
+      // Resolve (or create) the thread this message belongs to.
+      // Done before the insert so the email row carries thread_id
+      // from the start rather than needing a follow-up UPDATE.
+      const threads = new ThreadService(this.db)
+      const threadId = await threads.assignThread({
+        mailboxId: mailbox.id,
+        subject,
+        fromAddress,
+        toAddresses: parsed.to.length > 0 ? parsed.to : inbound.to,
+        cc: parsed.cc,
+        inReplyTo: parsed.inReplyTo,
+        references: parsed.references,
+        createdAt,
+      })
+
       await this.db.insert(emails).values({
         id: emailId,
         messageId: parsed.messageId || `${emailId}@inbound`,
@@ -138,6 +154,7 @@ export class EmailReceiver {
         headers: parsed.headers,
         sizeBytes: inbound.rawData.length,
         createdAt,
+        threadId,
       })
 
       if (persistedAttachments.length > 0) {

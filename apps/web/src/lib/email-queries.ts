@@ -47,6 +47,10 @@ export interface EmailListItem {
   /// have to fire a per-row `/labels/email/:id` request (was the old
   /// N+1 pattern — 50 rows ⇒ 50 sequential calls).
   labels: EmailLabelRef[]
+  /// Thread id the row belongs to. Null on pre-threading rows that
+  /// haven't been backfilled yet — the UI treats those as their
+  /// own single-message thread.
+  threadId: string | null
 }
 
 export interface EmailPage {
@@ -463,6 +467,41 @@ export function useBulkAction() {
         qc.invalidateQueries({ queryKey: inboxKeys.all })
       }
     },
+  })
+}
+
+/// Compact summary of a sibling email in a thread — used by the
+/// thread strip above the email detail view. Doesn't carry the full
+/// body; tapping a row fetches the full detail on demand.
+export interface ThreadMessage {
+  id: string
+  fromAddress: string
+  toAddresses: string[]
+  cc: string[]
+  subject: string
+  snippet: string
+  folder: string
+  isRead: boolean
+  isStarred: boolean
+  isDraft: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ThreadResponse {
+  anchorId: string
+  messages: ThreadMessage[]
+}
+
+/// Fetch every message in the same thread as `anchorId`. Returns
+/// one message when the row doesn't have a thread (server treats
+/// it as its own singleton), so the UI can render unconditionally.
+export function useEmailThread(anchorId: string | null) {
+  return useQuery({
+    queryKey: anchorId ? ['inbox', 'email', anchorId, 'thread'] : ['thread', 'none'],
+    queryFn: () =>
+      api.get<ThreadResponse>(`/api/v1/inbox/emails/${anchorId}/thread`),
+    enabled: !!anchorId,
   })
 }
 

@@ -114,6 +114,17 @@ class MailRemoteDataSource {
     );
   }
 
+  /// Return every email in the same thread as `emailId`, oldest
+  /// first. Response payload matches the server's ThreadMessage
+  /// shape — just enough for the thread strip in the detail view.
+  Future<List<Map<String, dynamic>>> getThread(String emailId) async {
+    final response = await _client.dio.get<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/thread',
+    );
+    final raw = response.data?['messages'] as List<dynamic>? ?? const [];
+    return raw.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
   /// Run one action against many emails in a single round-trip.
   /// `action` is one of 'read' | 'unread' | 'star' | 'unstar' |
   /// 'archive' | 'delete' | 'purge' | 'move' | 'label-add' |

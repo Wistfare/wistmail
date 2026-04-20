@@ -44,6 +44,7 @@ import {
   useBulkAction,
   useDelete,
   useEmailDetail,
+  useEmailThread,
   useEmptyFolder,
   useFolderRetention,
   useInboxList,
@@ -911,6 +912,10 @@ export default function InboxPage() {
               emailId={selectedFull.id}
               attachments={selectedFull.attachments ?? []}
             />
+            <ThreadStrip
+              anchorId={selectedFull.id}
+              onPick={(id) => setSelectedId(id)}
+            />
             <div className="flex-1 overflow-y-auto px-6 py-6">{renderEmailBody(selectedFull)}</div>
           </>
         )}
@@ -1407,5 +1412,58 @@ function SnoozeMenu({
         )}
       </div>
     </>
+  )
+}
+
+/// Compact list of sibling messages in the same thread as `anchorId`.
+/// Hidden when the thread has only one message (the common case for
+/// first inbound / solo drafts). Clicking a row swaps the right
+/// pane's selected email. Rendered above the body so the user sees
+/// the conversation context without scrolling.
+function ThreadStrip({
+  anchorId,
+  onPick,
+}: {
+  anchorId: string
+  onPick: (id: string) => void
+}) {
+  const thread = useEmailThread(anchorId)
+  if (!thread.data || thread.data.messages.length <= 1) return null
+  return (
+    <div className="border-b border-wm-border bg-wm-surface/60 px-6 py-2">
+      <p className="mb-1 font-mono text-[9px] font-semibold uppercase text-wm-text-muted">
+        Thread · {thread.data.messages.length} messages
+      </p>
+      <div className="flex flex-col gap-1">
+        {thread.data.messages.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onPick(m.id)}
+            className={cn(
+              'group flex cursor-pointer items-center gap-2 border border-transparent px-2 py-1 text-left transition-colors hover:bg-wm-surface-hover',
+              m.id === anchorId && 'border-wm-accent/40 bg-wm-accent/5',
+            )}
+          >
+            <span className="shrink-0 font-mono text-[10px] text-wm-text-muted">
+              {formatRelativeTime(new Date(m.createdAt))}
+            </span>
+            <span
+              className={cn(
+                'truncate text-[12px]',
+                !m.isRead
+                  ? 'font-semibold text-wm-text-primary'
+                  : 'text-wm-text-secondary',
+              )}
+            >
+              {m.fromAddress}
+            </span>
+            <span className="truncate font-mono text-[10px] text-wm-text-muted">
+              {m.snippet}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

@@ -45,6 +45,7 @@ class Email {
     this.mailboxId,
     this.attachments = const [],
     this.labels = const [],
+    this.threadId,
   })  : updatedAt = updatedAt ?? createdAt,
         senderName = _extractSenderName(fromAddress),
         senderEmail = _extractSenderEmail(fromAddress),
@@ -84,6 +85,9 @@ class Email {
   /// lookup. Empty in search-result rows (Meili doesn't index label
   /// membership reliably).
   final List<EmailLabelRef> labels;
+  /// Thread id the email belongs to. Null on pre-threading rows; the
+  /// UI treats those as their own single-message thread.
+  final String? threadId;
 
   // Pre-computed once in the constructor — getters used to recompute these
   // on every frame for every row in the list.
@@ -123,6 +127,7 @@ class Email {
       labels: (json['labels'] as List<dynamic>? ?? const [])
           .map((l) => EmailLabelRef.fromJson(l as Map<String, dynamic>))
           .toList(growable: false),
+      threadId: json['threadId'] as String?,
     );
   }
 
@@ -157,6 +162,7 @@ class Email {
         mailboxId: mailboxId,
         attachments: attachments,
         labels: labels,
+        threadId: threadId,
       );
 
   /// Merge a fully-loaded body fetched from /emails/:id back into the slim
@@ -190,6 +196,7 @@ class Email {
         mailboxId: mailboxId,
         attachments: attachments ?? this.attachments,
         labels: labels,
+        threadId: threadId,
       );
 
   String get timeAgo => _formatTimeAgo(createdAt);

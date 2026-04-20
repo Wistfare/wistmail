@@ -7,6 +7,7 @@ import { attachments, emails, emailLabels, mailboxes } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
 import { EmailSender, EMAIL_STATUS } from '../services/email-sender.js'
+import { ThreadService } from '../services/thread-service.js'
 import { checkAndReserveSend, refundSend } from '../services/send-rate-limit.js'
 import { getDb } from '../lib/db.js'
 import { eventBus } from '../events/bus.js'
@@ -61,6 +62,78 @@ inboxRoutes.get('/emails/:id', async (c) => {
   }
 
   return c.json(email)
+})
+
+/**
+ * GET /api/v1/inbox/emails/:id/thread
+ *
+ * Return every email in the same thread as `:id`, oldest first,
+ * including the anchor. Each message comes with its label refs
+ * baked in (same shape the list endpoint uses) so the client can
+ * render the full conversation with one round trip.
+ */
+inboxRoutes.get('/emails/:id/thread', async (c) => {
+  const emailId = c.req.param('id')
+  const userId = c.get('userId')
+  const db = getDb()
+
+  // Auth check first: the user must own the anchor email.
+  const owned = await db
+    .select({ id: emails.id })
+    .from(emails)
+    .innerJoin(mailboxes, eq(emails.mailboxId, mailboxes.id))
+    .where(and(eq(emails.id, emailId), eq(mailboxes.userId, userId)))
+    .limit(1)
+  if (owned.length === 0) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'Email not found' } },
+      404,
+    )
+  }
+
+  const svc = new ThreadService(db)
+  const messages = await svc.listThreadEmails(emailId, userId)
+  return c.json({
+    anchorId: emailId,
+    messages: messages.map((m) => ({
+      id: m.id,
+      fromAddress: m.fromAddress,
+      toAddresses: m.toAddresses,
+      cc: m.cc,
+      subject: m.subject,
+      snippet: (m.textBody ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      folder: m.folder,
+      isRead: m.isRead,
+      isStarred: m.isStarred,
+      isDraft: m.isDraft,
+      createdAt: m.createdAt.toISOString(),
+      updatedAt: m.updatedAt.toISOString(),
+    })),
+  })
+})
+
+/**
+ * POST /api/v1/inbox/threads/backfill
+ *
+ * Admin-ish: walks the user's mailboxes and assigns a thread_id to
+ * every email row that doesn't have one yet. Idempotent (rows that
+ * already have a thread are skipped); safe to call repeatedly. Used
+ * as a one-off after deploying the threading code over a DB that
+ * predates it.
+ */
+inboxRoutes.post('/threads/backfill', async (c) => {
+  const userId = c.get('userId')
+  const db = getDb()
+  const svc = new ThreadService(db)
+  const mailboxRows = await db
+    .select({ id: mailboxes.id })
+    .from(mailboxes)
+    .where(eq(mailboxes.userId, userId))
+  let total = 0
+  for (const m of mailboxRows) {
+    total += await svc.backfill(m.id)
+  }
+  return c.json({ ok: true, assigned: total })
 })
 
 /**

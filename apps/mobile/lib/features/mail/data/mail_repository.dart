@@ -26,6 +26,9 @@ abstract class MailRepository {
   /// Snooze a single email until the given UTC instant, or pass
   /// null to clear a previous snooze.
   Future<void> snooze(String emailId, DateTime? until);
+  /// Return every email in the same thread as `emailId`, oldest
+  /// first. Caller renders the thread strip.
+  Future<List<Map<String, dynamic>>> getThread(String emailId);
   /// Bulk mutation helper. Returns the number of affected rows.
   Future<int> batchAction({
     required List<String> ids,
@@ -96,6 +99,10 @@ class MailRepositoryImpl implements MailRepository {
   @override
   Future<void> snooze(String emailId, DateTime? until) =>
       _remote.snooze(emailId, until);
+
+  @override
+  Future<List<Map<String, dynamic>>> getThread(String emailId) =>
+      _remote.getThread(emailId);
 
   @override
   Future<int> batchAction({
