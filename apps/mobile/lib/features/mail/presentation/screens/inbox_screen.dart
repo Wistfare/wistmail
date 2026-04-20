@@ -56,12 +56,15 @@ class InboxScreen extends ConsumerWidget {
   }
 }
 
-class _TopBar extends StatelessWidget {
+class _TopBar extends ConsumerWidget {
   const _TopBar({required this.unreadCount});
   final int unreadCount;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Title tracks the active folder so users always know which view
+    // they're looking at after picking from the drawer.
+    final folder = ref.watch(currentFolderProvider);
     return SafeArea(
       bottom: false,
       child: Container(
@@ -76,7 +79,7 @@ class _TopBar extends StatelessWidget {
               onPressed: () => shellScaffoldKey.currentState?.openDrawer(),
             ),
             const SizedBox(width: 4),
-            Text('Inbox', style: AppTextStyles.titleLarge),
+            Text(folder.label, style: AppTextStyles.titleLarge),
             if (unreadCount > 0) ...[
               const SizedBox(width: 10),
               Container(

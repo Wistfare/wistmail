@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_avatar.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
+import '../../../mail/presentation/providers/mail_providers.dart';
 
 /// Mobile/Drawer — design.lib.pen node `poQbm`. Matches the design
 /// exactly: 300px panel, header + user tile + folders + labels. Account
@@ -18,56 +19,69 @@ class AppDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).user;
-    final route = GoRouterState.of(context).uri.path;
+    final activeFolder = ref.watch(currentFolderProvider);
+
+    void selectFolder(InboxFolder folder) {
+      // Update state first so the inbox starts loading the new view
+      // before we even close the drawer — user feels the transition.
+      ref.read(currentFolderProvider.notifier).state = folder;
+      Navigator.of(context).pop();
+      // If we somehow ended up on a non-inbox screen, jump back so the
+      // freshly-selected folder is actually visible.
+      final currentRoute = GoRouterState.of(context).uri.path;
+      if (!currentRoute.startsWith('/inbox')) {
+        context.go('/inbox');
+      }
+    }
 
     return Drawer(
       backgroundColor: AppColors.drawerBackground,
       width: 300,
       shape: const RoundedRectangleBorder(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _Header(),
-          _UserTile(
-            name: user?.name ?? 'Signed out',
-            email: user?.email ?? '',
-            onTap: () => _openAccountSheet(context, ref),
-            onClose: () => Navigator.of(context).pop(),
-          ),
-          const SizedBox(height: 8),
-          const Divider(color: AppColors.border, height: 1),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text('FOLDERS', style: AppTextStyles.sectionLabel),
-          ),
-          const SizedBox(height: 4),
-          _FolderItem(
-            icon: Icons.inbox_outlined,
-            label: 'Inbox',
-            isActive: route.startsWith('/inbox'),
-            badge: 12,
-          ),
-          const _FolderItem(icon: Icons.star_outline, label: 'Starred'),
-          const _FolderItem(icon: Icons.send_outlined, label: 'Sent'),
-          const _FolderItem(icon: Icons.edit_outlined, label: 'Drafts', badge: 4),
-          const _FolderItem(icon: Icons.delete_outline, label: 'Trash'),
-          const _FolderItem(icon: Icons.shield_outlined, label: 'Spam'),
-          const SizedBox(height: 16),
-          const Divider(color: AppColors.border, height: 1),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text('LABELS', style: AppTextStyles.sectionLabel),
-          ),
-          const SizedBox(height: 4),
-          const _LabelItem(color: AppColors.labelYellow, label: 'Priority'),
-          const _LabelItem(color: AppColors.labelBlue, label: 'Work'),
-          const _LabelItem(color: AppColors.labelOrange, label: 'Newsletters'),
-          const SizedBox(height: 6),
-          _CreateLabelButton(onTap: () {}),
-          const Spacer(),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _Header(),
+            _UserTile(
+              name: user?.name ?? 'Signed out',
+              email: user?.email ?? '',
+              onTap: () => _openAccountSheet(context, ref),
+              onClose: () => Navigator.of(context).pop(),
+            ),
+            const SizedBox(height: 8),
+            const Divider(color: AppColors.border, height: 1),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text('FOLDERS', style: AppTextStyles.sectionLabel),
+            ),
+            const SizedBox(height: 4),
+            for (final entry in _folderEntries)
+              _FolderItem(
+                icon: entry.icon,
+                label: entry.folder.label,
+                isActive: activeFolder.id == entry.folder.id,
+                onTap: () => selectFolder(entry.folder),
+              ),
+            const SizedBox(height: 16),
+            const Divider(color: AppColors.border, height: 1),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text('LABELS', style: AppTextStyles.sectionLabel),
+            ),
+            const SizedBox(height: 4),
+            // Labels are wired up in Phase F; for now keep the design
+            // placeholders so users see the section exists.
+            const _LabelItem(color: AppColors.labelYellow, label: 'Priority'),
+            const _LabelItem(color: AppColors.labelBlue, label: 'Work'),
+            const _LabelItem(color: AppColors.labelOrange, label: 'Newsletters'),
+            const SizedBox(height: 6),
+            _CreateLabelButton(onTap: () {}),
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }
@@ -172,17 +186,41 @@ class _UserTile extends StatelessWidget {
   }
 }
 
+/// Static (icon, folder) tuples driving the drawer's folder list.
+/// Order matches the design and the web sidebar so muscle memory
+/// transfers between platforms.
+class _FolderEntry {
+  const _FolderEntry(this.icon, this.folder);
+  final IconData icon;
+  final InboxFolder folder;
+}
+
+const List<_FolderEntry> _folderEntries = [
+  _FolderEntry(Icons.inbox_outlined, InboxFolder.inbox),
+  _FolderEntry(Icons.star_outline, InboxFolder.starred),
+  _FolderEntry(Icons.access_time, InboxFolder.snoozed),
+  _FolderEntry(Icons.send_outlined, InboxFolder.sent),
+  _FolderEntry(Icons.edit_outlined, InboxFolder.drafts),
+  _FolderEntry(Icons.schedule_send_outlined, InboxFolder.scheduled),
+  _FolderEntry(Icons.archive_outlined, InboxFolder.archive),
+  _FolderEntry(Icons.delete_outline, InboxFolder.trash),
+  _FolderEntry(Icons.shield_outlined, InboxFolder.spam),
+  _FolderEntry(Icons.all_inbox_outlined, InboxFolder.all),
+];
+
 class _FolderItem extends StatelessWidget {
   const _FolderItem({
     required this.icon,
     required this.label,
+    required this.onTap,
     this.isActive = false,
-    this.badge,
   });
   final IconData icon;
   final String label;
   final bool isActive;
-  final int? badge;
+  final VoidCallback onTap;
+  // Per-folder unread badges will land in Phase F together with real
+  // labels — the API still needs an unread-by-folder endpoint.
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +228,7 @@ class _FolderItem extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {},
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
           color: isActive ? AppColors.accentDim : Colors.transparent,
@@ -208,13 +246,6 @@ class _FolderItem extends StatelessWidget {
                   ),
                 ),
               ),
-              if (badge != null)
-                Text(
-                  '$badge',
-                  style: AppTextStyles.monoSmall.copyWith(
-                    color: isActive ? AppColors.accent : AppColors.textTertiary,
-                  ),
-                ),
             ],
           ),
         ),
