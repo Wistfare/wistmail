@@ -10,7 +10,7 @@ import { EmailSender, EMAIL_STATUS } from '../services/email-sender.js'
 import { checkAndReserveSend, refundSend } from '../services/send-rate-limit.js'
 import { getDb } from '../lib/db.js'
 import { eventBus } from '../events/bus.js'
-import { parseIcs, buildRsvpReply, type RsvpResponse } from '../lib/ics.js'
+import { parseIcsSafely, buildRsvpReply, type RsvpResponse } from '../lib/ics.js'
 import { pathForAttachment } from '../lib/attachment-storage.js'
 import {
   TRASH_RETENTION_DAYS,
@@ -528,7 +528,7 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
       413,
     )
   }
-  const invite = parseIcs(icsText)
+  const invite = await parseIcsSafely(icsText)
   if (!invite || !invite.organizer?.email) {
     await refundSend(userId)
     return c.json(

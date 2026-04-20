@@ -263,7 +263,7 @@ class _Body extends ConsumerWidget {
           const SizedBox(height: 8),
           // Real labels from the API. Falls back to nothing while
           // loading; we never want to flash the keyword-based fakes.
-          _LabelsRow(emailId: email.id),
+          _LabelsRow(email: email),
           const SizedBox(height: 16),
           const Divider(color: AppColors.border, height: 1),
           const SizedBox(height: 16),
@@ -324,23 +324,33 @@ class _Body extends ConsumerWidget {
 /// Renders the real labels assigned to this email. Empty + collapsed
 /// while loading or when nothing is assigned — the previous keyword-
 /// based heuristic is gone.
+/// Labels strip on the email detail view. Reads straight off the
+/// email object rather than firing its own fetch — the
+/// /inbox/emails/:id response already bakes in `labels` the same way
+/// the list response does. Kept here as a dedicated widget because
+/// the detail screen invalidates `labelsForEmailProvider` on the
+/// label-assign flow; when that happens we re-watch and re-render.
 class _LabelsRow extends ConsumerWidget {
-  const _LabelsRow({required this.emailId});
-  final String emailId;
+  const _LabelsRow({required this.email});
+  final Email email;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final labels = ref.watch(labelsForEmailProvider(emailId));
-    return labels.maybeWhen(
-      data: (list) {
-        if (list.isEmpty) return const SizedBox.shrink();
-        return Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [for (final l in list) WmTag(label: l.name, color: l.swatch)],
-        );
-      },
-      orElse: () => const SizedBox.shrink(),
+    // After a label-assign edit we invalidate the per-email label
+    // provider; watching it here means we pick up the fresh labels
+    // without needing a separate in-memory subscription.
+    final freshLabels = ref.watch(labelsForEmailProvider(email.id));
+    final list = freshLabels.maybeWhen(
+      data: (rows) => rows
+          .map((l) => EmailLabelRef(id: l.id, name: l.name, color: l.color))
+          .toList(),
+      orElse: () => email.labels,
+    );
+    if (list.isEmpty) return const SizedBox.shrink();
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [for (final l in list) WmTag(label: l.name, color: l.swatch)],
     );
   }
 }

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { emails, attachments, mailboxes, labels, emailLabels } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
-import { parseIcs } from '../lib/ics.js'
+import { parseIcsSafely } from '../lib/ics.js'
 import { pathForAttachment } from '../lib/attachment-storage.js'
 
 const PREVIEW_CHARS = 200
@@ -292,7 +292,10 @@ export class EmailService {
         if (!isIcs) return a
         try {
           const bytes = await readFile(pathForAttachment(a.id), 'utf8')
-          const parsed = parseIcs(bytes)
+          // Worker-thread parse — ical.js runs off the main loop
+          // so a hostile invite with a catastrophic-backtracking
+          // regex can't stall serving the rest of the API.
+          const parsed = await parseIcsSafely(bytes)
           if (parsed) return { ...a, parsedIcs: parsed }
         } catch (err) {
           // Storage miss or parse explosion — the chip falls back to

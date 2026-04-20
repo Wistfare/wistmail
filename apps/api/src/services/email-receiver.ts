@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { simpleParser } from 'mailparser'
-import type { Attachment } from 'mailparser'
+import { simpleParser, type ParsedMail, type AddressObject } from 'mailparser'
 import { attachments as attachmentsTable, emails, mailboxes, domains } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
@@ -18,7 +17,11 @@ interface InboundEmail {
   rawData: string
 }
 
-interface ParsedEmail {
+/// Narrow projection of mailparser's `ParsedMail` with the fields we
+/// actually consume. Keeps call sites from reaching into the full
+/// mailparser type (which carries a ton of metadata we don't need)
+/// and makes it obvious what the downstream insert depends on.
+interface NormalisedEmail {
   messageId: string
   from: string
   to: string[]
@@ -30,11 +33,24 @@ interface ParsedEmail {
   inReplyTo: string | null
   references: string[]
   headers: Record<string, string>
+  attachments: NormalisedAttachment[]
+}
+
+interface NormalisedAttachment {
+  id: string
+  filename: string
+  contentType: string
+  sizeBytes: number
+  content: Buffer
+  cid: string | null
 }
 
 /**
  * EmailReceiver processes inbound emails from the SMTP server.
- * Parses the raw MIME data and stores it in the database.
+ * Parses the raw MIME data with mailparser (single pass — the old
+ * hand-rolled parser was deleted when we added attachment support
+ * because running both was 2× the allocations on large messages)
+ * and stores it in the database.
  */
 export class EmailReceiver {
   constructor(private db: Database) {}
@@ -43,17 +59,32 @@ export class EmailReceiver {
    * Process an inbound email received from the SMTP server.
    */
   async processInbound(inbound: InboundEmail): Promise<{ stored: boolean; emailId?: string; error?: string }> {
-    // Parse the raw MIME message
-    const parsed = this.parseRawEmail(inbound.rawData)
+    // Single parse. Fails closed: if mailparser can't cope we bail
+    // out of the whole message rather than storing a half-parsed
+    // row. Hand-rolled parser used to catch some of these but the
+    // correctness tradeoffs (bad multipart boundaries, corrupt
+    // encodings silently kept) were worse than a bounce.
+    let parsed: NormalisedEmail
+    try {
+      parsed = await this.parseWithMailparser(inbound)
+    } catch (err) {
+      console.error('[email-receiver] mailparser failed:', err)
+      return { stored: false, error: 'parse failed' }
+    }
 
-    // Find the matching mailbox for each recipient
+    // Find the matching mailbox for each recipient. First match
+    // wins: if the same message is addressed to two of the user's
+    // aliases, it lands in the first mailbox we resolve. We don't
+    // multiply the row across mailboxes because the thread would
+    // then fan out twice in every folder — one message, multiple
+    // copies — which is a worse UX than having the user search
+    // by original recipient.
     for (const recipientAddr of inbound.to) {
       const localPart = recipientAddr.split('@')[0]
       const domainPart = recipientAddr.split('@')[1]
 
       if (!localPart || !domainPart) continue
 
-      // Find mailbox matching this address
       const mailboxResult = await this.db
         .select()
         .from(mailboxes)
@@ -80,13 +111,12 @@ export class EmailReceiver {
       const fromAddress = parsed.from || inbound.from
       const createdAt = parsed.date || new Date()
 
-      // Extract attachments via mailparser. The hand-rolled parser
-      // above only handles top-level text/html, so we layer the
-      // proper MIME walker on top here. Attachment bytes go to disk
-      // (filesystem storage); a row in `attachments` carries the
-      // metadata + storage_key the download endpoint streams from.
-      const extractedAttachments = await this.extractAttachments(
-        inbound.rawData,
+      // Persist attachment bytes to disk before we insert the email
+      // row — if the disk write fails we don't want a row pointing
+      // at nothing. Any individual failure is logged and skipped;
+      // the rest of the message still lands.
+      const persistedAttachments = await this.persistAttachments(
+        parsed.attachments,
       )
 
       await this.db.insert(emails).values({
@@ -110,9 +140,9 @@ export class EmailReceiver {
         createdAt,
       })
 
-      if (extractedAttachments.length > 0) {
+      if (persistedAttachments.length > 0) {
         await this.db.insert(attachmentsTable).values(
-          extractedAttachments.map((a) => ({
+          persistedAttachments.map((a) => ({
             id: a.id,
             emailId,
             filename: a.filename,
@@ -125,7 +155,7 @@ export class EmailReceiver {
 
       const snippet = (parsed.textBody ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)
       const preview = snippet.slice(0, 140)
-      const hasAttachments = extractedAttachments.length > 0
+      const hasAttachments = persistedAttachments.length > 0
 
       // Carry the full slim list-row payload so subscribers (web/mobile)
       // can render the new inbox row without a follow-up fetch.
@@ -186,14 +216,84 @@ export class EmailReceiver {
     return { stored: false, error: 'No matching mailbox found' }
   }
 
-  /**
-   * Walk the raw MIME and persist every attachment to filesystem
-   * storage. Returns the metadata rows the caller inserts into
-   * `attachments`. Failures here don't abort the email — we log
-   * and continue with whatever attachments DID succeed (better to
-   * deliver the message with a missing PDF than not at all).
-   */
-  private async extractAttachments(raw: string): Promise<
+  /// Run mailparser once and normalise the result into the slimmer
+  /// shape the rest of the pipeline expects. Every downstream
+  /// consumer (DB insert, search indexer, FCM push) reads from the
+  /// same `NormalisedEmail` so there's one source of truth for what
+  /// "the inbound message looked like".
+  private async parseWithMailparser(
+    inbound: InboundEmail,
+  ): Promise<NormalisedEmail> {
+    const parsed: ParsedMail = await simpleParser(inbound.rawData, {
+      skipHtmlToText: true, // we index text/html separately
+      skipTextLinks: true,
+    })
+
+    const addresses = (a: AddressObject | AddressObject[] | undefined): string[] => {
+      if (!a) return []
+      const list = Array.isArray(a) ? a : [a]
+      return list
+        .flatMap((one) => one.value.map((v) => v.address?.toLowerCase().trim()))
+        .filter((x): x is string => !!x)
+    }
+
+    const headers: Record<string, string> = {}
+    for (const [k, v] of parsed.headers) {
+      // mailparser stores Map values as strings or structured objects
+      // depending on header; coerce to a plain string so the `emails`
+      // jsonb column has a predictable shape.
+      headers[k] = typeof v === 'string' ? v : String(v)
+    }
+
+    const inReplyTo =
+      typeof parsed.inReplyTo === 'string'
+        ? parsed.inReplyTo.replace(/[<>]/g, '')
+        : null
+    const references: string[] = Array.isArray(parsed.references)
+      ? parsed.references.map((r) => r.replace(/[<>]/g, ''))
+      : parsed.references
+        ? [parsed.references.replace(/[<>]/g, '')]
+        : []
+
+    const inboundAttachments: NormalisedAttachment[] = (parsed.attachments ?? [])
+      .filter((a) => a.size > 0 && !!a.content)
+      .map((a) => ({
+        id: newAttachmentId(),
+        filename:
+          a.filename ||
+          (a.contentId ? a.contentId.replace(/[<>]/g, '') : 'attachment'),
+        contentType: a.contentType || 'application/octet-stream',
+        sizeBytes: a.size,
+        content: a.content,
+        cid: a.contentId ? a.contentId.replace(/[<>]/g, '') : null,
+      }))
+
+    const fromAddr = parsed.from?.value[0]?.address?.toLowerCase() ?? ''
+
+    return {
+      messageId: (parsed.messageId ?? '').replace(/[<>]/g, ''),
+      from: fromAddr,
+      to: addresses(parsed.to),
+      cc: addresses(parsed.cc),
+      subject: parsed.subject ?? '',
+      textBody: parsed.text ?? null,
+      htmlBody: parsed.html === false ? null : parsed.html ?? null,
+      date: parsed.date ?? new Date(),
+      inReplyTo,
+      references,
+      headers,
+      attachments: inboundAttachments,
+    }
+  }
+
+  /// Write each attachment's bytes to filesystem storage and return
+  /// the rows the caller will insert into `attachments`. Failures
+  /// here don't abort the email — we log and continue with whatever
+  /// attachments DID succeed (better to deliver the message with a
+  /// missing PDF than not at all).
+  private async persistAttachments(
+    atts: NormalisedAttachment[],
+  ): Promise<
     Array<{
       id: string
       filename: string
@@ -203,15 +303,6 @@ export class EmailReceiver {
       cid: string | null
     }>
   > {
-    let mimeAttachments: Attachment[]
-    try {
-      const parsed = await simpleParser(raw)
-      mimeAttachments = parsed.attachments ?? []
-    } catch (err) {
-      console.error('[email-receiver] mailparser failed:', err)
-      return []
-    }
-
     const out: Array<{
       id: string
       filename: string
@@ -220,192 +311,24 @@ export class EmailReceiver {
       storageKey: string
       cid: string | null
     }> = []
-    for (const att of mimeAttachments) {
-      // Skip tiny inline images that some clients ship for tracking.
-      if (att.size === 0 || !att.content) continue
-      const id = newAttachmentId()
+    for (const att of atts) {
       try {
-        const storageKey = await putAttachment(id, att.content)
+        const storageKey = await putAttachment(att.id, att.content)
         out.push({
-          id,
-          filename:
-            att.filename ||
-            (att.contentId ? att.contentId.replace(/[<>]/g, '') : 'attachment'),
-          contentType: att.contentType || 'application/octet-stream',
-          sizeBytes: att.size,
+          id: att.id,
+          filename: att.filename,
+          contentType: att.contentType,
+          sizeBytes: att.sizeBytes,
           storageKey,
-          cid: att.contentId
-            ? att.contentId.replace(/[<>]/g, '')
-            : null,
+          cid: att.cid,
         })
       } catch (err) {
         console.error(
-          `[email-receiver] failed to store attachment ${id}:`,
+          `[email-receiver] failed to store attachment ${att.id}:`,
           err,
         )
       }
     }
     return out
-  }
-
-  /**
-   * Parse a raw RFC 5322 email message into structured data.
-   */
-  private parseRawEmail(raw: string): ParsedEmail {
-    const result: ParsedEmail = {
-      messageId: '',
-      from: '',
-      to: [],
-      cc: [],
-      subject: '',
-      textBody: null,
-      htmlBody: null,
-      date: new Date(),
-      inReplyTo: null,
-      references: [],
-      headers: {},
-    }
-
-    // Split headers and body
-    const headerBodySplit = raw.indexOf('\r\n\r\n')
-    const headerSection = headerBodySplit > 0 ? raw.substring(0, headerBodySplit) : raw
-    const bodySection = headerBodySplit > 0 ? raw.substring(headerBodySplit + 4) : ''
-
-    // Parse headers (handle folded headers)
-    const unfoldedHeaders = headerSection.replace(/\r\n[ \t]+/g, ' ')
-    const headerLines = unfoldedHeaders.split('\r\n')
-
-    for (const line of headerLines) {
-      const colonIdx = line.indexOf(':')
-      if (colonIdx === -1) continue
-      const name = line.substring(0, colonIdx).trim().toLowerCase()
-      const value = line.substring(colonIdx + 1).trim()
-
-      result.headers[name] = value
-
-      switch (name) {
-        case 'message-id':
-          result.messageId = value.replace(/[<>]/g, '')
-          break
-        case 'from':
-          result.from = this.extractEmailAddress(value)
-          break
-        case 'to':
-          result.to = this.extractEmailAddresses(value)
-          break
-        case 'cc':
-          result.cc = this.extractEmailAddresses(value)
-          break
-        case 'subject':
-          result.subject = this.decodeSubject(value)
-          break
-        case 'date':
-          try {
-            result.date = new Date(value)
-          } catch {
-            result.date = new Date()
-          }
-          break
-        case 'in-reply-to':
-          result.inReplyTo = value.replace(/[<>]/g, '')
-          break
-        case 'references':
-          result.references = value
-            .split(/\s+/)
-            .map((r) => r.replace(/[<>]/g, ''))
-            .filter(Boolean)
-          break
-      }
-    }
-
-    // Parse body based on content type
-    const contentType = result.headers['content-type'] || 'text/plain'
-
-    // Get content-transfer-encoding from headers
-    const transferEncoding = result.headers['content-transfer-encoding'] || ''
-
-    if (contentType.includes('multipart/')) {
-      const boundaryMatch = contentType.match(/boundary="?([^";\s]+)"?/)
-      if (boundaryMatch) {
-        const boundary = boundaryMatch[1]
-        this.parseMultipart(bodySection, boundary, result)
-      }
-    } else if (contentType.includes('text/html')) {
-      result.htmlBody = this.decodeBody(bodySection, transferEncoding)
-    } else {
-      result.textBody = this.decodeBody(bodySection, transferEncoding)
-    }
-
-    return result
-  }
-
-  /**
-   * Parse multipart MIME body.
-   */
-  private parseMultipart(body: string, boundary: string, result: ParsedEmail): void {
-    const parts = body.split(`--${boundary}`)
-
-    for (const part of parts) {
-      if (part.startsWith('--') || part.trim() === '') continue
-
-      const partHeaderEnd = part.indexOf('\r\n\r\n')
-      if (partHeaderEnd === -1) continue
-
-      const partHeaders = part.substring(0, partHeaderEnd).toLowerCase()
-      const partBody = part.substring(partHeaderEnd + 4).replace(/\r\n$/, '')
-
-      if (partHeaders.includes('multipart/')) {
-        const nestedBoundaryMatch = partHeaders.match(/boundary="?([^";\s]+)"?/)
-        if (nestedBoundaryMatch) {
-          this.parseMultipart(partBody, nestedBoundaryMatch[1], result)
-        }
-      } else if (partHeaders.includes('text/html')) {
-        result.htmlBody = this.decodeBody(partBody, partHeaders)
-      } else if (partHeaders.includes('text/plain')) {
-        result.textBody = this.decodeBody(partBody, partHeaders)
-      }
-    }
-  }
-
-  /** Decode quoted-printable or base64 content based on transfer encoding */
-  private decodeBody(body: string, headers: string): string {
-    const lowerHeaders = headers.toLowerCase()
-    if (lowerHeaders.includes('quoted-printable')) {
-      return body
-        .replace(/=\r?\n/g, '') // soft line breaks
-        .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    }
-    if (lowerHeaders.includes('base64')) {
-      try {
-        return Buffer.from(body.replace(/\s/g, ''), 'base64').toString('utf-8')
-      } catch {
-        return body
-      }
-    }
-    return body
-  }
-
-  private extractEmailAddress(value: string): string {
-    const match = value.match(/<([^>]+)>/)
-    if (match) return match[1].toLowerCase()
-    return value.trim().toLowerCase()
-  }
-
-  private extractEmailAddresses(value: string): string[] {
-    return value
-      .split(',')
-      .map((addr) => this.extractEmailAddress(addr))
-      .filter(Boolean)
-  }
-
-  private decodeSubject(value: string): string {
-    // Decode RFC 2047 encoded words (basic implementation)
-    return value.replace(/=\?([^?]+)\?([BbQq])\?([^?]+)\?=/g, (_match, _charset, encoding, text) => {
-      if (encoding.toUpperCase() === 'B') {
-        return Buffer.from(text, 'base64').toString('utf-8')
-      }
-      // Q encoding
-      return text.replace(/_/g, ' ').replace(/=([0-9A-F]{2})/gi, (_: string, hex: string) => String.fromCharCode(parseInt(hex, 16)))
-    })
   }
 }
