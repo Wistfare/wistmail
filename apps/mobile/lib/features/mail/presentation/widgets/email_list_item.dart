@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_tag.dart';
+import '../../../labels/presentation/providers/labels_providers.dart';
 import '../../domain/email.dart';
 
 /// Mobile/Inbox row — sharp, full-width, separated by 1px hairlines.
-class EmailListItem extends StatelessWidget {
+class EmailListItem extends ConsumerWidget {
   const EmailListItem({super.key, required this.email});
 
   final Email email;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final unread = !email.isRead;
     return Material(
       color: Colors.transparent,
@@ -99,29 +101,44 @@ class EmailListItem extends StatelessWidget {
                   ),
                 ),
               ],
-              if (_tagFor(email) != null) ...[
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.only(left: 18),
-                  child: _tagFor(email)!,
-                ),
-              ],
+              // Real labels — fetched on demand from /labels/email/:id.
+              // The autoDispose family caches per-email, so scrolling
+              // back to a row reuses the result instead of refetching.
+              _RowLabels(emailId: email.id),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget? _tagFor(Email e) {
-    final s = e.subject.toLowerCase();
-    if (s.contains('priority') || s.contains('urgent')) {
-      return const WmTag(label: 'Priority', color: AppColors.tagPriority);
-    }
-    if (s.contains('digest') || s.contains('weekly')) {
-      return const WmTag(label: 'Digest', color: AppColors.tagDigest);
-    }
-    return null;
+/// Inline labels strip rendered under the row preview. Empty +
+/// collapsed when the email has no labels (the common case) so
+/// untagged rows aren't visually heavier than they were before.
+class _RowLabels extends ConsumerWidget {
+  const _RowLabels({required this.emailId});
+  final String emailId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final labels = ref.watch(labelsForEmailProvider(emailId));
+    return labels.maybeWhen(
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(left: 18, top: 6),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final l in list) WmTag(label: l.name, color: l.swatch),
+            ],
+          ),
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
   }
 }
 

@@ -10,6 +10,7 @@ import '../../../../core/widgets/wm_app_bar.dart';
 import '../../../../core/widgets/wm_avatar.dart';
 import '../../../../core/widgets/wm_tag.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
+import '../../../labels/presentation/providers/labels_providers.dart';
 import '../../data/mail_actions.dart';
 import '../../domain/compose_args.dart';
 import '../../domain/email.dart';
@@ -59,6 +60,10 @@ class EmailDetailScreen extends ConsumerWidget {
                   extra: ComposeFromEmail.forward(email),
                 );
               },
+            ),
+            _IconAction(
+              icon: Icons.label_outline,
+              onPressed: () => context.push('/email/${email.id}/labels'),
             ),
             _IconAction(
               icon: Icons.archive_outlined,
@@ -153,13 +158,13 @@ class _IconAction extends StatelessWidget {
   }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends ConsumerWidget {
   const _Body({required this.email, required this.onToggleStar});
   final Email email;
   final VoidCallback onToggleStar;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       child: Column(
@@ -197,12 +202,9 @@ class _Body extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          // Tags row (heuristic until backend returns labels)
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _tagsFor(email),
-          ),
+          // Real labels from the API. Falls back to nothing while
+          // loading; we never want to flash the keyword-based fakes.
+          _LabelsRow(emailId: email.id),
           const SizedBox(height: 16),
           const Divider(color: AppColors.border, height: 1),
           const SizedBox(height: 16),
@@ -258,15 +260,28 @@ class _Body extends StatelessWidget {
     );
   }
 
-  List<Widget> _tagsFor(Email e) {
-    final s = e.subject.toLowerCase();
-    final tags = <Widget>[];
-    if (s.contains('priority') || s.contains('urgent')) {
-      tags.add(const WmTag(label: 'Priority', color: AppColors.tagPriority));
-    }
-    if (s.contains('work') || s.contains('roadmap')) {
-      tags.add(const WmTag(label: 'Work', color: AppColors.tagWork));
-    }
-    return tags;
+}
+
+/// Renders the real labels assigned to this email. Empty + collapsed
+/// while loading or when nothing is assigned — the previous keyword-
+/// based heuristic is gone.
+class _LabelsRow extends ConsumerWidget {
+  const _LabelsRow({required this.emailId});
+  final String emailId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final labels = ref.watch(labelsForEmailProvider(emailId));
+    return labels.maybeWhen(
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        return Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [for (final l in list) WmTag(label: l.name, color: l.swatch)],
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
   }
 }

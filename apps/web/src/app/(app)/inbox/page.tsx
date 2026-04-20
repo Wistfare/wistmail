@@ -21,7 +21,9 @@ import {
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useCompose } from '@/components/email/compose-provider'
+import { LabelAssignPopover } from '@/components/email/label-assign-popover'
 import { api } from '@/lib/api-client'
+import { useLabelsForEmail } from '@/lib/labels'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import {
   type EmailListItem,
@@ -406,6 +408,7 @@ export default function InboxPage() {
                   onRetry={() => handleRetrySend(email.id)}
                 />
               </div>
+              <RowLabels emailId={email.id} />
             </button>
           ))}
 
@@ -449,7 +452,12 @@ export default function InboxPage() {
                 className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
                 onClick={() => handleArchive(selectedFull.id)}
               />
-              <Tag className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
+              <LabelAssignPopover
+                emailId={selectedFull.id}
+                trigger={
+                  <Tag className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
+                }
+              />
               <Trash2
                 className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
                 onClick={() => handleDelete(selectedFull.id)}
@@ -567,5 +575,28 @@ function SendStatusPill({
       <RefreshCw className="h-2.5 w-2.5" />
       Retry
     </button>
+  )
+}
+
+/// Tiny chip strip rendered under the row preview. Empty + collapsed
+/// when the email has no labels (the common case). Uses a separate
+/// component so the row-level component doesn't need to be a
+/// QueryClient consumer for unrelated reasons.
+function RowLabels({ emailId }: { emailId: string }) {
+  const { data } = useLabelsForEmail(emailId)
+  if (!data || data.length === 0) return null
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {data.map((l) => (
+        <span
+          key={l.id}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase"
+          style={{ backgroundColor: `${l.color}22`, color: l.color }}
+        >
+          <span className="h-1.5 w-1.5" style={{ backgroundColor: l.color }} />
+          {l.name}
+        </span>
+      ))}
+    </div>
   )
 }
