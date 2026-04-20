@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/local/local_providers.dart';
+import 'core/messaging/root_messenger.dart';
 import 'core/theme/app_theme.dart';
 import 'router/app_router.dart';
 
@@ -29,6 +30,10 @@ class _Root extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       routerConfig: router,
+      // Global SnackBar host — used by screens that pop themselves
+      // right after triggering a reversible action (archive,
+      // delete, etc.) so the undo affordance survives the pop.
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
     );
   }
 }

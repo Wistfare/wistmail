@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/messaging/root_messenger.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_app_bar.dart';
@@ -83,6 +84,44 @@ class EmailDetailScreen extends ConsumerWidget {
                       .read(inboxControllerProvider.notifier)
                       .removeLocal(email.id);
                 }
+                // Root-messenger SnackBar so the UNDO survives the
+                // route pop below. Route-local messenger would die
+                // with the detail scaffold.
+                showRootSnackBar(
+                  SnackBar(
+                    content: const Text('Archived.'),
+                    duration: const Duration(seconds: 6),
+                    action: SnackBarAction(
+                      label: 'UNDO',
+                      textColor: AppColors.accent,
+                      onPressed: () async {
+                        try {
+                          final r =
+                              await ref.read(mailRepositoryProvider.future);
+                          // Send it back to inbox — we don't track
+                          // the source folder, but archiving from
+                          // anywhere else is uncommon and the user
+                          // can re-file if needed.
+                          await r.batchAction(
+                            ids: [email.id],
+                            action: 'move',
+                            folder: 'inbox',
+                          );
+                          ref
+                              .read(inboxControllerProvider.notifier)
+                              .refresh();
+                        } catch (_) {
+                          showRootSnackBar(
+                            const SnackBar(
+                              content: Text('Undo failed.'),
+                              backgroundColor: AppColors.danger,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                );
                 if (context.mounted) context.pop();
               },
             ),
@@ -156,6 +195,37 @@ class EmailDetailScreen extends ConsumerWidget {
                       .read(inboxControllerProvider.notifier)
                       .removeLocal(email.id);
                 }
+                showRootSnackBar(
+                  SnackBar(
+                    content: const Text('Moved to Trash.'),
+                    duration: const Duration(seconds: 6),
+                    action: SnackBarAction(
+                      label: 'UNDO',
+                      textColor: AppColors.accent,
+                      onPressed: () async {
+                        try {
+                          final r =
+                              await ref.read(mailRepositoryProvider.future);
+                          await r.batchAction(
+                            ids: [email.id],
+                            action: 'move',
+                            folder: 'inbox',
+                          );
+                          ref
+                              .read(inboxControllerProvider.notifier)
+                              .refresh();
+                        } catch (_) {
+                          showRootSnackBar(
+                            const SnackBar(
+                              content: Text('Undo failed.'),
+                              backgroundColor: AppColors.danger,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                );
                 if (context.mounted) context.pop();
               },
             ),
