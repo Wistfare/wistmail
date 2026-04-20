@@ -437,6 +437,7 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
       contentType: attachments.contentType,
       filename: attachments.filename,
       storageKey: attachments.storageKey,
+      rsvpResponse: attachments.rsvpResponse,
       mailboxAddress: mailboxes.address,
       mailboxDisplayName: mailboxes.displayName,
       senderAddress: emails.fromAddress,
@@ -461,6 +462,16 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
     )
   }
   const row = rows[0]
+
+  // Dedupe: if the user already responded with the same choice, no
+  // need to send a second reply. If they're changing their mind
+  // (accept → decline), we let the new reply through and stamp the
+  // new choice over the old one. Without this guard a user could
+  // spam the organizer by tapping "Yes" repeatedly.
+  if (row.rsvpResponse === response) {
+    await refundSend(userId)
+    return c.json({ ok: true, response, deduped: true })
+  }
 
   // Only genuine calendar attachments are eligible. Without this the
   // endpoint would happily parse a PDF or PNG as ICS and extract a
@@ -634,6 +645,15 @@ inboxRoutes.post('/emails/:id/attachments/:aid/rsvp', async (c) => {
       isTimeout ? 504 : 502,
     )
   }
+
+  // Record the response so subsequent POSTs can dedupe and the
+  // client can re-render the confirmation pill after navigating away
+  // and back. Fire-and-forget — a stale read won't cause a double
+  // send because the dedupe check above runs on every request.
+  await db
+    .update(attachments)
+    .set({ rsvpResponse: response, rsvpRespondedAt: new Date() })
+    .where(eq(attachments.id, attachmentId))
 
   return c.json({ ok: true, response })
 })

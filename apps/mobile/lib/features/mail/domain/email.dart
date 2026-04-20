@@ -259,6 +259,7 @@ class EmailAttachment {
     required this.contentType,
     required this.sizeBytes,
     this.parsedIcs,
+    this.rsvpResponse,
   });
 
   final String id;
@@ -271,6 +272,11 @@ class EmailAttachment {
   /// RSVP buttons instead of the generic placeholder.
   final ParsedIcs? parsedIcs;
 
+  /// Server-persisted last RSVP choice — one of 'accept', 'tentative',
+  /// 'decline', or null if the user hasn't responded. Seeds the ICS
+  /// card's confirmation pill so it survives navigation.
+  final String? rsvpResponse;
+
   factory EmailAttachment.fromJson(Map<String, dynamic> json) {
     return EmailAttachment(
       id: json['id'] as String,
@@ -280,6 +286,7 @@ class EmailAttachment {
       parsedIcs: json['parsedIcs'] is Map<String, dynamic>
           ? ParsedIcs.fromJson(json['parsedIcs'] as Map<String, dynamic>)
           : null,
+      rsvpResponse: json['rsvpResponse'] as String?,
     );
   }
 }

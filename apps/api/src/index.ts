@@ -135,6 +135,11 @@ async function ensureSchema() {
       filename varchar(255) NOT NULL, content_type varchar(255) NOT NULL,
       size_bytes int NOT NULL DEFAULT 0, storage_key text NOT NULL
     )`,
+    // RSVP state on calendar invite attachments (null for everything
+    // else). Lets the client render "You accepted this" without a
+    // second round trip and blocks double-RSVPs.
+    `ALTER TABLE attachments ADD COLUMN IF NOT EXISTS rsvp_response varchar(16)`,
+    `ALTER TABLE attachments ADD COLUMN IF NOT EXISTS rsvp_responded_at timestamptz`,
     // Idempotent column adds for the drafts-as-outbox lifecycle
     // (status / sendError / sendAttempts / lastAttemptAt / updatedAt).
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS status varchar(16) NOT NULL DEFAULT 'idle'`,

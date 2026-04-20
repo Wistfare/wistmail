@@ -11,8 +11,8 @@
 /// can swap the implementation behind these functions for the s3
 /// SDK; the call sites don't change.
 
-import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { mkdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { createReadStream } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { Readable } from 'node:stream'
@@ -72,8 +72,17 @@ export function newAttachmentId(): string {
   return `att_${randomBytes(16).toString('hex')}`
 }
 
-/// SHA-256 of the bytes — useful for dedup. Not used for security; we
-/// rely on storage permissions for that.
-export function checksumBytes(bytes: Buffer | Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex')
+/// Hard-delete the on-disk bytes for an attachment id. Tolerant of
+/// missing files — the caller is usually the retention / empty-trash
+/// path and we don't want a stale row to abort the purge. Returns
+/// true if the file existed and was removed.
+export async function deleteAttachmentBytes(id: string): Promise<boolean> {
+  const file = pathForAttachment(id)
+  try {
+    await unlink(file)
+    return true
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw err
+  }
 }

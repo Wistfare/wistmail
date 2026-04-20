@@ -218,6 +218,21 @@ class _IcsCardState extends ConsumerState<_IcsCard> {
   _RsvpChoice? _sending;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    // Seed from the server-persisted choice so the confirmation pill
+    // survives navigation. Without this, backing out of the email
+    // detail and returning re-enables the buttons and invites a
+    // second RSVP.
+    _confirmed = switch (widget.attachment.rsvpResponse) {
+      'accept' => _RsvpChoice.accept,
+      'tentative' => _RsvpChoice.tentative,
+      'decline' => _RsvpChoice.decline,
+      _ => null,
+    };
+  }
+
   Future<void> _send(_RsvpChoice choice) async {
     if (_sending != null) return;
     setState(() {

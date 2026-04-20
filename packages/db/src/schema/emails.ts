@@ -105,6 +105,13 @@ export const attachments = pgTable(
     contentType: varchar('content_type', { length: 127 }).notNull(),
     sizeBytes: integer('size_bytes').notNull(),
     storageKey: text('storage_key').notNull(),
+    // RSVP state — only set when the attachment is a text/calendar
+    // invite the user responded to. Stored here (rather than a
+    // separate table) because there's at most one response per
+    // attachment and we want it to come along for free on the list
+    // response. Values: 'accept' | 'tentative' | 'decline' | null.
+    rsvpResponse: varchar('rsvp_response', { length: 16 }),
+    rsvpRespondedAt: timestamp('rsvp_responded_at'),
   },
   (table) => [index('attachments_email_id_idx').on(table.emailId)],
 )

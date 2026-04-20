@@ -80,6 +80,11 @@ export interface FullEmail extends EmailListItem {
     contentType: string
     sizeBytes: number
     parsedIcs?: ParsedIcs
+    /// Last RSVP choice the user sent for this invite, if any.
+    /// Preserved across sessions so the ICS card can show "You
+    /// accepted this" without the user having to re-respond.
+    rsvpResponse?: 'accept' | 'tentative' | 'decline' | null
+    rsvpRespondedAt?: string | null
   }>
 }
 

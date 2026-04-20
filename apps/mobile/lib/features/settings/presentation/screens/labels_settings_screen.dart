@@ -398,6 +398,11 @@ class _LabelRowState extends ConsumerState<_LabelRow> {
       _ctrl.text = widget.label.name;
       return;
     }
+    // Capture the messenger before awaiting — using `context` after
+    // an async gap is an analyzer warning (`use_build_context_
+    // synchronously`) even when we mounted-check. The messenger is
+    // a state reference, not a context, so it survives the gap.
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
       final repo = await ref.read(labelsRepositoryProvider.future);
@@ -406,13 +411,14 @@ class _LabelRowState extends ConsumerState<_LabelRow> {
     } catch (err) {
       if (!mounted) return;
       _ctrl.text = widget.label.name;
-      _showSnack('Rename failed: $err');
+      _snack(messenger, 'Rename failed: $err');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _pickColor(String color) async {
+    final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _showColors = false;
       _busy = true;
@@ -423,13 +429,14 @@ class _LabelRowState extends ConsumerState<_LabelRow> {
       ref.invalidate(labelsListProvider);
     } catch (err) {
       if (!mounted) return;
-      _showSnack('Colour change failed: $err');
+      _snack(messenger, 'Colour change failed: $err');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _confirmDelete() async {
+    final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -483,14 +490,14 @@ class _LabelRowState extends ConsumerState<_LabelRow> {
       ref.invalidate(labelsListProvider);
     } catch (err) {
       if (!mounted) return;
-      _showSnack('Delete failed: $err');
+      _snack(messenger, 'Delete failed: $err');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
+  void _snack(ScaffoldMessengerState messenger, String msg) {
+    messenger.showSnackBar(
       SnackBar(content: Text(msg), backgroundColor: AppColors.danger),
     );
   }

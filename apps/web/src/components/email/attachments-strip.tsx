@@ -22,6 +22,7 @@ interface Attachment {
   contentType: string
   sizeBytes: number
   parsedIcs?: ParsedIcs
+  rsvpResponse?: 'accept' | 'tentative' | 'decline' | null
 }
 
 /// Full attachment chip strip rendered in the email-detail header.
@@ -116,7 +117,11 @@ function IcsCard({
   attachment: Attachment
 }) {
   const parsed = attachment.parsedIcs
-  const [lastResponse, setLastResponse] = useState<RsvpResponse | null>(null)
+  // Seed from the server-persisted choice so navigating away and back
+  // preserves "You accepted this" without the user having to re-send.
+  const [lastResponse, setLastResponse] = useState<RsvpResponse | null>(
+    (attachment.rsvpResponse as RsvpResponse | null | undefined) ?? null,
+  )
   const [sending, setSending] = useState<RsvpResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 

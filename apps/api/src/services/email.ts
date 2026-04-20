@@ -266,7 +266,16 @@ export class EmailService {
 
     const email = result[0].emails
     const emailAttachments = await this.db
-      .select()
+      .select({
+        id: attachments.id,
+        emailId: attachments.emailId,
+        filename: attachments.filename,
+        contentType: attachments.contentType,
+        sizeBytes: attachments.sizeBytes,
+        storageKey: attachments.storageKey,
+        rsvpResponse: attachments.rsvpResponse,
+        rsvpRespondedAt: attachments.rsvpRespondedAt,
+      })
       .from(attachments)
       .where(eq(attachments.emailId, emailId))
 
