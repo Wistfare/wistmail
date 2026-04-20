@@ -91,6 +91,30 @@ class MailRemoteDataSource {
     return (response.data?['retentionDays'] as num?)?.toInt() ?? 30;
   }
 
+  /// Run one action against many emails in a single round-trip.
+  /// `action` is one of 'read' | 'unread' | 'star' | 'unstar' |
+  /// 'archive' | 'delete' | 'purge' | 'move' | 'label-add' |
+  /// 'label-remove'. Extras for 'move' / label actions go in
+  /// [folder] / [labelIds].
+  Future<int> batchAction({
+    required List<String> ids,
+    required String action,
+    String? folder,
+    List<String>? labelIds,
+  }) async {
+    if (ids.isEmpty) return 0;
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/batch',
+      data: {
+        'ids': ids,
+        'action': action,
+        if (folder != null) 'folder': folder,
+        if (labelIds != null) 'labelIds': labelIds,
+      },
+    );
+    return (response.data?['affected'] as num?)?.toInt() ?? 0;
+  }
+
   Future<Map<String, int>> getUnreadCounts() async {
     final response = await _client.dio.get<Map<String, dynamic>>(
       '/api/v1/inbox/unread-counts',

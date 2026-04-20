@@ -226,6 +226,19 @@ class FakeMailRepository implements MailRepository {
   @override
   Future<int> getTrashRetention() async => 30;
 
+  int batchActionCalls = 0;
+
+  @override
+  Future<int> batchAction({
+    required List<String> ids,
+    required String action,
+    String? folder,
+    List<String>? labelIds,
+  }) async {
+    batchActionCalls++;
+    return ids.length;
+  }
+
   @override
   Future<Map<String, int>> getUnreadCounts() async =>
       const {'inbox': 0, 'drafts': 0, 'spam': 0, 'total': 0};

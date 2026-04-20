@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,21 +7,56 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_tag.dart';
 import '../../domain/email.dart';
+import '../providers/mail_providers.dart';
 import 'attachments_strip.dart';
 
 /// Mobile/Inbox row — sharp, full-width, separated by 1px hairlines.
+///
+/// Two interaction modes:
+///   • Default: tap → open detail, long-press → enter selection mode
+///     with this row marked.
+///   • Selection mode (selection set non-empty): tap → toggle this
+///     row's membership, long-press is a no-op.
 class EmailListItem extends ConsumerWidget {
   const EmailListItem({super.key, required this.email});
 
   final Email email;
 
+  void _toggle(WidgetRef ref) {
+    final current = ref.read(selectedEmailIdsProvider);
+    final next = Set<String>.from(current);
+    if (next.contains(email.id)) {
+      next.remove(email.id);
+    } else {
+      next.add(email.id);
+    }
+    ref.read(selectedEmailIdsProvider.notifier).state = next;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final unread = !email.isRead;
+    final selection = ref.watch(selectedEmailIdsProvider);
+    final inSelectionMode = selection.isNotEmpty;
+    final isSelected = selection.contains(email.id);
+
     return Material(
-      color: Colors.transparent,
+      color: isSelected ? AppColors.accentDim : Colors.transparent,
       child: InkWell(
-        onTap: () => context.push('/email/${email.id}'),
+        onTap: () {
+          if (inSelectionMode) {
+            _toggle(ref);
+          } else {
+            context.push('/email/${email.id}');
+          }
+        },
+        onLongPress: () {
+          // Selection entry point. Light haptic so the mode change is
+          // felt as well as seen; otherwise users fat-finger into
+          // selection mode without realising.
+          HapticFeedback.selectionClick();
+          _toggle(ref);
+        },
         splashColor: AppColors.surface,
         highlightColor: AppColors.surface.withValues(alpha: 0.6),
         child: Container(
@@ -31,18 +67,30 @@ class EmailListItem extends ConsumerWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // Selection affordance — replaces the unread dot
+                  // slot so rows don't get wider in selection mode.
                   SizedBox(
                     width: 10,
-                    child: unread
-                        ? Container(
-                            width: 7,
-                            height: 7,
-                            decoration: const BoxDecoration(
-                              color: AppColors.accent,
-                              shape: BoxShape.circle,
-                            ),
+                    child: inSelectionMode
+                        ? Icon(
+                            isSelected
+                                ? Icons.check_box
+                                : Icons.check_box_outline_blank,
+                            size: 14,
+                            color: isSelected
+                                ? AppColors.accent
+                                : AppColors.textMuted,
                           )
-                        : null,
+                        : (unread
+                            ? Container(
+                                width: 7,
+                                height: 7,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.accent,
+                                  shape: BoxShape.circle,
+                                ),
+                              )
+                            : null),
                   ),
                   const SizedBox(width: 8),
                   Expanded(

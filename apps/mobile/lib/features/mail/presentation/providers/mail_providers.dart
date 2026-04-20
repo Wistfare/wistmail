@@ -55,6 +55,27 @@ final currentFolderProvider = StateProvider<InboxFolder>(
   (ref) => InboxFolder.inbox,
 );
 
+/// Set of email ids currently marked by the user for a bulk action.
+/// Non-empty → the inbox renders its "selection mode" app bar and
+/// rows toggle on tap instead of opening. Kept as a StateProvider
+/// (not a local widget State) so it survives hot reload / scroll-
+/// reparenting and so the app bar widget can observe it from
+/// outside the list subtree.
+final selectedEmailIdsProvider = StateProvider<Set<String>>(
+  (ref) {
+    // Clear the selection whenever the active folder flips — a set
+    // of ids from /inbox has no meaning against /trash, and leaving
+    // them staged would silently batch across folders on the next
+    // action.
+    ref.listen<InboxFolder>(currentFolderProvider, (prev, next) {
+      if (prev?.id != next.id) {
+        ref.controller.state = const <String>{};
+      }
+    });
+    return const <String>{};
+  },
+);
+
 final mailRepositoryProvider = FutureProvider<MailRepository>((ref) async {
   final client = await ref.watch(apiClientProvider.future);
   return MailRepositoryImpl(MailRemoteDataSource(client));

@@ -15,6 +15,13 @@ abstract class MailRepository {
   Future<Map<String, int>> emptyTrash();
   /// How many days emails linger in Trash before auto-purge.
   Future<int> getTrashRetention();
+  /// Bulk mutation helper. Returns the number of affected rows.
+  Future<int> batchAction({
+    required List<String> ids,
+    required String action,
+    String? folder,
+    List<String>? labelIds,
+  });
   Future<Map<String, int>> getUnreadCounts();
   Future<String> compose(ComposeDraft draft);
   Future<List<Mailbox>> getMailboxes();
@@ -63,6 +70,20 @@ class MailRepositoryImpl implements MailRepository {
 
   @override
   Future<int> getTrashRetention() => _remote.getTrashRetention();
+
+  @override
+  Future<int> batchAction({
+    required List<String> ids,
+    required String action,
+    String? folder,
+    List<String>? labelIds,
+  }) =>
+      _remote.batchAction(
+        ids: ids,
+        action: action,
+        folder: folder,
+        labelIds: labelIds,
+      );
 
   @override
   Future<Map<String, int>> getUnreadCounts() => _remote.getUnreadCounts();

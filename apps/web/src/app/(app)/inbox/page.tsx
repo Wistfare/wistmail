@@ -16,6 +16,11 @@ import {
   Loader2,
   AlertTriangle,
   RefreshCw,
+  CheckSquare,
+  Square,
+  MailOpen,
+  Mail,
+  X,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -32,6 +37,7 @@ import {
   type EmailListItem,
   type FullEmail,
   useArchive,
+  useBulkAction,
   useDelete,
   useEmailDetail,
   useEmptyTrash,
@@ -59,6 +65,13 @@ export default function InboxPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
 
+  // Multi-select state. A non-empty set flips the left pane into
+  // "selection mode" — the top bar gets replaced by a bulk action
+  // toolbar, row clicks toggle the checkbox instead of opening the
+  // preview, and the detail pane clears.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const inSelectionMode = selectedIds.size > 0
+
   // Cache-driven data: list (paginated) + selected detail.
   const list = useInboxList(folderParam)
   const detail = useEmailDetail(selectedId)
@@ -72,10 +85,12 @@ export default function InboxPage() {
   const purge = usePurge()
   const emptyTrash = useEmptyTrash()
   const trashConfig = useTrashRetention()
+  const bulk = useBulkAction()
 
   // Reset selection when the folder changes.
   useEffect(() => {
     setSelectedId(null)
+    setSelectedIds(new Set())
   }, [folderParam])
 
   // Flatten the infinite-query pages into a single array for rendering.
@@ -114,8 +129,51 @@ export default function InboxPage() {
   }, [emails, activeFilter, searchQuery])
 
   function selectEmail(email: EmailListItem) {
+    // In selection mode, clicking a row toggles its checkbox rather
+    // than opening the preview — matches Gmail's behaviour and the
+    // mobile long-press mode below.
+    if (inSelectionMode) {
+      toggleSelect(email.id)
+      return
+    }
     setSelectedId(email.id)
     if (!email.isRead) markRead.mutate({ id: email.id })
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(filteredEmails.map((e) => e.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  /// Fire a bulk action for the current selection, then clear it.
+  /// Destructive actions (delete/purge) also close the detail pane
+  /// if the selected email was part of the batch.
+  function runBulk(action: Parameters<typeof bulk.mutate>[0]) {
+    if (selectedIds.size === 0) return
+    bulk.mutate(action)
+    if (
+      selectedId &&
+      action.ids.includes(selectedId) &&
+      (action.action === 'delete' ||
+        action.action === 'purge' ||
+        action.action === 'archive' ||
+        action.action === 'move')
+    ) {
+      setSelectedId(null)
+    }
+    clearSelection()
   }
 
   function handleStar(email: EmailListItem) {
@@ -291,24 +349,37 @@ export default function InboxPage() {
           />
         </div>
 
-        <div className="flex items-center border-b border-wm-border px-5 py-3">
-          <span className="text-sm font-semibold text-wm-text-primary">{folderName}</span>
-          <div className="flex-1" />
-          {folderParam === 'trash' && emails.length > 0 && (
-            <button
-              type="button"
-              onClick={handleEmptyTrash}
-              disabled={emptyTrash.isPending}
-              className="mr-3 inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20 disabled:cursor-wait disabled:opacity-60"
-              title="Permanently delete every email in Trash"
-            >
-              <Trash2 className="h-3 w-3" />
-              {emptyTrash.isPending ? 'Emptying…' : 'Empty trash'}
-            </button>
-          )}
-          <ArrowUpDown className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
-          <SlidersHorizontal className="ml-3 h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
-        </div>
+        {inSelectionMode ? (
+          <BulkActionToolbar
+            count={selectedIds.size}
+            visibleCount={filteredEmails.length}
+            folder={folderParam}
+            onSelectAllVisible={selectAllVisible}
+            onClear={clearSelection}
+            onRun={(action) =>
+              runBulk({ ids: Array.from(selectedIds), ...action })
+            }
+          />
+        ) : (
+          <div className="flex items-center border-b border-wm-border px-5 py-3">
+            <span className="text-sm font-semibold text-wm-text-primary">{folderName}</span>
+            <div className="flex-1" />
+            {folderParam === 'trash' && emails.length > 0 && (
+              <button
+                type="button"
+                onClick={handleEmptyTrash}
+                disabled={emptyTrash.isPending}
+                className="mr-3 inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20 disabled:cursor-wait disabled:opacity-60"
+                title="Permanently delete every email in Trash"
+              >
+                <Trash2 className="h-3 w-3" />
+                {emptyTrash.isPending ? 'Emptying…' : 'Empty trash'}
+              </button>
+            )}
+            <ArrowUpDown className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
+            <SlidersHorizontal className="ml-3 h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
+          </div>
+        )}
 
         {folderParam === 'trash' && (
           <div className="border-b border-wm-border bg-wm-warning/5 px-5 py-2">
@@ -375,13 +446,38 @@ export default function InboxPage() {
               key={email.id}
               onClick={() => selectEmail(email)}
               className={cn(
-                'flex w-full cursor-pointer flex-col gap-1.5 border-b border-wm-border px-5 py-3.5 text-left transition-colors',
-                selectedId === email.id
+                'group flex w-full cursor-pointer flex-col gap-1.5 border-b border-wm-border px-5 py-3.5 text-left transition-colors',
+                selectedId === email.id && !inSelectionMode
                   ? 'border-l-2 border-l-wm-accent bg-wm-surface'
-                  : 'hover:bg-wm-surface-hover',
+                  : selectedIds.has(email.id)
+                    ? 'border-l-2 border-l-wm-accent bg-wm-accent/5'
+                    : 'hover:bg-wm-surface-hover',
               )}
             >
               <div className="flex items-center gap-2">
+                {/* Row checkbox — hidden behind a hover reveal when
+                    nothing's selected, always visible in selection
+                    mode so the user can unselect without fumbling. */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleSelect(email.id)
+                  }}
+                  className={cn(
+                    'flex h-4 w-4 shrink-0 items-center justify-center text-wm-text-muted transition-opacity hover:text-wm-accent',
+                    inSelectionMode || selectedIds.has(email.id)
+                      ? 'opacity-100'
+                      : 'opacity-0 group-hover:opacity-100',
+                  )}
+                  aria-label={selectedIds.has(email.id) ? 'Deselect' : 'Select'}
+                >
+                  {selectedIds.has(email.id) ? (
+                    <CheckSquare className="h-4 w-4 text-wm-accent" />
+                  ) : (
+                    <Square className="h-4 w-4" />
+                  )}
+                </button>
                 {!email.isRead && (
                   <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-wm-accent" />
                 )}
@@ -642,5 +738,134 @@ function RowLabels({
         </span>
       ))}
     </div>
+  )
+}
+
+type BulkActionVars =
+  | { action: 'read' }
+  | { action: 'unread' }
+  | { action: 'archive' }
+  | { action: 'delete' }
+  | { action: 'purge' }
+
+/// Top-of-list action bar that replaces the folder title when one or
+/// more rows are selected. Keeps the same height so the list below
+/// doesn't jump. Actions mirror the single-email toolbar in the
+/// detail pane but operate on the selection set. Move / Label are
+/// intentionally omitted here — those need secondary UI (folder
+/// picker / label picker) and would make the bar crowded; they'll
+/// land as a "More…" menu in a follow-up.
+function BulkActionToolbar({
+  count,
+  visibleCount,
+  folder,
+  onSelectAllVisible,
+  onClear,
+  onRun,
+}: {
+  count: number
+  visibleCount: number
+  folder: string
+  onSelectAllVisible: () => void
+  onClear: () => void
+  onRun: (action: BulkActionVars) => void
+}) {
+  const allSelected = count >= visibleCount && visibleCount > 0
+  return (
+    <div className="flex items-center gap-2 border-b border-wm-border bg-wm-accent/5 px-5 py-2.5">
+      <button
+        type="button"
+        onClick={allSelected ? onClear : onSelectAllVisible}
+        className="inline-flex cursor-pointer items-center gap-1 text-wm-accent hover:text-wm-text-primary"
+        title={allSelected ? 'Clear selection' : 'Select all visible'}
+      >
+        {allSelected ? (
+          <CheckSquare className="h-4 w-4" />
+        ) : (
+          <Square className="h-4 w-4" />
+        )}
+      </button>
+      <span className="font-mono text-[11px] font-semibold text-wm-text-secondary">
+        {count} selected
+      </span>
+      <div className="flex-1" />
+
+      <BulkBtn
+        icon={<MailOpen className="h-3.5 w-3.5" />}
+        label="Read"
+        onClick={() => onRun({ action: 'read' })}
+      />
+      <BulkBtn
+        icon={<Mail className="h-3.5 w-3.5" />}
+        label="Unread"
+        onClick={() => onRun({ action: 'unread' })}
+      />
+      {folder !== 'archive' && folder !== 'trash' && (
+        <BulkBtn
+          icon={<Archive className="h-3.5 w-3.5" />}
+          label="Archive"
+          onClick={() => onRun({ action: 'archive' })}
+        />
+      )}
+      {folder === 'trash' ? (
+        <BulkBtn
+          icon={<Trash2 className="h-3.5 w-3.5" />}
+          label="Delete forever"
+          destructive
+          onClick={() => {
+            if (
+              confirm(
+                `Permanently delete ${count} email${count === 1 ? '' : 's'}? This can't be undone.`,
+              )
+            ) {
+              onRun({ action: 'purge' })
+            }
+          }}
+        />
+      ) : (
+        <BulkBtn
+          icon={<Trash2 className="h-3.5 w-3.5" />}
+          label="Delete"
+          destructive
+          onClick={() => onRun({ action: 'delete' })}
+        />
+      )}
+      <button
+        type="button"
+        onClick={onClear}
+        className="ml-2 inline-flex cursor-pointer items-center gap-1 border border-wm-border px-2 py-1 font-mono text-[10px] font-semibold text-wm-text-secondary hover:bg-wm-surface-hover"
+        title="Clear selection"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+function BulkBtn({
+  icon,
+  label,
+  destructive = false,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  destructive?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex cursor-pointer items-center gap-1 border px-2 py-1 font-mono text-[10px] font-semibold transition-colors',
+        destructive
+          ? 'border-wm-error/40 text-wm-error hover:bg-wm-error/10'
+          : 'border-wm-border text-wm-text-secondary hover:bg-wm-surface-hover',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }

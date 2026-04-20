@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { readFile } from 'node:fs/promises'
 import { ValidationError } from '@wistmail/shared'
-import { attachments, emails, mailboxes } from '@wistmail/db'
+import { attachments, emails, emailLabels, mailboxes } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
 import { EmailSender, EMAIL_STATUS } from '../services/email-sender.js'
@@ -685,6 +685,198 @@ inboxRoutes.post('/trash/empty', async (c) => {
   const db = getDb()
   const result = await emptyTrashForUser(db, userId)
   return c.json({ ok: true, ...result })
+})
+
+/**
+ * POST /api/v1/inbox/emails/batch
+ * Body: { ids: string[], action: 'read'|'unread'|'star'|'unstar'
+ *         |'archive'|'delete'|'purge'|'move'|'label-add'|'label-remove',
+ *         folder?: string,          // required for 'move'
+ *         labelIds?: string[] }     // required for label-* actions
+ *
+ * Single endpoint for every bulk action the clients need. We take
+ * the action as a string rather than splitting into six endpoints
+ * because (a) the client-side selection flow already treats the
+ * choice as a dropdown-ish value, and (b) it keeps the auth filter
+ * (ids ∈ user's mailboxes) in one place.
+ *
+ * The whole batch runs in a single txn — either all rows mutate or
+ * none do. Sizes are capped at 500 to stop a rogue client from
+ * pinning the connection.
+ */
+inboxRoutes.post('/emails/batch', async (c) => {
+  const userId = c.get('userId')
+  const body = await c.req.json().catch(() => ({}))
+  const schema = z.object({
+    ids: z.array(z.string().min(1)).min(1).max(500),
+    action: z.enum([
+      'read',
+      'unread',
+      'star',
+      'unstar',
+      'archive',
+      'delete',
+      'purge',
+      'move',
+      'label-add',
+      'label-remove',
+    ]),
+    folder: z.string().optional(),
+    labelIds: z.array(z.string().min(1)).optional(),
+  })
+  const parsed = schema.safeParse(body)
+  if (!parsed.success) {
+    throw new ValidationError('Invalid batch request', {
+      errors: parsed.error.flatten().fieldErrors,
+    })
+  }
+  const { ids, action, folder, labelIds } = parsed.data
+
+  if (action === 'move' && !folder) {
+    throw new ValidationError('`folder` is required for move')
+  }
+  if (
+    (action === 'label-add' || action === 'label-remove') &&
+    (!labelIds || labelIds.length === 0)
+  ) {
+    throw new ValidationError('`labelIds` is required for label actions')
+  }
+
+  const db = getDb()
+
+  // Auth filter in one query: the ids the user actually owns. Anything
+  // they don't own is silently dropped — deliberate; surfacing per-id
+  // failures leaks whether the id exists.
+  const ownedRows = await db
+    .select({ id: emails.id, folder: emails.folder })
+    .from(emails)
+    .innerJoin(mailboxes, eq(emails.mailboxId, mailboxes.id))
+    .where(and(inArray(emails.id, ids), eq(mailboxes.userId, userId)))
+  const ownedIds = ownedRows.map((r) => r.id)
+  if (ownedIds.length === 0) {
+    return c.json({ ok: true, affected: 0 })
+  }
+
+  const now = new Date()
+
+  switch (action) {
+    case 'read':
+    case 'unread': {
+      await db
+        .update(emails)
+        .set({ isRead: action === 'read', updatedAt: now })
+        .where(inArray(emails.id, ownedIds))
+      break
+    }
+    case 'star':
+    case 'unstar': {
+      await db
+        .update(emails)
+        .set({ isStarred: action === 'star', updatedAt: now })
+        .where(inArray(emails.id, ownedIds))
+      break
+    }
+    case 'archive': {
+      await db
+        .update(emails)
+        .set({ folder: 'archive', updatedAt: now })
+        .where(inArray(emails.id, ownedIds))
+      break
+    }
+    case 'delete': {
+      await db
+        .update(emails)
+        .set({ folder: 'trash', updatedAt: now })
+        .where(inArray(emails.id, ownedIds))
+      break
+    }
+    case 'move': {
+      await db
+        .update(emails)
+        .set({ folder: folder!, updatedAt: now })
+        .where(inArray(emails.id, ownedIds))
+      break
+    }
+    case 'purge': {
+      // Hard delete — only for rows already in Trash. Filter the
+      // working set to the subset that's actually trashed so we don't
+      // accidentally wipe an inbox row through the batch endpoint.
+      const trashedIds = ownedRows
+        .filter((r) => r.folder === 'trash')
+        .map((r) => r.id)
+      if (trashedIds.length === 0) {
+        return c.json({ ok: true, affected: 0 })
+      }
+      // Sequential per id for correctness on attachment bytes — small
+      // cost even at 500 rows; a batch purge is a rare operation.
+      for (const id of trashedIds) {
+        await purgeOneFromTrash(db, id, userId)
+      }
+      for (const id of trashedIds) {
+        eventBus.publish({ type: 'email.deleted', userId, emailId: id })
+      }
+      return c.json({ ok: true, affected: trashedIds.length })
+    }
+    case 'label-add': {
+      // Upsert one row per (emailId, labelId). We insert and swallow
+      // PK-conflict — existing memberships are no-ops.
+      const rows = ownedIds.flatMap((emailId) =>
+        labelIds!.map((labelId) => ({ emailId, labelId })),
+      )
+      if (rows.length > 0) {
+        await db.insert(emailLabels).values(rows).onConflictDoNothing()
+      }
+      break
+    }
+    case 'label-remove': {
+      await db
+        .delete(emailLabels)
+        .where(
+          and(
+            inArray(emailLabels.emailId, ownedIds),
+            inArray(emailLabels.labelId, labelIds!),
+          ),
+        )
+      break
+    }
+  }
+
+  // Publish email.updated events so connected clients reconcile the
+  // row state without refetching. For delete/archive we publish the
+  // folder change; label-* publish a dummy updated event keyed by id
+  // so the label-popover re-fetches.
+  const changes: Record<string, unknown> | null = (() => {
+    switch (action) {
+      case 'read':
+        return { isRead: true }
+      case 'unread':
+        return { isRead: false }
+      case 'star':
+        return { isStarred: true }
+      case 'unstar':
+        return { isStarred: false }
+      case 'archive':
+        return { folder: 'archive' }
+      case 'delete':
+        return { folder: 'trash' }
+      case 'move':
+        return { folder: folder! }
+      default:
+        return null
+    }
+  })()
+  if (changes) {
+    for (const id of ownedIds) {
+      eventBus.publish({
+        type: 'email.updated',
+        userId,
+        emailId: id,
+        changes,
+      })
+    }
+  }
+
+  return c.json({ ok: true, affected: ownedIds.length })
 })
 
 /**

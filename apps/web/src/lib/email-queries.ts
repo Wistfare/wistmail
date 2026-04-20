@@ -341,6 +341,82 @@ export function useEmptyTrash() {
   })
 }
 
+/// Bulk action against many emails at once. The server accepts one
+/// action per call + a list of ids; we optimistically apply the same
+/// mutation to every matching row in every cached list page so the
+/// selection clears instantly. Rollback on error restores all pages.
+export type BulkAction =
+  | { action: 'read' }
+  | { action: 'unread' }
+  | { action: 'star' }
+  | { action: 'unstar' }
+  | { action: 'archive' }
+  | { action: 'delete' }
+  | { action: 'purge' }
+  | { action: 'move'; folder: string }
+  | { action: 'label-add'; labelIds: string[] }
+  | { action: 'label-remove'; labelIds: string[] }
+
+export function useBulkAction() {
+  const qc = useQueryClient()
+  return useMutation<
+    unknown,
+    Error,
+    { ids: string[] } & BulkAction,
+    OptimisticContext
+  >({
+    mutationFn: (vars) =>
+      api.post(`/api/v1/inbox/emails/batch`, {
+        ids: vars.ids,
+        action: vars.action,
+        folder: 'folder' in vars ? vars.folder : undefined,
+        labelIds: 'labelIds' in vars ? vars.labelIds : undefined,
+      }),
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: inboxKeys.all })
+      const ctx = snapshotLists(qc)
+      const idSet = new Set(vars.ids)
+      for (const id of vars.ids) {
+        applyToAllLists(qc, id, (row) => {
+          if (!idSet.has(row.id)) return row
+          switch (vars.action) {
+            case 'read':
+              return { ...row, isRead: true }
+            case 'unread':
+              return { ...row, isRead: false }
+            case 'star':
+              return { ...row, isStarred: true }
+            case 'unstar':
+              return { ...row, isStarred: false }
+            case 'archive':
+              return null
+            case 'delete':
+            case 'purge':
+              return null
+            case 'move':
+              return null
+            case 'label-add':
+            case 'label-remove':
+              // Labels rehydrate via refetch — keep the row cached
+              // so we don't flash it away and back.
+              return row
+          }
+        })
+      }
+      return ctx
+    },
+    onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: (_data, _err, vars) => {
+      // Labels mutations need a refetch for the chips to reflect
+      // the new assignments; other actions already wrote the final
+      // shape in onMutate.
+      if (vars.action === 'label-add' || vars.action === 'label-remove') {
+        qc.invalidateQueries({ queryKey: inboxKeys.all })
+      }
+    },
+  })
+}
+
 /// Trash retention window (e.g. 30 days). Tiny read that powers the
 /// "Emails in Trash are permanently deleted after N days" banner.
 export function useTrashRetention() {

@@ -22,6 +22,8 @@ class InboxScreen extends ConsumerWidget {
     final user = ref.watch(authControllerProvider).user;
     final showMfaBanner = user?.needsMfaSetup ?? false;
     final folder = ref.watch(currentFolderProvider);
+    final selection = ref.watch(selectedEmailIdsProvider);
+    final inSelectionMode = selection.isNotEmpty;
 
     // Auth gating happens in the router's redirect — no listener needed here.
 
@@ -32,13 +34,18 @@ class InboxScreen extends ConsumerWidget {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          _TopBar(unreadCount: unreadCount),
-          if (showMfaBanner) const _MfaBanner(),
-          if (folder.id == 'trash') const _TrashBanner(),
+          if (inSelectionMode)
+            _SelectionBar(folder: folder)
+          else
+            _TopBar(unreadCount: unreadCount),
+          if (showMfaBanner && !inSelectionMode) const _MfaBanner(),
+          if (folder.id == 'trash' && !inSelectionMode) const _TrashBanner(),
           Expanded(child: _InboxBody(inbox: inbox)),
         ],
       ),
-      floatingActionButton: Padding(
+      floatingActionButton: inSelectionMode
+          ? null
+          : Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: SizedBox(
           width: 56,
@@ -156,6 +163,152 @@ class _MfaBanner extends StatelessWidget {
                   size: 16, color: AppColors.accent),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Replaces the normal top bar when the user has selected one or
+/// more rows. Exposes bulk actions (mark read/unread, archive,
+/// delete) alongside a selection count and an X to bail out. We
+/// deliberately keep the set of verbs small — more exotic actions
+/// (move-to-folder, bulk label) need secondary pickers and would
+/// make this bar visually noisy; they'll land in a "more" sheet
+/// later.
+class _SelectionBar extends ConsumerWidget {
+  const _SelectionBar({required this.folder});
+  final InboxFolder folder;
+
+  Future<void> _runBulk(
+    WidgetRef ref,
+    BuildContext context,
+    String action,
+  ) async {
+    final ids = ref.read(selectedEmailIdsProvider).toList();
+    if (ids.isEmpty) return;
+    // Empty the selection immediately so the UI reflects the user's
+    // intent before the network call returns.
+    ref.read(selectedEmailIdsProvider.notifier).state = const <String>{};
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final repo = await ref.read(mailRepositoryProvider.future);
+      // Single round-trip via the batch endpoint — the server
+      // enforces the auth filter and runs the whole set in one
+      // statement.
+      await repo.batchAction(ids: ids, action: action);
+      ref.read(inboxControllerProvider.notifier).refresh();
+    } catch (err) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Bulk action failed: $err'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmBulkPurge(
+    WidgetRef ref,
+    BuildContext context,
+  ) async {
+    final count = ref.read(selectedEmailIdsProvider).length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(
+          'Delete $count forever?',
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: const Text(
+          'This bypasses the recovery window and cannot be undone.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'DELETE FOREVER',
+              style: TextStyle(color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) {
+      await _runBulk(ref, context, 'purge');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(selectedEmailIdsProvider).length;
+    final inTrash = folder.id == 'trash';
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        color: AppColors.accentDim,
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close, color: AppColors.textPrimary),
+              onPressed: () {
+                ref.read(selectedEmailIdsProvider.notifier).state =
+                    const <String>{};
+              },
+            ),
+            Text(
+              '$count selected',
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const Spacer(),
+            IconButton(
+              tooltip: 'Mark read',
+              icon: const Icon(Icons.mark_email_read_outlined,
+                  color: AppColors.textPrimary),
+              onPressed: () => _runBulk(ref, context, 'read'),
+            ),
+            IconButton(
+              tooltip: 'Mark unread',
+              icon: const Icon(Icons.mark_email_unread_outlined,
+                  color: AppColors.textPrimary),
+              onPressed: () => _runBulk(ref, context, 'unread'),
+            ),
+            if (!inTrash && folder.id != 'archive')
+              IconButton(
+                tooltip: 'Archive',
+                icon: const Icon(Icons.archive_outlined,
+                    color: AppColors.textPrimary),
+                onPressed: () => _runBulk(ref, context, 'archive'),
+              ),
+            if (inTrash)
+              IconButton(
+                tooltip: 'Delete forever',
+                icon: const Icon(Icons.delete_forever_outlined,
+                    color: AppColors.danger),
+                onPressed: () => _confirmBulkPurge(ref, context),
+              )
+            else
+              IconButton(
+                tooltip: 'Delete',
+                icon: const Icon(Icons.delete_outline,
+                    color: AppColors.textPrimary),
+                onPressed: () => _runBulk(ref, context, 'delete'),
+              ),
+          ],
         ),
       ),
     );
