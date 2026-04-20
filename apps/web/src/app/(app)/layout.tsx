@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { Sidebar } from '@/components/layout/sidebar'
 import { ComposeProvider } from '@/components/email/compose-provider'
 import { QueryProvider } from '@/components/providers/query-provider'
+import { ToastProvider } from '@/components/ui/toast'
 import { getServerSession } from '@/lib/server-session'
 
 /// Server-rendered shell. Auth + setup gating happens before the client
@@ -29,21 +30,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <QueryProvider>
-      <ComposeProvider>
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar
-            user={{
-              name: user.name,
-              email: user.email,
-              avatarUrl: user.avatarUrl ?? undefined,
-              role: user.role,
-            }}
-            activeRoute={pathname}
-            unreadCounts={{ inbox: 0 }}
-          />
-          <main className="flex-1 overflow-y-auto">{children}</main>
-        </div>
-      </ComposeProvider>
+      <ToastProvider>
+        <ComposeProvider>
+          <div className="flex h-screen overflow-hidden">
+            <Sidebar
+              user={{
+                name: user.name,
+                email: user.email,
+                avatarUrl: user.avatarUrl ?? undefined,
+                role: user.role,
+              }}
+              activeRoute={pathname}
+              unreadCounts={{ inbox: 0 }}
+            />
+            <main className="flex-1 overflow-y-auto">{children}</main>
+          </div>
+        </ComposeProvider>
+      </ToastProvider>
     </QueryProvider>
   )
 }

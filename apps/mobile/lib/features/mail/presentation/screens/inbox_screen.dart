@@ -198,6 +198,66 @@ class _SelectionBar extends ConsumerWidget {
       // statement.
       await repo.batchAction(ids: ids, action: action);
       ref.read(inboxControllerProvider.notifier).refresh();
+
+      // Undo toast — only for reversible actions. Purge is permanent
+      // so we just surface a confirmation without an action button.
+      final count = ids.length;
+      final plural = count == 1 ? '' : 's';
+      String? message;
+      String? undoAction;
+      String? undoFolder;
+      switch (action) {
+        case 'read':
+          message = 'Marked $count as read.';
+          undoAction = 'unread';
+        case 'unread':
+          message = 'Marked $count as unread.';
+          undoAction = 'read';
+        case 'archive':
+          message = 'Archived $count email$plural.';
+          undoAction = 'move';
+          undoFolder = 'inbox';
+        case 'delete':
+          message = 'Moved $count email$plural to Trash.';
+          undoAction = 'move';
+          undoFolder = 'inbox';
+        case 'purge':
+          message = 'Permanently deleted $count email$plural.';
+      }
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 6),
+          action: undoAction == null
+              ? null
+              : SnackBarAction(
+                  label: 'UNDO',
+                  textColor: AppColors.accent,
+                  onPressed: () async {
+                    try {
+                      final r = await ref.read(mailRepositoryProvider.future);
+                      await r.batchAction(
+                        ids: ids,
+                        action: undoAction!,
+                        folder: undoFolder,
+                      );
+                      ref.read(inboxControllerProvider.notifier).refresh();
+                    } catch (_) {
+                      // Undo failed — the visible original toast is
+                      // already dismissed by the snackbar action tap,
+                      // so surface the failure cleanly.
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Undo failed.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                    }
+                  },
+                ),
+        ),
+      );
     } catch (err) {
       messenger.showSnackBar(
         SnackBar(

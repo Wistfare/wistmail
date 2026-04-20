@@ -32,6 +32,7 @@ import {
   AttachmentsStrip,
 } from '@/components/email/attachments-strip'
 import { api } from '@/lib/api-client'
+import { useToast } from '@/components/ui/toast'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import {
   type EmailListItem,
@@ -86,6 +87,7 @@ export default function InboxPage() {
   const emptyTrash = useEmptyTrash()
   const trashConfig = useTrashRetention()
   const bulk = useBulkAction()
+  const toast = useToast()
 
   // Reset selection when the folder changes.
   useEffect(() => {
@@ -163,6 +165,7 @@ export default function InboxPage() {
   function runBulk(action: Parameters<typeof bulk.mutate>[0]) {
     if (selectedIds.size === 0) return
     bulk.mutate(action)
+    const affectedIds = [...action.ids]
     if (
       selectedId &&
       action.ids.includes(selectedId) &&
@@ -174,6 +177,46 @@ export default function InboxPage() {
       setSelectedId(null)
     }
     clearSelection()
+
+    // Undo affordances for reversible destructive actions.
+    // `purge` is permanent (bytes gone) — no undo.
+    const count = affectedIds.length
+    const plural = count === 1 ? 'email' : 'emails'
+    if (action.action === 'delete') {
+      toast.show({
+        message: `${count} ${plural} moved to Trash.`,
+        undo: () =>
+          bulk.mutateAsync({
+            ids: affectedIds,
+            action: 'move',
+            folder: 'inbox',
+          }).then(() => {}),
+      })
+    } else if (action.action === 'archive') {
+      toast.show({
+        message: `Archived ${count} ${plural}.`,
+        undo: () =>
+          bulk.mutateAsync({
+            ids: affectedIds,
+            action: 'move',
+            folder: 'inbox',
+          }).then(() => {}),
+      })
+    } else if (action.action === 'read') {
+      toast.show({
+        message: `Marked ${count} as read.`,
+        undo: () =>
+          bulk.mutateAsync({ ids: affectedIds, action: 'unread' }).then(() => {}),
+      })
+    } else if (action.action === 'unread') {
+      toast.show({
+        message: `Marked ${count} as unread.`,
+        undo: () =>
+          bulk.mutateAsync({ ids: affectedIds, action: 'read' }).then(() => {}),
+      })
+    } else if (action.action === 'purge') {
+      toast.show({ message: `Permanently deleted ${count} ${plural}.` })
+    }
   }
 
   function handleStar(email: EmailListItem) {
@@ -183,11 +226,27 @@ export default function InboxPage() {
   function handleArchive(emailId: string) {
     archive.mutate({ id: emailId })
     if (selectedId === emailId) setSelectedId(null)
+    toast.show({
+      message: 'Archived.',
+      // Undo = move back to inbox. We don't know the original folder,
+      // but archiving from anywhere else is uncommon enough that the
+      // cheap reverse is fine; the user can move it again if needed.
+      undo: () =>
+        api.post(`/api/v1/inbox/emails/${emailId}/move`, { folder: 'inbox' }),
+    })
   }
 
   function handleDelete(emailId: string) {
     remove.mutate({ id: emailId })
     if (selectedId === emailId) setSelectedId(null)
+    toast.show({
+      message: 'Moved to Trash.',
+      // Undo flips the row straight back to inbox — the delete is
+      // only a folder change, not a hard delete, so the row still
+      // exists server-side even during the undo window.
+      undo: () =>
+        api.post(`/api/v1/inbox/emails/${emailId}/move`, { folder: 'inbox' }),
+    })
   }
 
   function handlePermanentDelete(emailId: string) {
