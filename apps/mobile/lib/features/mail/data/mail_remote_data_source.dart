@@ -59,6 +59,96 @@ class MailRemoteDataSource {
     );
   }
 
+  /// Hard-delete a single email that's already in Trash. The server
+  /// 409s if the email is still in inbox/archive/etc — that's a
+  /// contract mismatch the UI shouldn't reach, but we surface it as
+  /// a thrown DioException so the caller can fall back to normal
+  /// delete if needed.
+  Future<void> purge(String emailId) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/purge',
+    );
+  }
+
+  /// Empty the user's entire Trash folder. Returns the server's
+  /// reported counts for telemetry / success toasts.
+  Future<Map<String, int>> emptyTrash() => emptyFolder('trash');
+
+  /// Empty any folder with a retention policy (trash or spam). The
+  /// server 400s on anything else.
+  Future<Map<String, int>> emptyFolder(String folder) async {
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/folders/$folder/empty',
+    );
+    final data = response.data ?? const <String, dynamic>{};
+    return {
+      'purgedEmails': (data['purgedEmails'] as num?)?.toInt() ?? 0,
+      'purgedBytes': (data['purgedBytes'] as num?)?.toInt() ?? 0,
+    };
+  }
+
+  /// Retention window in days. Shown on the banner for trash / spam.
+  Future<int> getTrashRetention() => getFolderRetention('trash');
+
+  Future<int> getFolderRetention(String folder) async {
+    final response = await _client.dio.get<Map<String, dynamic>>(
+      '/api/v1/inbox/folders/$folder/config',
+    );
+    return (response.data?['retentionDays'] as num?)?.toInt() ?? 30;
+  }
+
+  /// Mark every unread email in `folder` as read. Pass 'all' to clear
+  /// the unread dot across every folder at once.
+  Future<int> markAllRead(String folder) async {
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/folders/$folder/mark-all-read',
+    );
+    return (response.data?['affected'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Snooze / unsnooze a single email. Passing null clears the snooze.
+  Future<void> snooze(String emailId, DateTime? until) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/snooze',
+      data: {'until': until?.toUtc().toIso8601String()},
+    );
+  }
+
+  /// Return every email in the same thread as `emailId`, oldest
+  /// first. Response payload matches the server's ThreadMessage
+  /// shape — just enough for the thread strip in the detail view.
+  Future<List<Map<String, dynamic>>> getThread(String emailId) async {
+    final response = await _client.dio.get<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/thread',
+    );
+    final raw = response.data?['messages'] as List<dynamic>? ?? const [];
+    return raw.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  /// Run one action against many emails in a single round-trip.
+  /// `action` is one of 'read' | 'unread' | 'star' | 'unstar' |
+  /// 'archive' | 'delete' | 'purge' | 'move' | 'label-add' |
+  /// 'label-remove'. Extras for 'move' / label actions go in
+  /// [folder] / [labelIds].
+  Future<int> batchAction({
+    required List<String> ids,
+    required String action,
+    String? folder,
+    List<String>? labelIds,
+  }) async {
+    if (ids.isEmpty) return 0;
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/batch',
+      data: {
+        'ids': ids,
+        'action': action,
+        if (folder != null) 'folder': folder,
+        if (labelIds != null) 'labelIds': labelIds,
+      },
+    );
+    return (response.data?['affected'] as num?)?.toInt() ?? 0;
+  }
+
   Future<Map<String, int>> getUnreadCounts() async {
     final response = await _client.dio.get<Map<String, dynamic>>(
       '/api/v1/inbox/unread-counts',
@@ -81,6 +171,12 @@ class MailRemoteDataSource {
       data: draft.toJson(),
     );
     return response.data!['id'] as String;
+  }
+
+  Future<void> dispatch(String emailId) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/dispatch',
+    );
   }
 
   Future<List<Mailbox>> getMailboxes() async {

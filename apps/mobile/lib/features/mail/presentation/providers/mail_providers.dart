@@ -9,6 +9,88 @@ import '../../domain/email.dart';
 
 const int kInboxPageSize = 50;
 
+/// Folders the inbox view supports. Literal folders map to the `folder`
+/// column on the server; synthetic ones (`starred`, `snoozed`,
+/// `scheduled`, `all`) are derived server-side from other columns.
+class InboxFolder {
+  const InboxFolder._(this.id, this.label);
+  final String id;
+  final String label;
+
+  static const inbox = InboxFolder._('inbox', 'Inbox');
+  static const starred = InboxFolder._('starred', 'Starred');
+  static const snoozed = InboxFolder._('snoozed', 'Snoozed');
+  static const sent = InboxFolder._('sent', 'Sent');
+  static const drafts = InboxFolder._('drafts', 'Drafts');
+  static const scheduled = InboxFolder._('scheduled', 'Scheduled');
+  static const archive = InboxFolder._('archive', 'Archive');
+  static const trash = InboxFolder._('trash', 'Trash');
+  static const spam = InboxFolder._('spam', 'Spam');
+  static const all = InboxFolder._('all', 'All Mail');
+
+  static const values = [
+    inbox,
+    starred,
+    snoozed,
+    sent,
+    drafts,
+    scheduled,
+    archive,
+    trash,
+    spam,
+    all,
+  ];
+
+  static InboxFolder fromId(String id) {
+    for (final f in values) {
+      if (f.id == id) return f;
+    }
+    return inbox;
+  }
+}
+
+/// The active folder the inbox view is showing. Tapping a drawer entry
+/// updates this; the InboxController listens and reloads.
+final currentFolderProvider = StateProvider<InboxFolder>(
+  (ref) => InboxFolder.inbox,
+);
+
+/// Row-level filter over the current folder's list. Applied
+/// client-side against the page already loaded (same pattern as
+/// web) — no extra network, filters compose naturally with folder
+/// selection. Clearing the folder resets this to 'all'.
+enum InboxFilter { all, unread, starred, attachments }
+
+final inboxFilterProvider = StateProvider<InboxFilter>((ref) {
+  ref.listen<InboxFolder>(currentFolderProvider, (prev, next) {
+    if (prev?.id != next.id) {
+      ref.controller.state = InboxFilter.all;
+    }
+  });
+  return InboxFilter.all;
+});
+
+/// Set of email ids currently marked by the user for a bulk action.
+/// Non-empty → the inbox renders its "selection mode" app bar and
+/// rows toggle on tap instead of opening. Kept as a StateProvider
+/// (not a local widget State) so it survives hot reload / scroll-
+/// reparenting and so the app bar widget can observe it from
+/// outside the list subtree.
+final selectedEmailIdsProvider = StateProvider<Set<String>>(
+  (ref) {
+    // Clear the selection whenever the active folder flips — a set
+    // of ids from /inbox has no meaning against /trash, and leaving
+    // them staged would silently batch across folders on the next
+    // action.
+    ref.listen<InboxFolder>(currentFolderProvider, (prev, next) {
+      if (prev?.id != next.id) {
+        ref.controller.state = const <String>{};
+      }
+    });
+    return const <String>{};
+  },
+);
+
 final mailRepositoryProvider = FutureProvider<MailRepository>((ref) async {
   final client = await ref.watch(apiClientProvider.future);
   return MailRepositoryImpl(MailRemoteDataSource(client));
@@ -68,16 +150,43 @@ class InboxController extends StateNotifier<InboxState> {
   InboxController(this._ref) : super(const InboxState()) {
     load();
     _subscribeToRealtime();
+    _subscribeToFolder();
   }
 
   final Ref _ref;
   ProviderSubscription<AsyncValue<RealtimeEvent>>? _eventSub;
+  ProviderSubscription<InboxFolder>? _folderSub;
+
+  /// Reload whenever the user picks a different folder from the drawer.
+  /// We clear local state immediately so the UI doesn't flash stale
+  /// rows from the previous folder; load() then fills in the new view.
+  void _subscribeToFolder() {
+    _folderSub = _ref.listen<InboxFolder>(
+      currentFolderProvider,
+      (prev, next) {
+        if (prev?.id == next.id) return;
+        state = state.copyWith(
+          emails: const [],
+          hasLoaded: false,
+          page: 0,
+          hasMore: false,
+          clearError: true,
+        );
+        load();
+      },
+    );
+  }
 
   Future<void> load() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final repo = await _ref.read(mailRepositoryProvider.future);
-      final pageResult = await repo.listByFolder(page: 1, pageSize: kInboxPageSize);
+      final folder = _ref.read(currentFolderProvider);
+      final pageResult = await repo.listByFolder(
+        folder: folder.id,
+        page: 1,
+        pageSize: kInboxPageSize,
+      );
       state = state.copyWith(
         emails: pageResult.emails,
         isLoading: false,
@@ -104,7 +213,12 @@ class InboxController extends StateNotifier<InboxState> {
     try {
       final repo = await _ref.read(mailRepositoryProvider.future);
       final next = state.page + 1;
-      final pageResult = await repo.listByFolder(page: next, pageSize: kInboxPageSize);
+      final folder = _ref.read(currentFolderProvider);
+      final pageResult = await repo.listByFolder(
+        folder: folder.id,
+        page: next,
+        pageSize: kInboxPageSize,
+      );
       // Merge by id to defend against duplicates across pages on refresh.
       final seen = <String>{for (final e in state.emails) e.id};
       final appended = [
@@ -185,6 +299,14 @@ class InboxController extends StateNotifier<InboxState> {
         }
       case EmailDeletedEvent e:
         removeLocal(e.emailId);
+      case EmailSendStatusEvent e:
+        // Drafts-as-outbox lifecycle — flip the row's pill to its
+        // server-confirmed terminal state without a refetch.
+        final next = state.emails.map((em) {
+          if (em.id != e.emailId) return em;
+          return em.copyWith(status: e.status, sendError: e.error);
+        }).toList(growable: false);
+        state = state.copyWith(emails: next);
       default:
         break;
     }
@@ -199,6 +321,7 @@ class InboxController extends StateNotifier<InboxState> {
   @override
   void dispose() {
     _eventSub?.close();
+    _folderSub?.close();
     super.dispose();
   }
 }

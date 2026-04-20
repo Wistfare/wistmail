@@ -1,48 +1,182 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/local/compose_drafts_store.dart';
+import '../../../../core/local/local_providers.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../data/mail_actions.dart';
+import '../../domain/compose_args.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
+import '../widgets/recipient_chips_field.dart';
 
-/// Mobile/Compose — design.lib.pen node `wr2Bw`. Sharp From/To/Cc/Subject
-/// rows separated by 1px hairlines, lime "Send" pill in top right,
-/// formatting toolbar at bottom.
+/// Mobile/Compose. Supports new compose, reply, reply-all and
+/// forward by accepting a `ComposeArgs` constructor parameter (passed
+/// from the router via `extra`). To/Cc/Bcc are real chip inputs;
+/// Bcc is hidden until the user opts in.
 class ComposeScreen extends ConsumerStatefulWidget {
-  const ComposeScreen({super.key});
+  const ComposeScreen({super.key, this.args = ComposeArgs.empty});
+
+  final ComposeArgs args;
 
   @override
   ConsumerState<ComposeScreen> createState() => _ComposeScreenState();
 }
 
 class _ComposeScreenState extends ConsumerState<ComposeScreen> {
-  final _toController = TextEditingController();
-  final _ccController = TextEditingController();
-  final _subjectController = TextEditingController();
-  final _bodyController = TextEditingController();
+  late List<String> _to;
+  late List<String> _cc;
+  late List<String> _bcc;
+  late final TextEditingController _subjectController;
+  late final TextEditingController _bodyController;
+  late bool _showCc;
+  late bool _showBcc;
   bool _isSending = false;
   String? _errorMessage;
 
+  /// Debounce handle — any time the user types we wait 800ms of idle
+  /// before persisting to avoid hammering sqlite on every keystroke.
+  Timer? _autosaveTimer;
+  /// Mailbox id for the currently-attached draft. Only set after
+  /// the first save so clear-on-send knows which row to delete.
+  String? _draftMailboxId;
+  /// Whether we've already attempted the one-shot restore. Guards
+  /// against re-running the restore on hot reload.
+  bool _restoreAttempted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _to = List.of(widget.args.toAddresses);
+    _cc = List.of(widget.args.cc);
+    _bcc = List.of(widget.args.bcc);
+    _showCc = _cc.isNotEmpty;
+    _showBcc = _bcc.isNotEmpty;
+    _subjectController = TextEditingController(text: widget.args.subject);
+    _bodyController = TextEditingController(text: widget.args.body);
+    _subjectController.addListener(_scheduleAutosave);
+    _bodyController.addListener(_scheduleAutosave);
+  }
+
   @override
   void dispose() {
-    _toController.dispose();
-    _ccController.dispose();
+    _autosaveTimer?.cancel();
+    _subjectController.removeListener(_scheduleAutosave);
+    _bodyController.removeListener(_scheduleAutosave);
     _subjectController.dispose();
     _bodyController.dispose();
     super.dispose();
   }
 
-  List<String> _splitAddresses(String raw) => raw
-      .split(RegExp(r'[,;\s]+'))
-      .map((s) => s.trim())
-      .where((s) => s.isNotEmpty)
-      .toList();
+  /// Defers the actual sqlite write to a debounced timer so the
+  /// autosave doesn't fire on every keystroke. 800 ms matches the
+  /// feeling of "the app saved when I paused" without being so long
+  /// that a tap-close-misclick loses real work.
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 800), _persistDraft);
+  }
+
+  /// Short-circuit the autosave when the local store provider is
+  /// unreachable (widget tests with no sqflite platform channel).
+  /// The sync engine provider is only ready in production — we
+  /// peek at it to decide whether to bother touching the draft
+  /// store at all.
+  bool get _localStoreReady =>
+      ref.read(composeDraftsStoreProvider) is AsyncData;
+
+  Future<void> _persistDraft() async {
+    final mailboxId = _draftMailboxId;
+    if (mailboxId == null || !_localStoreReady) return;
+    try {
+      final store = await ref.read(composeDraftsStoreProvider.future);
+      await store.save(
+        ComposeDraftRow(
+          mailboxId: mailboxId,
+          toAddresses: _to,
+          cc: _cc,
+          bcc: _bcc,
+          subject: _subjectController.text,
+          body: _bodyController.text,
+          inReplyTo: widget.args.inReplyTo,
+          scheduledAt: _scheduledAt,
+          updatedAt: DateTime.now(),
+        ),
+      );
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  /// One-shot restore when the compose screen opens without pre-
+  /// filled ComposeArgs (i.e. a fresh "new compose" rather than a
+  /// reply / forward that already has its own body). Called from
+  /// the build once we know the user's default mailbox.
+  Future<void> _restoreDraftFor(String mailboxId) async {
+    if (_restoreAttempted) return;
+    _restoreAttempted = true;
+    _draftMailboxId = mailboxId;
+
+    // If the user opened compose via a reply / forward, we treat
+    // their passed-in content as the source of truth and leave any
+    // older stashed draft alone — restoring over a reply body is a
+    // worse UX than discarding the stash.
+    final hasPrefilled = widget.args.toAddresses.isNotEmpty ||
+        widget.args.subject.isNotEmpty ||
+        widget.args.body.isNotEmpty;
+    if (hasPrefilled) return;
+
+    if (!_localStoreReady) return;
+    ComposeDraftRow? row;
+    try {
+      final store = await ref.read(composeDraftsStoreProvider.future);
+      row = await store.load(mailboxId);
+    } catch (_) {
+      // Best-effort — if the local store can't open (e.g. widget
+      // test without sqflite), skip the restore. The compose
+      // screen stays blank, same as a fresh install.
+      return;
+    }
+    if (row == null || !mounted) return;
+    final restored = row;
+    setState(() {
+      _to = List.of(restored.toAddresses);
+      _cc = List.of(restored.cc);
+      _bcc = List.of(restored.bcc);
+      _showCc = _cc.isNotEmpty;
+      _showBcc = _bcc.isNotEmpty;
+      _subjectController.text = restored.subject;
+      _bodyController.text = restored.body;
+      _scheduledAt = restored.scheduledAt;
+    });
+  }
+
+  /// Wipe the persisted draft row — called after a successful send
+  /// so we don't restore a stale copy next time compose opens.
+  /// Best-effort: failures (test env without sqflite, offline disk
+  /// issues) don't block the send confirmation.
+  Future<void> _clearPersistedDraft() async {
+    final mailboxId = _draftMailboxId;
+    if (mailboxId == null || !_localStoreReady) return;
+    try {
+      final store = await ref.read(composeDraftsStoreProvider.future);
+      await store.clear(mailboxId);
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  /// Optional scheduled-send target. Populated from the picker in
+  /// the compose toolbar; when non-null the compose sends with
+  /// `scheduledAt` set and lands in drafts with the scheduled pill.
+  DateTime? _scheduledAt;
 
   Future<void> _send(Mailbox mailbox) async {
-    final to = _splitAddresses(_toController.text);
-    if (to.isEmpty) {
+    if (_to.isEmpty) {
       setState(() => _errorMessage = 'Add at least one recipient.');
       return;
     }
@@ -50,17 +184,33 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
       _isSending = true;
       _errorMessage = null;
     });
+    final draft = ComposeDraft(
+      fromAddress: mailbox.address,
+      mailboxId: mailbox.id,
+      toAddresses: _to,
+      cc: _cc,
+      bcc: _bcc,
+      subject: _subjectController.text,
+      textBody: _bodyController.text,
+      send: true,
+      scheduledAt: _scheduledAt,
+    );
+    // Synchronous read — engine is bootstrapped on app start. Falls
+    // back to direct repo call when the offline-first stack isn't
+    // ready (test env without sqflite).
+    final actions = ref.read(mailActionsProvider).valueOrNull;
     try {
-      final repo = await ref.read(mailRepositoryProvider.future);
-      await repo.compose(ComposeDraft(
-        fromAddress: mailbox.address,
-        mailboxId: mailbox.id,
-        toAddresses: to,
-        cc: _splitAddresses(_ccController.text),
-        subject: _subjectController.text,
-        textBody: _bodyController.text,
-        send: true,
-      ));
+      if (actions != null) {
+        await actions.send(draft);
+      } else {
+        final repo = await ref.read(mailRepositoryProvider.future);
+        await repo.compose(draft);
+      }
+      // Wipe the stashed draft now that the real send (or schedule)
+      // is committed — otherwise re-opening compose would restore
+      // the just-sent message and mislead the user.
+      _autosaveTimer?.cancel();
+      await _clearPersistedDraft();
       if (!mounted) return;
       context.pop();
     } catch (e) {
@@ -82,17 +232,47 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   Widget build(BuildContext context) {
     final mailboxes = ref.watch(mailboxesProvider);
 
-    return Scaffold(
+    return PopScope(
+      // Flush the draft synchronously before the system pop — covers
+      // the Android back gesture + root-level swipe where the user
+      // leaves without tapping our Close button.
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) return;
+        _autosaveTimer?.cancel();
+        // Fire-and-forget — widget is about to unmount.
+        _persistDraft();
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
             _Header(
+              title: _headerTitle(),
               isSending: _isSending,
+              scheduledAt: _scheduledAt,
               onClose: () => context.pop(),
-              onSend: () => mailboxes.whenOrNull(
-                data: (list) => list.isEmpty ? null : _send(list.first),
-              ),
+              onSchedule: () async {
+                final when = await _pickScheduledTime(context);
+                if (!mounted) return;
+                setState(() => _scheduledAt = when);
+              },
+              onClearSchedule: () => setState(() => _scheduledAt = null),
+              onSend: () {
+                // Drop focus first so any chip field with a pending
+                // buffer commits its current text into a real chip
+                // before we validate _to. Microtask delay gives the
+                // focus listener + setState a tick to settle.
+                FocusManager.instance.primaryFocus?.unfocus();
+                Future.microtask(() {
+                  if (!mounted) return;
+                  mailboxes.whenOrNull(
+                    data: (list) =>
+                        list.isEmpty ? null : _send(list.first),
+                  );
+                });
+              },
             ),
             Expanded(
               child: mailboxes.when(
@@ -109,10 +289,34 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                       ),
                     );
                   }
+                  // Fire-and-forget: restore any stashed draft the
+                  // first time we land on this mailbox. Guarded by
+                  // _restoreAttempted so hot reload / rebuilds
+                  // don't re-run it.
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _restoreDraftFor(list.first.id);
+                  });
                   return _Form(
                     fromAddress: list.first.address,
-                    toController: _toController,
-                    ccController: _ccController,
+                    to: _to,
+                    cc: _cc,
+                    bcc: _bcc,
+                    showCc: _showCc,
+                    showBcc: _showBcc,
+                    onToChanged: (v) {
+                      setState(() => _to = v);
+                      _scheduleAutosave();
+                    },
+                    onCcChanged: (v) {
+                      setState(() => _cc = v);
+                      _scheduleAutosave();
+                    },
+                    onBccChanged: (v) {
+                      setState(() => _bcc = v);
+                      _scheduleAutosave();
+                    },
+                    onShowCc: () => setState(() => _showCc = true),
+                    onShowBcc: () => setState(() => _showBcc = true),
                     subjectController: _subjectController,
                     bodyController: _bodyController,
                     errorMessage: _errorMessage,
@@ -139,19 +343,35 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
           ],
         ),
       ),
+    ),
     );
+  }
+
+  String _headerTitle() {
+    final s = _subjectController.text;
+    if (s.toLowerCase().startsWith('re:')) return 'Reply';
+    if (s.toLowerCase().startsWith('fwd:')) return 'Forward';
+    return 'New Message';
   }
 }
 
 class _Header extends StatelessWidget {
   const _Header({
+    required this.title,
     required this.isSending,
+    required this.scheduledAt,
     required this.onClose,
     required this.onSend,
+    required this.onSchedule,
+    required this.onClearSchedule,
   });
+  final String title;
   final bool isSending;
+  final DateTime? scheduledAt;
   final VoidCallback onClose;
   final VoidCallback onSend;
+  final VoidCallback onSchedule;
+  final VoidCallback onClearSchedule;
 
   @override
   Widget build(BuildContext context) {
@@ -167,9 +387,31 @@ class _Header extends StatelessWidget {
             onPressed: onClose,
           ),
           const SizedBox(width: 4),
-          Text('New Message', style: AppTextStyles.titleMedium),
+          Text(title, style: AppTextStyles.titleMedium),
+          const SizedBox(width: 12),
+          if (scheduledAt != null)
+            _ScheduleChip(
+              when: scheduledAt!,
+              onClear: onClearSchedule,
+            ),
           const Spacer(),
-          _SendButton(isSending: isSending, onPressed: onSend),
+          IconButton(
+            tooltip: 'Schedule send',
+            splashRadius: 20,
+            onPressed: onSchedule,
+            icon: Icon(
+              Icons.schedule,
+              size: 20,
+              color: scheduledAt != null
+                  ? AppColors.accent
+                  : AppColors.textSecondary,
+            ),
+          ),
+          _SendButton(
+            isSending: isSending,
+            onPressed: onSend,
+            label: scheduledAt == null ? 'Send' : 'Schedule',
+          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -177,8 +419,63 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Pill rendered between the title and the action group once a
+/// scheduled time is picked. Tapping the ✕ clears the schedule —
+/// the Send button reverts to an immediate send.
+class _ScheduleChip extends StatelessWidget {
+  const _ScheduleChip({required this.when, required this.onClear});
+  final DateTime when;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onClear,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.accentDim,
+          border: Border.all(color: AppColors.accent),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.schedule, size: 12, color: AppColors.accent),
+            const SizedBox(width: 4),
+            Text(
+              _format(when),
+              style: AppTextStyles.monoSmall.copyWith(color: AppColors.accent),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.close, size: 12, color: AppColors.accent),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _format(DateTime dt) {
+    final local = dt.toLocal();
+    const dows = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dow = dows[local.weekday - 1];
+    final hour = local.hour == 0
+        ? 12
+        : local.hour > 12
+            ? local.hour - 12
+            : local.hour;
+    final ampm = local.hour < 12 ? 'AM' : 'PM';
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$dow $hour:$minute $ampm';
+  }
+}
+
 class _SendButton extends StatelessWidget {
-  const _SendButton({required this.isSending, required this.onPressed});
+  const _SendButton({
+    required this.isSending,
+    required this.onPressed,
+    this.label = 'Send',
+  });
+  final String label;
   final bool isSending;
   final VoidCallback onPressed;
 
@@ -204,7 +501,9 @@ class _SendButton extends StatelessWidget {
                       size: 14, color: AppColors.background),
               const SizedBox(width: 6),
               Text(
-                isSending ? 'Sending…' : 'Send',
+                isSending
+                    ? (label == 'Schedule' ? 'Scheduling…' : 'Sending…')
+                    : label,
                 style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -222,145 +521,220 @@ class _SendButton extends StatelessWidget {
 class _Form extends StatelessWidget {
   const _Form({
     required this.fromAddress,
-    required this.toController,
-    required this.ccController,
+    required this.to,
+    required this.cc,
+    required this.bcc,
+    required this.showCc,
+    required this.showBcc,
+    required this.onToChanged,
+    required this.onCcChanged,
+    required this.onBccChanged,
+    required this.onShowCc,
+    required this.onShowBcc,
     required this.subjectController,
     required this.bodyController,
     required this.errorMessage,
   });
+
   final String fromAddress;
-  final TextEditingController toController;
-  final TextEditingController ccController;
+  final List<String> to;
+  final List<String> cc;
+  final List<String> bcc;
+  final bool showCc;
+  final bool showBcc;
+  final ValueChanged<List<String>> onToChanged;
+  final ValueChanged<List<String>> onCcChanged;
+  final ValueChanged<List<String>> onBccChanged;
+  final VoidCallback onShowCc;
+  final VoidCallback onShowBcc;
   final TextEditingController subjectController;
   final TextEditingController bodyController;
   final String? errorMessage;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const Divider(color: AppColors.border, height: 1),
-        _Row(
-          label: 'From',
-          child: Text(fromAddress,
-              style: AppTextStyles.monoSmall.copyWith(fontSize: 13)),
-        ),
-        const Divider(color: AppColors.border, height: 1),
-        _Row(
-          label: 'To',
-          child: _Input(
-              controller: toController, hint: 'name@domain.com'),
-        ),
-        const Divider(color: AppColors.border, height: 1),
-        _Row(
-          label: 'Cc',
-          child:
-              _Input(controller: ccController, hint: 'Add recipients...'),
-        ),
-        const Divider(color: AppColors.border, height: 1),
-        _Row(
-          label: 'Subject',
-          child: _Input(controller: subjectController),
-        ),
-        const Divider(color: AppColors.border, height: 1),
-        if (errorMessage != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: Text(errorMessage!,
-                style: AppTextStyles.bodySmall
-                    .copyWith(color: AppColors.danger)),
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const Divider(color: AppColors.border, height: 1),
+          _Row(
+            label: 'From',
+            child: Text(fromAddress,
+                style: AppTextStyles.monoSmall.copyWith(fontSize: 13)),
           ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          const Divider(color: AppColors.border, height: 1),
+          _Row(
+            label: 'To',
+            trailing: (showCc && showBcc)
+                ? null
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!showCc)
+                        _MiniLink(label: 'Cc', onTap: onShowCc),
+                      if (!showBcc) ...[
+                        if (!showCc) const SizedBox(width: 8),
+                        _MiniLink(label: 'Bcc', onTap: onShowBcc),
+                      ],
+                    ],
+                  ),
+            child: RecipientChipsField(
+              values: to,
+              onChanged: onToChanged,
+              placeholder: 'name@domain.com',
+            ),
+          ),
+          if (showCc) ...[
+            const Divider(color: AppColors.border, height: 1),
+            _Row(
+              label: 'Cc',
+              child: RecipientChipsField(
+                values: cc,
+                onChanged: onCcChanged,
+                placeholder: 'Add Cc recipients…',
+              ),
+            ),
+          ],
+          if (showBcc) ...[
+            const Divider(color: AppColors.border, height: 1),
+            _Row(
+              label: 'Bcc',
+              child: RecipientChipsField(
+                values: bcc,
+                onChanged: onBccChanged,
+                placeholder: 'Add Bcc recipients…',
+              ),
+            ),
+          ],
+          const Divider(color: AppColors.border, height: 1),
+          _Row(
+            label: 'Subject',
             child: TextField(
-              controller: bodyController,
-              maxLines: null,
-              expands: true,
-              textAlignVertical: TextAlignVertical.top,
+              controller: subjectController,
               cursorColor: AppColors.accent,
               style: GoogleFonts.inter(
                 fontSize: 14,
+                fontWeight: FontWeight.w500,
                 color: AppColors.textPrimary,
-                height: 1.6,
               ),
-              decoration: InputDecoration(
-                hintText: 'Write your message...',
-                hintStyle: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: AppColors.textTertiary,
-                ),
+              decoration: const InputDecoration(
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
-                filled: false,
+                isDense: true,
                 contentPadding: EdgeInsets.zero,
               ),
             ),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.child});
-  final String label;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 56,
-            child: Text(
-              label,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textTertiary,
-                letterSpacing: 0.4,
+          const Divider(color: AppColors.border, height: 1),
+          if (errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Text(errorMessage!,
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.danger)),
+            ),
+          // Body — multiline, no fixed height (the scroll view above
+          // handles overflow). Min-height keeps the field tappable
+          // even on a fresh compose.
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 280),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              child: TextField(
+                controller: bodyController,
+                maxLines: null,
+                minLines: 8,
+                cursorColor: AppColors.accent,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                  height: 1.6,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Write your message...',
+                  hintStyle: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: AppColors.textTertiary,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
             ),
           ),
-          Expanded(child: child),
         ],
       ),
     );
   }
 }
 
-class _Input extends StatelessWidget {
-  const _Input({required this.controller, this.hint});
-  final TextEditingController controller;
-  final String? hint;
+class _Row extends StatelessWidget {
+  const _Row({required this.label, required this.child, this.trailing});
+  final String label;
+  final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      cursorColor: AppColors.accent,
-      style: AppTextStyles.monoSmall.copyWith(
-        color: AppColors.textPrimary,
-        fontSize: 13,
-      ),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: AppTextStyles.monoSmall.copyWith(
-          color: AppColors.textTertiary,
-          fontSize: 13,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      // ConstrainedBox keeps every row at a consistent minimum height
+      // regardless of how many chips it contains — fixes the jumpy
+      // chip-vs-empty input layout.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 28),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 56,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  label,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(child: child),
+            if (trailing != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, top: 4),
+                child: trailing,
+              ),
+          ],
         ),
-        border: InputBorder.none,
-        enabledBorder: InputBorder.none,
-        focusedBorder: InputBorder.none,
-        isDense: true,
-        contentPadding: EdgeInsets.zero,
-        filled: false,
+      ),
+    );
+  }
+}
+
+class _MiniLink extends StatelessWidget {
+  const _MiniLink({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Text(
+        label,
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppColors.accent,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
@@ -405,4 +779,38 @@ class _ToolbarIcon extends StatelessWidget {
       onPressed: onTap,
     );
   }
+}
+
+/// Two-step date + time picker — we defer to the platform dialogs
+/// instead of inventing our own so the user gets the familiar
+/// iOS cupertino / Android material picker for their phone. Returns
+/// null if the user cancels either step.
+Future<DateTime?> _pickScheduledTime(BuildContext context) async {
+  final now = DateTime.now();
+  final date = await showDatePicker(
+    context: context,
+    initialDate: now.add(const Duration(hours: 1)),
+    firstDate: now,
+    lastDate: now.add(const Duration(days: 365)),
+  );
+  if (date == null || !context.mounted) return null;
+  final time = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(
+      now.add(const Duration(hours: 1)),
+    ),
+  );
+  if (time == null) return null;
+  final scheduled = DateTime(
+    date.year,
+    date.month,
+    date.day,
+    time.hour,
+    time.minute,
+  );
+  // Refuse targets in the past — a past scheduledAt would send
+  // immediately on the next dispatcher tick, which is probably not
+  // what the user meant.
+  if (scheduled.isBefore(DateTime.now())) return null;
+  return scheduled;
 }

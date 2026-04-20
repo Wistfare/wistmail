@@ -1,86 +1,57 @@
-import { describe, it, expect, vi } from 'vitest'
+/// Pure-logic tests for the EmailSender state machine. The integration
+/// path (DB + mail-engine HTTP) is covered separately. Here we lock
+/// down the things you can break by accident:
+///   - retry backoff schedule (linear-then-exponential, exhausts at MAX)
+///   - status enum stability (clients pin to these literals)
 
-// Mock the database and DNS modules before importing
-vi.mock('node:dns/promises', () => ({
-  resolveMx: vi.fn().mockResolvedValue([{ exchange: 'mx1.example.com.', priority: 10 }]),
-}))
+import { describe, expect, it } from 'vitest'
+import {
+  EMAIL_STATUS,
+  MAX_SEND_ATTEMPTS,
+  nextAttemptAt,
+} from './email-sender.js'
 
-describe('EmailSender', () => {
-  describe('MIME message building', () => {
-    it('should build a text-only MIME message', () => {
-      // Test the MIME building logic
-      const lines: string[] = []
-      const messageId = 'test-123@wistfare.com'
-      const from = 'sender@wistfare.com'
-      const to = ['recipient@example.com']
-      const subject = 'Test Subject'
-      const textBody = 'Hello, this is a test email.'
-
-      lines.push(`Message-ID: <${messageId}>`)
-      lines.push(`From: ${from}`)
-      lines.push(`To: ${to.join(', ')}`)
-      lines.push(`Subject: ${subject}`)
-      lines.push('MIME-Version: 1.0')
-      lines.push('Content-Type: text/plain; charset=utf-8')
-      lines.push('Content-Transfer-Encoding: 7bit')
-      lines.push('')
-      lines.push(textBody)
-
-      const message = lines.join('\r\n')
-
-      expect(message).toContain('Message-ID: <test-123@wistfare.com>')
-      expect(message).toContain('From: sender@wistfare.com')
-      expect(message).toContain('To: recipient@example.com')
-      expect(message).toContain('Subject: Test Subject')
-      expect(message).toContain('MIME-Version: 1.0')
-      expect(message).toContain('Content-Type: text/plain')
-      expect(message).toContain('Hello, this is a test email.')
-    })
-
-    it('should build a multipart message with text and HTML', () => {
-      const boundary = '----=_Part_test'
-      const lines: string[] = []
-
-      lines.push('MIME-Version: 1.0')
-      lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`)
-      lines.push('')
-      lines.push(`--${boundary}`)
-      lines.push('Content-Type: text/plain; charset=utf-8')
-      lines.push('')
-      lines.push('Plain text body')
-      lines.push(`--${boundary}`)
-      lines.push('Content-Type: text/html; charset=utf-8')
-      lines.push('')
-      lines.push('<p>HTML body</p>')
-      lines.push(`--${boundary}--`)
-
-      const message = lines.join('\r\n')
-
-      expect(message).toContain('multipart/alternative')
-      expect(message).toContain('Plain text body')
-      expect(message).toContain('<p>HTML body</p>')
-    })
+describe('EmailSender state machine', () => {
+  it('exposes the documented status enum literals', () => {
+    expect(EMAIL_STATUS.Idle).toBe('idle')
+    expect(EMAIL_STATUS.Sending).toBe('sending')
+    expect(EMAIL_STATUS.Sent).toBe('sent')
+    expect(EMAIL_STATUS.Failed).toBe('failed')
+    expect(EMAIL_STATUS.RateLimited).toBe('rate_limited')
   })
 
-  describe('recipient grouping', () => {
-    it('should group recipients by domain', () => {
-      const recipients = [
-        'alice@example.com',
-        'bob@example.com',
-        'carol@other.com',
-      ]
+  describe('nextAttemptAt backoff', () => {
+    const base = new Date('2026-01-01T00:00:00Z')
 
-      const domainRecipients = new Map<string, string[]>()
-      for (const addr of recipients) {
-        const domain = addr.split('@')[1]
-        const existing = domainRecipients.get(domain) || []
-        existing.push(addr)
-        domainRecipients.set(domain, existing)
+    it('returns a future date for the first attempt window', () => {
+      const next = nextAttemptAt(0, base)
+      expect(next).not.toBeNull()
+      expect(next!.getTime()).toBe(base.getTime() + 1_000)
+    })
+
+    it('expands the window on each subsequent attempt', () => {
+      const a = nextAttemptAt(0, base)!
+      const b = nextAttemptAt(1, base)!
+      const c = nextAttemptAt(2, base)!
+      expect(b.getTime()).toBeGreaterThan(a.getTime())
+      expect(c.getTime()).toBeGreaterThan(b.getTime())
+    })
+
+    it('returns null after MAX_SEND_ATTEMPTS', () => {
+      expect(nextAttemptAt(MAX_SEND_ATTEMPTS, base)).toBeNull()
+      expect(nextAttemptAt(MAX_SEND_ATTEMPTS + 5, base)).toBeNull()
+    })
+
+    it('produces a strictly increasing series across the schedule', () => {
+      // Touch every entry so future edits to the schedule still
+      // satisfy the monotonic invariant the dispatcher depends on.
+      let prev = -Infinity
+      for (let i = 0; i < MAX_SEND_ATTEMPTS; i++) {
+        const next = nextAttemptAt(i, base)
+        expect(next).not.toBeNull()
+        expect(next!.getTime()).toBeGreaterThan(prev)
+        prev = next!.getTime()
       }
-
-      expect(domainRecipients.get('example.com')).toEqual(['alice@example.com', 'bob@example.com'])
-      expect(domainRecipients.get('other.com')).toEqual(['carol@other.com'])
-      expect(domainRecipients.size).toBe(2)
     })
   })
 })

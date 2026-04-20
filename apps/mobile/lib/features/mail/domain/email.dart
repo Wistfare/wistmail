@@ -38,10 +38,16 @@ class Email {
     required this.isDraft,
     this.hasAttachments = false,
     this.sizeBytes = 0,
+    this.status = 'idle',
+    this.sendError,
     required this.createdAt,
+    DateTime? updatedAt,
     this.mailboxId,
     this.attachments = const [],
-  })  : senderName = _extractSenderName(fromAddress),
+    this.labels = const [],
+    this.threadId,
+  })  : updatedAt = updatedAt ?? createdAt,
+        senderName = _extractSenderName(fromAddress),
         senderEmail = _extractSenderEmail(fromAddress),
         senderInitials = _initialsFor(_extractSenderName(fromAddress)),
         senderAvatarColor = _colorFor(fromAddress),
@@ -62,9 +68,26 @@ class Email {
   final bool isDraft;
   final bool hasAttachments;
   final int sizeBytes;
+  /// Outbound lifecycle status — mirrors the backend column. 'idle'
+  /// for inbound mail; 'sending' / 'sent' / 'failed' / 'rate_limited'
+  /// for emails the user has tried to send.
+  final String status;
+  final String? sendError;
   final DateTime createdAt;
+  /// Server-side mutation timestamp. Drives last-write-wins
+  /// reconciliation in the local store: a server upsert can only
+  /// override the local copy when its updatedAt is strictly newer.
+  final DateTime updatedAt;
   final String? mailboxId;
   final List<EmailAttachment> attachments;
+  /// Labels attached to this email. Server ships these inline on every
+  /// list response so the row renderer never has to fire a per-row
+  /// lookup. Empty in search-result rows (Meili doesn't index label
+  /// membership reliably).
+  final List<EmailLabelRef> labels;
+  /// Thread id the email belongs to. Null on pre-threading rows; the
+  /// UI treats those as their own single-message thread.
+  final String? threadId;
 
   // Pre-computed once in the constructor — getters used to recompute these
   // on every frame for every row in the list.
@@ -91,11 +114,20 @@ class Email {
       isDraft: (json['isDraft'] as bool?) ?? false,
       hasAttachments: (json['hasAttachments'] as bool?) ?? false,
       sizeBytes: (json['sizeBytes'] as num?)?.toInt() ?? 0,
+      status: (json['status'] as String?) ?? 'idle',
+      sendError: json['sendError'] as String?,
       mailboxId: json['mailboxId'] as String?,
       createdAt: _parseDate(json['createdAt']),
+      updatedAt: json['updatedAt'] != null
+          ? _parseDate(json['updatedAt'])
+          : _parseDate(json['createdAt']),
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
           .map((a) => EmailAttachment.fromJson(a as Map<String, dynamic>))
           .toList(growable: false),
+      labels: (json['labels'] as List<dynamic>? ?? const [])
+          .map((l) => EmailLabelRef.fromJson(l as Map<String, dynamic>))
+          .toList(growable: false),
+      threadId: json['threadId'] as String?,
     );
   }
 
@@ -103,6 +135,9 @@ class Email {
     bool? isRead,
     bool? isStarred,
     String? folder,
+    String? status,
+    String? sendError,
+    DateTime? updatedAt,
   }) =>
       Email(
         id: id,
@@ -120,9 +155,14 @@ class Email {
         isDraft: isDraft,
         hasAttachments: hasAttachments,
         sizeBytes: sizeBytes,
+        status: status ?? this.status,
+        sendError: sendError ?? this.sendError,
         createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
         mailboxId: mailboxId,
         attachments: attachments,
+        labels: labels,
+        threadId: threadId,
       );
 
   /// Merge a fully-loaded body fetched from /emails/:id back into the slim
@@ -149,9 +189,14 @@ class Email {
         isDraft: isDraft,
         hasAttachments: attachments?.isNotEmpty ?? hasAttachments,
         sizeBytes: sizeBytes,
+        status: status,
+        sendError: sendError,
         createdAt: createdAt,
+        updatedAt: updatedAt,
         mailboxId: mailboxId,
         attachments: attachments ?? this.attachments,
+        labels: labels,
+        threadId: threadId,
       );
 
   String get timeAgo => _formatTimeAgo(createdAt);
@@ -220,6 +265,8 @@ class EmailAttachment {
     required this.filename,
     required this.contentType,
     required this.sizeBytes,
+    this.parsedIcs,
+    this.rsvpResponse,
   });
 
   final String id;
@@ -227,12 +274,112 @@ class EmailAttachment {
   final String contentType;
   final int sizeBytes;
 
+  /// Present when the server successfully parsed a text/calendar
+  /// attachment — lets the UI render title/time/location + working
+  /// RSVP buttons instead of the generic placeholder.
+  final ParsedIcs? parsedIcs;
+
+  /// Server-persisted last RSVP choice — one of 'accept', 'tentative',
+  /// 'decline', or null if the user hasn't responded. Seeds the ICS
+  /// card's confirmation pill so it survives navigation.
+  final String? rsvpResponse;
+
   factory EmailAttachment.fromJson(Map<String, dynamic> json) {
     return EmailAttachment(
       id: json['id'] as String,
       filename: (json['filename'] as String?) ?? '',
       contentType: (json['contentType'] as String?) ?? '',
       sizeBytes: (json['sizeBytes'] as int?) ?? 0,
+      parsedIcs: json['parsedIcs'] is Map<String, dynamic>
+          ? ParsedIcs.fromJson(json['parsedIcs'] as Map<String, dynamic>)
+          : null,
+      rsvpResponse: json['rsvpResponse'] as String?,
+    );
+  }
+}
+
+/// Compact label reference baked into every email list row.
+/// Intentionally small — just what the row renderer needs to draw a
+/// chip. Full label objects (with mailboxId etc.) come from the
+/// labels settings endpoint when the user actually edits them.
+class EmailLabelRef {
+  const EmailLabelRef({
+    required this.id,
+    required this.name,
+    required this.color,
+  });
+
+  final String id;
+  final String name;
+  final String color;
+
+  factory EmailLabelRef.fromJson(Map<String, dynamic> json) {
+    return EmailLabelRef(
+      id: (json['id'] as String?) ?? '',
+      name: (json['name'] as String?) ?? '',
+      color: (json['color'] as String?) ?? '#999999',
+    );
+  }
+
+  Color get swatch {
+    final hex = color.replaceFirst('#', '');
+    if (hex.length != 6) return const Color(0xFF999999);
+    return Color(int.parse('FF$hex', radix: 16));
+  }
+}
+
+/// Server-parsed VEVENT fields. Lifted straight from the API response;
+/// we don't re-parse the ICS client-side.
+class ParsedIcs {
+  const ParsedIcs({
+    required this.uid,
+    this.method,
+    this.summary,
+    this.description,
+    this.location,
+    this.startAt,
+    this.endAt,
+    required this.allDay,
+    this.organizerEmail,
+    this.organizerName,
+    required this.sequence,
+  });
+
+  final String uid;
+  final String? method;
+  final String? summary;
+  final String? description;
+  final String? location;
+  final DateTime? startAt;
+  final DateTime? endAt;
+  final bool allDay;
+  final String? organizerEmail;
+  final String? organizerName;
+  final int sequence;
+
+  factory ParsedIcs.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDt(dynamic v) {
+      if (v is String) return DateTime.tryParse(v);
+      return null;
+    }
+
+    final organizer = json['organizer'];
+    return ParsedIcs(
+      uid: (json['uid'] as String?) ?? '',
+      method: json['method'] as String?,
+      summary: json['summary'] as String?,
+      description: json['description'] as String?,
+      location: json['location'] as String?,
+      startAt: parseDt(json['startAt']),
+      endAt: parseDt(json['endAt']),
+      allDay: (json['allDay'] as bool?) ?? false,
+      organizerEmail: organizer is Map<String, dynamic>
+          ? organizer['email'] as String?
+          : null,
+      organizerName: organizer is Map<String, dynamic>
+          ? organizer['name'] as String?
+          : null,
+      sequence: (json['sequence'] as int?) ?? 0,
     );
   }
 }
@@ -297,6 +444,8 @@ class ComposeDraft {
     this.textBody,
     this.htmlBody,
     this.send = true,
+    this.scheduledAt,
+    this.inReplyTo,
   });
 
   final String fromAddress;
@@ -308,6 +457,12 @@ class ComposeDraft {
   final String? textBody;
   final String? htmlBody;
   final bool send;
+  /// When set, the compose is a schedule-send: the server stores the
+  /// row with folder='drafts' + scheduledAt, and the dispatcher sends
+  /// it at that instant. `send` must stay true for this path so the
+  /// server knows the user intended a send, not a manual draft save.
+  final DateTime? scheduledAt;
+  final String? inReplyTo;
 
   Map<String, dynamic> toJson() => {
         'fromAddress': fromAddress,
@@ -319,6 +474,9 @@ class ComposeDraft {
         if (textBody != null) 'textBody': textBody,
         if (htmlBody != null) 'htmlBody': htmlBody,
         'send': send,
+        if (scheduledAt != null)
+          'scheduledAt': scheduledAt!.toUtc().toIso8601String(),
+        if (inReplyTo != null) 'inReplyTo': inReplyTo,
       };
 }
 

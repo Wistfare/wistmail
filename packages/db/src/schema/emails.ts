@@ -38,6 +38,29 @@ export const emails = pgTable(
     isRead: boolean('is_read').notNull().default(false),
     isStarred: boolean('is_starred').notNull().default(false),
     isDraft: boolean('is_draft').notNull().default(false),
+    /// Lifecycle status of an outbound email. Inbound + drafts use
+    /// 'idle' / 'draft' respectively; outbound transitions
+    /// idle → sending → (sent | failed | rate_limited). The mobile
+    /// outbox + WS events drive the UI off this column so a "Sending…"
+    /// row can appear in the Sent folder optimistically and resolve
+    /// when the mail-engine reports back.
+    status: varchar('status', { length: 16 }).notNull().default('idle'),
+    /// Last error from the mail-engine for failed sends. Used by the
+    /// retry UI ("Couldn't send — Recipient mailbox full"). Cleared on
+    /// transition back to sending or sent.
+    sendError: text('send_error'),
+    /// Number of automatic retry attempts so far. Caps the backoff
+    /// loop in the dispatcher.
+    sendAttempts: integer('send_attempts').notNull().default(0),
+    /// Last attempt timestamp — drives the backoff schedule.
+    lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+    /// When set in the future, the email is hidden from inbox until
+    /// the timestamp passes. Used by the synthetic "Snoozed" folder.
+    snoozeUntil: timestamp('snooze_until', { withTimezone: true }),
+    /// When set in the future and status='sending', the dispatcher
+    /// holds the send until this timestamp. Drives the synthetic
+    /// "Scheduled" folder for outbound mail.
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
     threadId: varchar('thread_id', { length: 64 }).references(() => threads.id, {
       onDelete: 'set null',
     }),
@@ -45,6 +68,10 @@ export const emails = pgTable(
     references: jsonb('references_list').$type<string[]>().notNull().default([]),
     headers: jsonb('headers').$type<Record<string, string>>().notNull().default({}),
     sizeBytes: integer('size_bytes').notNull().default(0),
+    /// Bumped on every server-side mutation. Used by the optimistic
+    /// sync engine for last-write-wins conflict resolution and
+    /// idempotent reconciliation of WS event with local state.
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -78,6 +105,13 @@ export const attachments = pgTable(
     contentType: varchar('content_type', { length: 127 }).notNull(),
     sizeBytes: integer('size_bytes').notNull(),
     storageKey: text('storage_key').notNull(),
+    // RSVP state — only set when the attachment is a text/calendar
+    // invite the user responded to. Stored here (rather than a
+    // separate table) because there's at most one response per
+    // attachment and we want it to come along for free on the list
+    // response. Values: 'accept' | 'tentative' | 'decline' | null.
+    rsvpResponse: varchar('rsvp_response', { length: 16 }),
+    rsvpRespondedAt: timestamp('rsvp_responded_at'),
   },
   (table) => [index('attachments_email_id_idx').on(table.emailId)],
 )

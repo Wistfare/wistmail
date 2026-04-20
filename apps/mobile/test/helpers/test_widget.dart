@@ -92,6 +92,20 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> requestPasswordReset(String email) async {}
+
+  @override
+  Future<ResetPasswordResult> submitPasswordReset({
+    required String token,
+    required String newPassword,
+    String? mfaCode,
+  }) async =>
+      const ResetPasswordDone();
+
+  @override
+  Future<void> requestResetEmailCode(String token) async {}
+
+  @override
   Future<MfaMethodsListing> listMfaMethods() async => const MfaMethodsListing(
         methods: [],
         backupTotal: 0,
@@ -195,6 +209,65 @@ class FakeMailRepository implements MailRepository {
     deleteCalls++;
   }
 
+  int purgeCalls = 0;
+  int emptyTrashCalls = 0;
+
+  @override
+  Future<void> purge(String emailId) async {
+    purgeCalls++;
+  }
+
+  @override
+  Future<Map<String, int>> emptyTrash() async {
+    emptyTrashCalls++;
+    return const {'purgedEmails': 0, 'purgedBytes': 0};
+  }
+
+  @override
+  Future<int> getTrashRetention() async => 30;
+
+  @override
+  Future<Map<String, int>> emptyFolder(String folder) async {
+    emptyTrashCalls++;
+    return const {'purgedEmails': 0, 'purgedBytes': 0};
+  }
+
+  @override
+  Future<int> getFolderRetention(String folder) async => 30;
+
+  int markAllReadCalls = 0;
+
+  @override
+  Future<int> markAllRead(String folder) async {
+    markAllReadCalls++;
+    return 0;
+  }
+
+  int snoozeCalls = 0;
+
+  @override
+  Future<void> snooze(String emailId, DateTime? until) async {
+    snoozeCalls++;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getThread(String emailId) async {
+    return const [];
+  }
+
+  int batchActionCalls = 0;
+
+  @override
+  Future<int> batchAction({
+    required List<String> ids,
+    required String action,
+    String? folder,
+    List<String>? labelIds,
+  }) async {
+    batchActionCalls++;
+    return ids.length;
+  }
+
   @override
   Future<Map<String, int>> getUnreadCounts() async =>
       const {'inbox': 0, 'drafts': 0, 'spam': 0, 'total': 0};
@@ -225,6 +298,13 @@ class FakeMailRepository implements MailRepository {
       pageSize: matches.length,
       hasMore: false,
     );
+  }
+
+  int dispatchCalls = 0;
+
+  @override
+  Future<void> dispatch(String emailId) async {
+    dispatchCalls++;
   }
 }
 

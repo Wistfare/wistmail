@@ -244,7 +244,23 @@ export async function searchEmails(
       isDraft: h.isDraft,
       hasAttachments: h.hasAttachments,
       sizeBytes: h.sizeBytes,
+      // Search hits don't carry send-state metadata. Default to 'idle'
+      // — the row will reconcile with its true status the next time
+      // the inbox list streams.
+      status: 'idle',
+      sendError: null,
+      updatedAt: new Date(h.createdAt).toISOString(),
       createdAt: new Date(h.createdAt).toISOString(),
+      // Meili doesn't index label membership (labels change too often
+      // to keep reliably in sync). Search rows ship without labels;
+      // they re-appear when the user clicks through to the detail view
+      // or when the inbox list reloads.
+      labels: [],
+      // Meili doesn't index threadId — the detail fetch + the
+      // regular list endpoint both surface it fresh, so search
+      // hits ship without and the UI treats them as their own
+      // single-message thread until the row is opened.
+      threadId: null,
     }))
 
     const total =

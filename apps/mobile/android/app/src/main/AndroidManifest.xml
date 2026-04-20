@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="wistmail"
+        android:label="Wistmail"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -23,6 +23,37 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+
+            <!--
+              Custom-scheme deep link. Tapping wistmail://auth/reset-password?token=…
+              (which we place in the password-reset email as a fallback when the
+              user's mail client doesn't honour App Links) opens the app straight
+              on the reset screen.
+
+              The https App Link variant below is preferred — tapping the
+              https://wistfare.com/reset-password URL in the email goes through
+              Android's verified link handler and lands in the app without the
+              browser chrome. Works only after the /.well-known/assetlinks.json
+              file is published on the domain with the SHA-256 fingerprint of
+              our signing key; documented in docs/ROADMAP-DEEP-LINKS.md.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wistmail" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="wistfare.com"
+                      android:pathPrefix="/reset-password" />
+                <data android:scheme="https"
+                      android:host="app.wistfare.com"
+                      android:pathPrefix="/reset-password" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

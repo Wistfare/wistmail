@@ -8,6 +8,7 @@ import {
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { getMailboxes, type Mailbox } from '@/lib/mailboxes-cache'
+import { RecipientChipsField } from './recipient-chips-field'
 
 function getScheduleTime(dayOffset: number | 'monday', hour: number): string {
   const d = new Date()
@@ -29,6 +30,8 @@ function formatSchedulePreview(iso: string): string {
 
 export type ComposeData = {
   to?: string[]
+  cc?: string[]
+  bcc?: string[]
   subject?: string
   inReplyTo?: string
   body?: string
@@ -45,11 +48,11 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
   const [fromMailboxId, setFromMailboxId] = useState('')
   const [fromAddress, setFromAddress] = useState('')
-  const [to, setTo] = useState('')
   const [toChips, setToChips] = useState<string[]>(initialData?.to || [])
-  const [cc, setCc] = useState('')
-  const [ccChips, setCcChips] = useState<string[]>([])
-  const [showCc, setShowCc] = useState(false)
+  const [ccChips, setCcChips] = useState<string[]>(initialData?.cc || [])
+  const [bccChips, setBccChips] = useState<string[]>(initialData?.bcc || [])
+  const [showCc, setShowCc] = useState((initialData?.cc?.length ?? 0) > 0)
+  const [showBcc, setShowBcc] = useState((initialData?.bcc?.length ?? 0) > 0)
   const [subject, setSubject] = useState(initialData?.subject || '')
   const [body, setBody] = useState(initialData?.body || '')
   const [inReplyTo] = useState(initialData?.inReplyTo || '')
@@ -73,32 +76,8 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
     }
   }, [])
 
-  function addChip(value: string, chips: string[], setChips: (c: string[]) => void, clear: () => void) {
-    const trimmed = value.trim()
-    if (trimmed && trimmed.includes('@') && !chips.includes(trimmed)) {
-      setChips([...chips, trimmed])
-      clear()
-    }
-  }
-
-  function handleToKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
-      e.preventDefault()
-      addChip(to, toChips, setToChips, () => setTo(''))
-    }
-  }
-
-  function handleCcKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
-      e.preventDefault()
-      addChip(cc, ccChips, setCcChips, () => setCc(''))
-    }
-  }
-
   async function handleSend() {
-    const finalTo = [...toChips]
-    if (to.trim() && to.includes('@')) finalTo.push(to.trim())
-    if (finalTo.length === 0) { setError('At least one recipient is required'); return }
+    if (toChips.length === 0) { setError('At least one recipient is required'); return }
     if (!subject.trim()) { setError('Subject is required'); return }
 
     setSending(true)
@@ -106,14 +85,20 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
     try {
       await api.post('/api/v1/inbox/compose', {
         fromAddress,
-        toAddresses: finalTo,
+        toAddresses: toChips,
         cc: ccChips.length > 0 ? ccChips : undefined,
+        bcc: bccChips.length > 0 ? bccChips : undefined,
         subject,
         textBody: body,
         mailboxId: fromMailboxId,
         inReplyTo: inReplyTo || undefined,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
-        send: !scheduledAt,
+        // Schedule send is still a real send — server flips the draft
+        // into folder='drafts' with scheduledAt set and the dispatcher
+        // picks it up when the timestamp elapses. Passing send:true
+        // here is what tells the server "this is scheduled, not a
+        // saved draft that the user will finish later."
+        send: true,
       })
       onSent?.()
       onClose()
@@ -188,45 +173,59 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
           </select>
         </div>
 
-        {/* To */}
-        <div className="flex items-center gap-2 border-b border-wm-border px-4 py-2">
-          <span className="w-14 font-mono text-[11px] text-wm-text-muted">To</span>
-          <div className="flex flex-1 flex-wrap items-center gap-1">
-            {toChips.map((chip) => (
-              <span key={chip} className="flex items-center gap-1 border border-wm-border px-1.5 py-0.5 font-mono text-[10px] text-wm-text-primary">
-                {chip}
-                <X className="h-2.5 w-2.5 cursor-pointer text-wm-text-muted" onClick={() => setToChips(toChips.filter((c) => c !== chip))} />
-              </span>
-            ))}
-            <input
-              type="text"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              onKeyDown={handleToKeyDown}
-              onBlur={() => addChip(to, toChips, setToChips, () => setTo(''))}
-              placeholder={toChips.length === 0 ? 'recipient@example.com' : ''}
-              className="min-w-[100px] flex-1 bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-            />
-          </div>
-          {!showCc && (
-            <button onClick={() => setShowCc(true)} className="cursor-pointer font-mono text-[10px] text-wm-text-muted hover:text-wm-text-secondary">Cc</button>
+        {/* To — uses RecipientChipsField with /contacts/search
+            autocomplete. Cc/Bcc are revealed via inline buttons that
+            sit in the To row's right side until the user opts in. */}
+        <div className="relative">
+          <RecipientChipsField
+            label="To"
+            values={toChips}
+            onChange={setToChips}
+            placeholder="recipient@example.com"
+            className="border-b border-wm-border"
+          />
+          {(!showCc || !showBcc) && (
+            <div className="pointer-events-none absolute right-4 top-2 flex items-center gap-2">
+              {!showCc && (
+                <button
+                  type="button"
+                  onClick={() => setShowCc(true)}
+                  className="pointer-events-auto cursor-pointer font-mono text-[10px] text-wm-text-muted hover:text-wm-text-secondary"
+                >
+                  Cc
+                </button>
+              )}
+              {!showBcc && (
+                <button
+                  type="button"
+                  onClick={() => setShowBcc(true)}
+                  className="pointer-events-auto cursor-pointer font-mono text-[10px] text-wm-text-muted hover:text-wm-text-secondary"
+                >
+                  Bcc
+                </button>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Cc (optional) */}
         {showCc && (
-          <div className="flex items-center gap-2 border-b border-wm-border px-4 py-2">
-            <span className="w-14 font-mono text-[11px] text-wm-text-muted">Cc</span>
-            <div className="flex flex-1 flex-wrap items-center gap-1">
-              {ccChips.map((chip) => (
-                <span key={chip} className="flex items-center gap-1 border border-wm-border px-1.5 py-0.5 font-mono text-[10px] text-wm-text-primary">
-                  {chip}
-                  <X className="h-2.5 w-2.5 cursor-pointer text-wm-text-muted" onClick={() => setCcChips(ccChips.filter((c) => c !== chip))} />
-                </span>
-              ))}
-              <input type="text" value={cc} onChange={(e) => setCc(e.target.value)} onKeyDown={handleCcKeyDown} placeholder="Add Cc..." className="min-w-[100px] flex-1 bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none" />
-            </div>
-          </div>
+          <RecipientChipsField
+            label="Cc"
+            values={ccChips}
+            onChange={setCcChips}
+            placeholder="Add Cc..."
+            className="border-b border-wm-border"
+          />
+        )}
+
+        {showBcc && (
+          <RecipientChipsField
+            label="Bcc"
+            values={bccChips}
+            onChange={setBccChips}
+            placeholder="Add Bcc..."
+            className="border-b border-wm-border"
+          />
         )}
 
         {/* Subject */}

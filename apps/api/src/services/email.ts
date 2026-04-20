@@ -1,9 +1,23 @@
-import { eq, and, desc, ilike, or, sql, inArray } from 'drizzle-orm'
-import { emails, attachments, mailboxes } from '@wistmail/db'
+import { eq, and, desc, gt, ilike, isNull, lte, or, sql, inArray } from 'drizzle-orm'
+import { readFile } from 'node:fs/promises'
+import { emails, attachments, mailboxes, labels, emailLabels } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
+import { parseIcsSafely } from '../lib/ics.js'
+import { pathForAttachment } from '../lib/attachment-storage.js'
+import { ThreadService } from './thread-service.js'
 
 const PREVIEW_CHARS = 200
+
+/// Compact label reference the inbox row needs for rendering — id,
+/// name, colour. Full label objects (with mailboxId etc.) live behind
+/// `GET /labels` and are only fetched when the user opens the label
+/// settings / assign-popover flows.
+export interface EmailLabelRef {
+  id: string
+  name: string
+  color: string
+}
 
 /// Slim row returned by listByFolder/search — never includes the full
 /// text/html body. The detail view fetches the full record via getById.
@@ -23,7 +37,25 @@ export interface EmailListItem {
   isDraft: boolean
   hasAttachments: boolean
   sizeBytes: number
+  /// Outbound lifecycle status. 'idle' for inbound + drafts, the
+  /// drafts-as-outbox states for everything you've tried to send.
+  status: 'idle' | 'sending' | 'sent' | 'failed' | 'rate_limited'
+  /// Last mail-engine error if status is 'failed' or 'rate_limited'.
+  sendError: string | null
+  /// Server-side mutation timestamp. Used by clients for last-write-
+  /// wins reconciliation when WS events race local optimistic state.
+  updatedAt: string
   createdAt: string
+  /// Labels assigned to this email. Baked into the list response so the
+  /// inbox row renderer never has to fire a per-row fetch — that was
+  /// the old N+1 pattern (50 rows ⇒ 50 `/labels/email/:id` calls).
+  labels: EmailLabelRef[]
+  /// Thread id the email belongs to. Clients can use this to group
+  /// rows in the list view, or to fetch the full conversation via
+  /// `GET /inbox/emails/:id/thread`. Null on rows that predate the
+  /// threading backfill — the UI falls back to treating those as
+  /// single-message threads.
+  threadId: string | null
 }
 
 export interface EmailListPage {
@@ -55,12 +87,99 @@ export class EmailService {
     return rows.map((m) => m.id)
   }
 
+  /// Batch-fetch label assignments for a page of emails. Returns a map
+  /// keyed by email id so the row mappers can stitch labels in with a
+  /// single lookup. One DB round-trip regardless of page size — beats
+  /// the old pattern of the client firing one GET per row.
+  private async hydrateLabels(
+    emailIds: string[],
+  ): Promise<Map<string, EmailLabelRef[]>> {
+    const map = new Map<string, EmailLabelRef[]>()
+    if (emailIds.length === 0) return map
+    const rows = await this.db
+      .select({
+        emailId: emailLabels.emailId,
+        id: labels.id,
+        name: labels.name,
+        color: labels.color,
+      })
+      .from(emailLabels)
+      .innerJoin(labels, eq(labels.id, emailLabels.labelId))
+      .where(inArray(emailLabels.emailId, emailIds))
+    for (const r of rows) {
+      const existing = map.get(r.emailId)
+      const ref: EmailLabelRef = { id: r.id, name: r.name, color: r.color }
+      if (existing) existing.push(ref)
+      else map.set(r.emailId, [ref])
+    }
+    return map
+  }
+
+  /// Translate a folder name (literal or synthetic) into a WHERE clause
+  /// against the user's mailboxes.
+  ///
+  /// Literal folders match `folder` directly. Synthetic folders derive
+  /// from columns (`is_starred`, `snooze_until`, `scheduled_at`) so the
+  /// sidebar links the web UI ships actually return data.
+  ///
+  /// `all` is the catch-all view — no folder filter, used by the
+  /// "All Mail" pseudo-folder some users prefer.
+  private buildFolderWhere(folder: string, mailboxIds: string[]) {
+    const inMailbox = inArray(emails.mailboxId, mailboxIds)
+    const now = new Date()
+    switch (folder) {
+      case 'starred':
+        // Starred lives across folders — exclude trash so deleted starred
+        // mail doesn't pollute the view.
+        return and(
+          inMailbox,
+          eq(emails.isStarred, true),
+          sql`${emails.folder} <> 'trash'`,
+        )
+      case 'snoozed':
+        // Snoozed = currently hidden. The row reappears in inbox once
+        // snooze_until passes (a separate housekeeping tick clears the
+        // column when due — for now, the inbox folder simply excludes
+        // snoozed rows; see the `inbox` branch below).
+        return and(
+          inMailbox,
+          sql`${emails.snoozeUntil} IS NOT NULL`,
+          gt(emails.snoozeUntil, now),
+        )
+      case 'scheduled':
+        // Outbound mail with a future send time. Status is 'sending'
+        // until the dispatcher picks it up at the scheduled moment.
+        return and(
+          inMailbox,
+          sql`${emails.scheduledAt} IS NOT NULL`,
+          gt(emails.scheduledAt, now),
+        )
+      case 'all':
+        return inMailbox
+      case 'inbox':
+        // Inbox naturally hides currently-snoozed rows.
+        return and(
+          inMailbox,
+          eq(emails.folder, 'inbox'),
+          or(isNull(emails.snoozeUntil), lte(emails.snoozeUntil, now)),
+        )
+      default:
+        // Literal folder match (sent, drafts, trash, spam, archive, …).
+        return and(inMailbox, eq(emails.folder, folder))
+    }
+  }
+
   async listByFolder(
     userId: string,
     folder: string,
     page = 1,
     pageSize = 25,
   ): Promise<EmailListPage> {
+    // Hard cap — without this a crafted `?pageSize=10000` request
+    // pulls 10k email rows + their label joins into Node memory in a
+    // single query. Matches the cap in /search.
+    pageSize = Math.max(1, Math.min(pageSize, 100))
+    page = Math.max(1, page)
     const mailboxIds = await this.resolveMailboxIds(userId)
     if (mailboxIds.length === 0) {
       return { data: [], total: 0, page, pageSize, hasMore: false }
@@ -76,10 +195,7 @@ export class EmailService {
     }), '')`
     const hasAttExpr = sql<boolean>`exists(select 1 from ${attachments} where ${attachments.emailId} = ${emails.id})`
 
-    const where = and(
-      inArray(emails.mailboxId, mailboxIds),
-      eq(emails.folder, folder),
-    )
+    const where = this.buildFolderWhere(folder, mailboxIds)
 
     const [rows, [{ count }]] = await Promise.all([
       this.db
@@ -97,6 +213,10 @@ export class EmailService {
           isDraft: emails.isDraft,
           hasAttachments: hasAttExpr,
           sizeBytes: emails.sizeBytes,
+          status: emails.status,
+          sendError: emails.sendError,
+          threadId: emails.threadId,
+          updatedAt: emails.updatedAt,
           createdAt: emails.createdAt,
         })
         .from(emails)
@@ -110,6 +230,7 @@ export class EmailService {
         .where(where),
     ])
 
+    const labelMap = await this.hydrateLabels(rows.map((r) => r.id))
     const data: EmailListItem[] = rows.map((r) => ({
       id: r.id,
       mailboxId: r.mailboxId,
@@ -124,7 +245,12 @@ export class EmailService {
       isDraft: r.isDraft,
       hasAttachments: r.hasAttachments,
       sizeBytes: r.sizeBytes,
+      status: (r.status ?? 'idle') as EmailListItem['status'],
+      sendError: r.sendError,
+      updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
+      labels: labelMap.get(r.id) ?? [],
+      threadId: r.threadId,
     }))
 
     const total = Number(count ?? 0)
@@ -149,11 +275,48 @@ export class EmailService {
 
     const email = result[0].emails
     const emailAttachments = await this.db
-      .select()
+      .select({
+        id: attachments.id,
+        emailId: attachments.emailId,
+        filename: attachments.filename,
+        contentType: attachments.contentType,
+        sizeBytes: attachments.sizeBytes,
+        storageKey: attachments.storageKey,
+        rsvpResponse: attachments.rsvpResponse,
+        rsvpRespondedAt: attachments.rsvpRespondedAt,
+      })
       .from(attachments)
       .where(eq(attachments.emailId, emailId))
 
-    return { ...email, attachments: emailAttachments }
+    // For each text/calendar attachment, parse the ICS so the client
+    // can render a proper "meeting invite" card (title/time/location +
+    // RSVP buttons). We do this on read rather than at receive-time so
+    // we don't need a schema migration, and it's cheap — real invites
+    // are a few KB and parsing runs in <1 ms.
+    const enriched = await Promise.all(
+      emailAttachments.map(async (a) => {
+        const isIcs =
+          a.contentType?.toLowerCase().includes('text/calendar') ||
+          a.filename?.toLowerCase().endsWith('.ics')
+        if (!isIcs) return a
+        try {
+          const bytes = await readFile(pathForAttachment(a.id), 'utf8')
+          // Worker-thread parse — ical.js runs off the main loop
+          // so a hostile invite with a catastrophic-backtracking
+          // regex can't stall serving the rest of the API.
+          const parsed = await parseIcsSafely(bytes)
+          if (parsed) return { ...a, parsedIcs: parsed }
+        } catch (err) {
+          // Storage miss or parse explosion — the chip falls back to
+          // the generic "Calendar invite" placeholder, which is still
+          // useful. Don't poison the whole email detail response.
+          console.warn(`[email] ICS parse failed for ${a.id}:`, err)
+        }
+        return a
+      }),
+    )
+
+    return { ...email, attachments: enriched }
   }
 
   /// Build the slim list-row shape from a freshly inserted email — used by
@@ -174,6 +337,10 @@ export class EmailService {
         isStarred: emails.isStarred,
         isDraft: emails.isDraft,
         sizeBytes: emails.sizeBytes,
+        status: emails.status,
+        sendError: emails.sendError,
+        threadId: emails.threadId,
+        updatedAt: emails.updatedAt,
         createdAt: emails.createdAt,
       })
       .from(emails)
@@ -182,11 +349,14 @@ export class EmailService {
 
     if (rows.length === 0) return null
     const r = rows[0]
-    const att = await this.db
-      .select({ id: attachments.id })
-      .from(attachments)
-      .where(eq(attachments.emailId, emailId))
-      .limit(1)
+    const [att, labelMap] = await Promise.all([
+      this.db
+        .select({ id: attachments.id })
+        .from(attachments)
+        .where(eq(attachments.emailId, emailId))
+        .limit(1),
+      this.hydrateLabels([emailId]),
+    ])
 
     return {
       id: r.id,
@@ -202,7 +372,12 @@ export class EmailService {
       isDraft: r.isDraft,
       hasAttachments: att.length > 0,
       sizeBytes: r.sizeBytes,
+      status: (r.status ?? 'idle') as EmailListItem['status'],
+      sendError: r.sendError,
+      updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
+      labels: labelMap.get(emailId) ?? [],
+      threadId: r.threadId,
     }
   }
 
@@ -216,7 +391,7 @@ export class EmailService {
 
     if (result.length === 0) return false
 
-    await this.db.update(emails).set({ isRead: true }).where(eq(emails.id, emailId))
+    await this.db.update(emails).set({ isRead: true, updatedAt: new Date() }).where(eq(emails.id, emailId))
     return true
   }
 
@@ -230,7 +405,7 @@ export class EmailService {
 
     if (result.length === 0) return false
 
-    await this.db.update(emails).set({ isRead: false }).where(eq(emails.id, emailId))
+    await this.db.update(emails).set({ isRead: false, updatedAt: new Date() }).where(eq(emails.id, emailId))
     return true
   }
 
@@ -245,7 +420,7 @@ export class EmailService {
     if (result.length === 0) return null
 
     const newStarred = !result[0].isStarred
-    await this.db.update(emails).set({ isStarred: newStarred }).where(eq(emails.id, emailId))
+    await this.db.update(emails).set({ isStarred: newStarred, updatedAt: new Date() }).where(eq(emails.id, emailId))
     return newStarred
   }
 
@@ -259,7 +434,7 @@ export class EmailService {
 
     if (result.length === 0) return false
 
-    await this.db.update(emails).set({ folder }).where(eq(emails.id, emailId))
+    await this.db.update(emails).set({ folder, updatedAt: new Date() }).where(eq(emails.id, emailId))
     return true
   }
 
@@ -310,6 +485,10 @@ export class EmailService {
         isDraft: emails.isDraft,
         hasAttachments: hasAttExpr,
         sizeBytes: emails.sizeBytes,
+        status: emails.status,
+        sendError: emails.sendError,
+        threadId: emails.threadId,
+        updatedAt: emails.updatedAt,
         createdAt: emails.createdAt,
       })
       .from(emails)
@@ -318,6 +497,7 @@ export class EmailService {
       .limit(pageSize)
       .offset(offset)
 
+    const labelMap = await this.hydrateLabels(rows.map((r) => r.id))
     const data: EmailListItem[] = rows.map((r) => ({
       id: r.id,
       mailboxId: r.mailboxId,
@@ -332,7 +512,12 @@ export class EmailService {
       isDraft: r.isDraft,
       hasAttachments: r.hasAttachments,
       sizeBytes: r.sizeBytes,
+      status: (r.status ?? 'idle') as EmailListItem['status'],
+      sendError: r.sendError,
+      updatedAt: r.updatedAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
+      labels: labelMap.get(r.id) ?? [],
+      threadId: r.threadId,
     }))
 
     return {
@@ -380,9 +565,36 @@ export class EmailService {
     textBody?: string
     htmlBody?: string
     mailboxId: string
+    /// Message-id of the email being replied to (if any). Used to
+    /// thread the draft with its parent.
+    inReplyTo?: string
+    /// ISO-8601 string — persisted in `emails.scheduledAt`. When set,
+    /// the send dispatcher waits until the timestamp elapses before
+    /// claiming + dispatching the row. The synthetic "scheduled"
+    /// folder filter surfaces these rows to the user.
+    scheduledAt?: string
   }) {
     const emailId = generateId('eml')
     const messageId = `${emailId}@wistmail.local`
+    const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null
+    const createdAt = new Date()
+
+    // Thread resolution: a reply (has inReplyTo) stitches into the
+    // parent's thread; a brand-new compose starts its own. Either
+    // way the draft carries thread_id from insert time so the sent
+    // mail appears in the conversation view even before it's
+    // dispatched.
+    const threadSvc = new ThreadService(this.db)
+    const threadId = await threadSvc.assignThread({
+      mailboxId: data.mailboxId,
+      subject: data.subject,
+      fromAddress: data.fromAddress,
+      toAddresses: data.toAddresses,
+      cc: data.cc || [],
+      inReplyTo: data.inReplyTo ?? null,
+      references: [],
+      createdAt,
+    })
 
     await this.db.insert(emails).values({
       id: emailId,
@@ -398,10 +610,14 @@ export class EmailService {
       folder: 'drafts',
       isDraft: true,
       isRead: true,
+      inReplyTo: data.inReplyTo,
       headers: {},
       references: [],
+      scheduledAt,
+      threadId,
+      createdAt,
     })
 
-    return { id: emailId, messageId }
+    return { id: emailId, messageId, scheduledAt, threadId }
   }
 }

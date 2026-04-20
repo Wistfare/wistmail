@@ -6,13 +6,14 @@ import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
   Plus, Mail, Settings, LogOut, Users, Building2, ScrollText,
-  User, Globe, Key, Webhook, PenLine, ShieldCheck,
+  User, Globe, Key, Webhook, PenLine, ShieldCheck, Tag,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
 import { LabelDot } from '@/components/ui/label-dot'
 import { ROUTES } from '@/lib/constants'
 import { api } from '@/lib/api-client'
+import { useLabels } from '@/lib/labels'
 import { useCompose } from '@/components/email/compose-provider'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +45,7 @@ const ADMIN_NAV = [
 const SETTINGS_NAV = [
   { icon: <User className="h-4 w-4" />, label: 'Account', href: '/settings/account' },
   { icon: <ShieldCheck className="h-4 w-4" />, label: 'Two-factor', href: '/settings/two-factor' },
+  { icon: <Tag className="h-4 w-4" />, label: 'Labels', href: '/settings/labels' },
   { icon: <Globe className="h-4 w-4" />, label: 'Domains', href: '/settings/domains' },
   { icon: <Key className="h-4 w-4" />, label: 'API Keys', href: '/settings/api-keys' },
   { icon: <Webhook className="h-4 w-4" />, label: 'Webhooks', href: '/settings/webhooks' },
@@ -66,7 +68,21 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
   const isAdmin = user.role === 'owner' || user.role === 'admin'
   const isOnAdmin = pathname.startsWith('/admin') || pathname.startsWith('/settings')
   const currentFolder = searchParams.get('folder') || (pathname === '/inbox' ? 'inbox' : '')
-  const displayLabels = labels && labels.length > 0 ? labels : DEFAULT_LABELS
+
+  // Real labels via TanStack Query. Falls back to the explicit
+  // `labels` prop (used by tests / story books) and ultimately to
+  // the placeholder set so the sidebar never renders empty.
+  const labelsQuery = useLabels()
+  const apiLabels = (labelsQuery.data ?? []).map((l) => ({
+    name: l.name,
+    color: l.color,
+  }))
+  const displayLabels =
+    labels && labels.length > 0
+      ? labels
+      : apiLabels.length > 0
+        ? apiLabels
+        : DEFAULT_LABELS
 
   async function handleLogout() {
     try {

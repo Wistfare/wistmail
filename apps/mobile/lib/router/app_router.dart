@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/providers/auth_controller.dart';
 import '../features/auth/presentation/screens/sign_in_screen.dart';
 import '../features/auth/presentation/screens/forgot_password_screen.dart';
+import '../features/auth/presentation/screens/reset_password_screen.dart';
 import '../features/auth/presentation/screens/delete_account_screen.dart';
 import '../features/mail/presentation/screens/inbox_screen.dart';
 import '../features/mail/presentation/screens/email_detail_screen.dart';
+import '../features/mail/domain/compose_args.dart';
 import '../features/mail/presentation/screens/compose_screen.dart';
 import '../features/mail/presentation/screens/mail_search_screen.dart';
 import '../features/chat/presentation/screens/chat_list_screen.dart';
@@ -28,6 +30,8 @@ import '../features/mfa/presentation/screens/mfa_totp_setup_screen.dart';
 import '../features/mfa/presentation/screens/mfa_email_setup_screen.dart';
 import '../features/mfa/presentation/screens/mfa_backup_codes_screen.dart';
 import '../features/mfa/presentation/screens/mfa_methods_settings_screen.dart';
+import '../features/settings/presentation/screens/pending_sync_screen.dart';
+import '../features/settings/presentation/screens/labels_settings_screen.dart';
 import '../features/shell/presentation/screens/main_shell.dart';
 
 /// Root router. Built as a Riverpod provider so its `redirect` callback can
@@ -80,6 +84,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/auth/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/auth/reset-password',
+        // Accept ?token=… for deep links / App Links once provisioned.
+        // Paste-token flow leaves it null.
+        builder: (context, state) => ResetPasswordScreen(
+          initialToken: state.uri.queryParameters['token'],
+        ),
       ),
 
       // MFA login challenge (after step 1 password). The router redirect
@@ -202,7 +214,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/compose',
-        builder: (context, state) => const ComposeScreen(),
+        builder: (context, state) {
+          // Reply / replyAll / forward pass a ComposeArgs via `extra`
+          // so we can prefill the form without lossy URL encoding.
+          final args = state.extra is ComposeArgs
+              ? state.extra as ComposeArgs
+              : ComposeArgs.empty;
+          return ComposeScreen(args: args);
+        },
+      ),
+      GoRoute(
+        path: '/settings/pending-sync',
+        builder: (context, state) => const PendingSyncScreen(),
       ),
       GoRoute(
         path: '/chat/new',
@@ -228,6 +251,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/delete-account',
         builder: (context, state) => const DeleteAccountScreen(),
+      ),
+      GoRoute(
+        path: '/settings/labels',
+        builder: (context, state) => const LabelsSettingsScreen(),
       ),
     ],
   );

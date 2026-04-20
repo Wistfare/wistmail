@@ -51,6 +51,24 @@ class LoginNeedsMfa extends LoginResult {
   final MfaChallenge challenge;
 }
 
+/// Outcome of a password-reset submission. Mirrors the login result
+/// pattern — the token can be valid but the account still requires a
+/// second factor to actually change the password.
+sealed class ResetPasswordResult {
+  const ResetPasswordResult();
+}
+
+class ResetPasswordDone extends ResetPasswordResult {
+  const ResetPasswordDone();
+}
+
+class ResetPasswordNeedsMfa extends ResetPasswordResult {
+  const ResetPasswordNeedsMfa({required this.methods});
+  /// One or more of 'totp', 'email', 'backup'. The UI picks a default
+  /// input prompt accordingly.
+  final List<String> methods;
+}
+
 /// One MFA factor as listed by /api/v1/mfa/methods.
 class MfaMethodDetail {
   const MfaMethodDetail({

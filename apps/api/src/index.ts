@@ -3,6 +3,8 @@ import { sql } from 'drizzle-orm'
 import { app } from './app.js'
 import { getDb } from './lib/db.js'
 import { attachWebSocketServer } from './ws/server.js'
+import { startSendDispatcher } from './services/send-dispatcher.js'
+import { startTrashRetention } from './services/trash-retention.js'
 
 const port = parseInt(process.env.API_PORT || '3001', 10)
 
@@ -134,6 +136,25 @@ async function ensureSchema() {
       filename varchar(255) NOT NULL, content_type varchar(255) NOT NULL,
       size_bytes int NOT NULL DEFAULT 0, storage_key text NOT NULL
     )`,
+    // RSVP state on calendar invite attachments (null for everything
+    // else). Lets the client render "You accepted this" without a
+    // second round trip and blocks double-RSVPs.
+    `ALTER TABLE attachments ADD COLUMN IF NOT EXISTS rsvp_response varchar(16)`,
+    `ALTER TABLE attachments ADD COLUMN IF NOT EXISTS rsvp_responded_at timestamptz`,
+    // Idempotent column adds for the drafts-as-outbox lifecycle
+    // (status / sendError / sendAttempts / lastAttemptAt / updatedAt).
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS status varchar(16) NOT NULL DEFAULT 'idle'`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS send_error text`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS send_attempts int NOT NULL DEFAULT 0`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS last_attempt_at timestamptz`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS snooze_until timestamptz`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS scheduled_at timestamptz`,
+    `CREATE INDEX IF NOT EXISTS emails_status_idx ON emails(status) WHERE status IN ('sending','rate_limited','failed')`,
+    // Synthetic folder support — partial indexes for hot reads.
+    `CREATE INDEX IF NOT EXISTS emails_snooze_until_idx ON emails(snooze_until) WHERE snooze_until IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS emails_scheduled_at_idx ON emails(scheduled_at) WHERE scheduled_at IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS emails_starred_idx ON emails(mailbox_id, created_at DESC) WHERE is_starred = true`,
     `CREATE TABLE IF NOT EXISTS labels (
       id varchar(64) PRIMARY KEY, name varchar(255) NOT NULL,
       color varchar(7) NOT NULL DEFAULT '#999999',
@@ -203,20 +224,10 @@ async function ensureSchema() {
       ip_address varchar(45), user_agent text,
       created_at timestamptz NOT NULL DEFAULT now()
     )`,
-    `CREATE TABLE IF NOT EXISTS org_credits (
-      id varchar(64) PRIMARY KEY,
-      org_id varchar(64) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE UNIQUE,
-      balance bigint NOT NULL DEFAULT 100, total_purchased bigint NOT NULL DEFAULT 0,
-      total_used bigint NOT NULL DEFAULT 0,
-      created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
-    )`,
-    `CREATE TABLE IF NOT EXISTS credit_transactions (
-      id varchar(64) PRIMARY KEY,
-      org_id varchar(64) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      amount bigint NOT NULL, type varchar(30) NOT NULL,
-      description text, email_id varchar(64),
-      created_at timestamptz NOT NULL DEFAULT now()
-    )`,
+    // Note: org_credits and credit_transactions tables exist in prod from
+    // an earlier billing model; we no longer write to them. The legacy
+    // tables stay so we don't ALTER + lose any historical rows. Drop in
+    // a future migration once we're confident nothing references them.
     `CREATE TABLE IF NOT EXISTS device_tokens (
       id varchar(64) PRIMARY KEY,
       user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -311,7 +322,14 @@ async function ensureSchema() {
 }
 
 async function start() {
-  await ensureSchema()
+  // Greenfield installs that apply schema via `drizzle-kit migrate`
+  // set DISABLE_ENSURE_SCHEMA=1 to skip the legacy hand-maintained
+  // CREATE path. See packages/db/MIGRATIONS.md.
+  if (process.env.DISABLE_ENSURE_SCHEMA !== '1') {
+    await ensureSchema()
+  } else {
+    console.log('[schema] DISABLE_ENSURE_SCHEMA=1 — trusting drizzle migrations')
+  }
 
   const server = serve({
     fetch: app.fetch,
@@ -319,6 +337,19 @@ async function start() {
   })
 
   attachWebSocketServer(server as unknown as import('node:http').Server)
+
+  // Background tick that picks up rate_limited sends and retries them
+  // when their backoff window has elapsed. Idempotent — claim() locks
+  // each row so multiple processes can run safely.
+  startSendDispatcher(getDb())
+
+  // Hourly sweep of Trash: hard-delete emails that have been sitting
+  // there longer than TRASH_RETENTION_DAYS (30 by default) and free
+  // their attachments from disk. Skipped when DISABLE_TRASH_PURGE is
+  // set so CI / local dev can keep old rows around for inspection.
+  if (process.env.DISABLE_TRASH_PURGE !== '1') {
+    startTrashRetention(getDb())
+  }
 
   console.log(`Wistfare Mail API running on http://localhost:${port}`)
   console.log(`WebSocket stream at ws://localhost:${port}/api/v1/stream`)

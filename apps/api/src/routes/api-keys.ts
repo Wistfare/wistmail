@@ -3,13 +3,16 @@ import { eq, and } from 'drizzle-orm'
 import { generateId, generateApiKey, ValidationError } from '@wistmail/shared'
 import { apiKeys } from '@wistmail/db'
 import { hashApiKey } from '../middleware/auth.js'
-import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
+import { dualAuth, type DualAuthEnv } from '../middleware/dual-auth.js'
 import { getDb } from '../lib/db.js'
 
-export const apiKeyRoutes = new Hono<SessionEnv>()
+export const apiKeyRoutes = new Hono<DualAuthEnv>()
 
-// API key management is done via session auth (settings UI)
-apiKeyRoutes.use('*', sessionAuth)
+// Either a dashboard session cookie OR an existing API key can
+// manage keys — the settings UI uses the session, and SDK users
+// provisioning keys programmatically (CI / infra tooling) go
+// through the same endpoint with their root key.
+apiKeyRoutes.use('*', dualAuth)
 
 /**
  * POST /api/v1/api-keys

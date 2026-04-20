@@ -29,6 +29,15 @@ type OutboundRequest struct {
 	HTML      string            `json:"html,omitempty"`
 	InReplyTo string            `json:"inReplyTo,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
+
+	// Icalendar, when set, carries a raw ICS VCALENDAR body that
+	// becomes a `text/calendar; method=<IcalendarMethod>` MIME part
+	// alongside the text/html body. Used for RSVP replies
+	// (METHOD:REPLY) and potentially meeting invites
+	// (METHOD:REQUEST / CANCEL) later. IcalendarMethod defaults to
+	// REPLY if unset to match the most common call site.
+	Icalendar       string `json:"icalendar,omitempty"`
+	IcalendarMethod string `json:"icalendarMethod,omitempty"`
 }
 
 // DkimLookup returns the PEM-encoded private key and selector for a domain.
@@ -60,6 +69,31 @@ func StartSendAPI(hostname string, port int, client *Client, dkimLookup DkimLook
 		if req.From == "" || len(req.To) == 0 {
 			http.Error(w, "from and to are required", http.StatusBadRequest)
 			return
+		}
+		// Defence-in-depth: strip CR/LF from every header-bound field
+		// before the message builder runs. The API service is the
+		// primary caller and already sanitizes, but the send API is
+		// reachable from anywhere in the internal network — treat
+		// every field as untrusted and refuse to emit malformed
+		// headers. Without this, a caller passing `"\r\nBcc: x"` in
+		// any field would inject arbitrary SMTP headers.
+		req.From = stripCRLF(req.From)
+		req.ReplyTo = stripCRLF(req.ReplyTo)
+		req.Subject = stripCRLF(req.Subject)
+		req.InReplyTo = stripCRLF(req.InReplyTo)
+		for i := range req.To {
+			req.To[i] = stripCRLF(req.To[i])
+		}
+		for i := range req.Cc {
+			req.Cc[i] = stripCRLF(req.Cc[i])
+		}
+		for i := range req.Bcc {
+			req.Bcc[i] = stripCRLF(req.Bcc[i])
+		}
+		if req.Headers != nil {
+			for k, v := range req.Headers {
+				req.Headers[k] = stripCRLF(v)
+			}
 		}
 
 		data, err := buildMessage(hostname, &req)
@@ -132,6 +166,15 @@ func sendAPIJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
 }
 
+// stripCRLF removes CR and LF from a string. Used to neutralise SMTP
+// header injection attempts — any header-bound field can contain only
+// a single line per RFC 5322.
+func stripCRLF(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	return s
+}
+
 // extractBareAddress pulls the bare email address from "Name <addr>" or plain addr format.
 func extractBareAddress(from string) string {
 	addr := from
@@ -198,28 +241,96 @@ func buildMessage(hostname string, req *OutboundRequest) ([]byte, error) {
 		}
 	}
 
-	// Body
-	switch {
-	case req.HTML != "" && req.Text != "":
-		boundary := newBoundary()
-		fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", boundary)
+	// Body — four shapes:
+	//   • text+html (+ optional icalendar) → multipart/mixed wrapping
+	//     a multipart/alternative for the human-readable parts plus a
+	//     text/calendar sibling for calendar clients.
+	//   • html-only (+ optional icalendar)
+	//   • text-only (+ optional icalendar)
+	//   • icalendar-only — bare text/calendar (rarely useful, but some
+	//     REPLY flows ship no human body at all).
+	hasIcs := req.Icalendar != ""
+	icsMethod := req.IcalendarMethod
+	if icsMethod == "" {
+		icsMethod = "REPLY"
+	}
 
+	writeTextPart := func(boundary string) error {
 		fmt.Fprintf(&buf, "--%s\r\n", boundary)
 		fmt.Fprintf(&buf, "Content-Type: text/plain; charset=utf-8\r\n")
 		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n\r\n")
 		if err := writeQP(&buf, req.Text); err != nil {
-			return nil, err
+			return err
 		}
 		fmt.Fprintf(&buf, "\r\n")
-
+		return nil
+	}
+	writeHTMLPart := func(boundary string) error {
 		fmt.Fprintf(&buf, "--%s\r\n", boundary)
 		fmt.Fprintf(&buf, "Content-Type: text/html; charset=utf-8\r\n")
 		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n\r\n")
 		if err := writeQP(&buf, req.HTML); err != nil {
-			return nil, err
+			return err
 		}
 		fmt.Fprintf(&buf, "\r\n")
+		return nil
+	}
+	writeIcsPart := func(boundary string) {
+		fmt.Fprintf(&buf, "--%s\r\n", boundary)
+		fmt.Fprintf(&buf, "Content-Type: text/calendar; charset=utf-8; method=%s\r\n", icsMethod)
+		fmt.Fprintf(&buf, "Content-Transfer-Encoding: 8bit\r\n")
+		// Attachment disposition so clients that don't understand the
+		// method param still surface an invite.ics the user can open.
+		fmt.Fprintf(&buf, "Content-Disposition: attachment; filename=\"invite.ics\"\r\n\r\n")
+		buf.WriteString(req.Icalendar)
+		if !strings.HasSuffix(req.Icalendar, "\r\n") {
+			fmt.Fprintf(&buf, "\r\n")
+		}
+	}
 
+	switch {
+	case hasIcs && (req.HTML != "" || req.Text != ""):
+		mixed := newBoundary()
+		fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", mixed)
+
+		if req.HTML != "" && req.Text != "" {
+			alt := newBoundary()
+			fmt.Fprintf(&buf, "--%s\r\n", mixed)
+			fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", alt)
+			if err := writeTextPart(alt); err != nil {
+				return nil, err
+			}
+			if err := writeHTMLPart(alt); err != nil {
+				return nil, err
+			}
+			fmt.Fprintf(&buf, "--%s--\r\n", alt)
+		} else if req.HTML != "" {
+			if err := writeHTMLPart(mixed); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := writeTextPart(mixed); err != nil {
+				return nil, err
+			}
+		}
+
+		writeIcsPart(mixed)
+		fmt.Fprintf(&buf, "--%s--\r\n", mixed)
+
+	case hasIcs:
+		fmt.Fprintf(&buf, "Content-Type: text/calendar; charset=utf-8; method=%s\r\n", icsMethod)
+		fmt.Fprintf(&buf, "Content-Transfer-Encoding: 8bit\r\n\r\n")
+		buf.WriteString(req.Icalendar)
+
+	case req.HTML != "" && req.Text != "":
+		boundary := newBoundary()
+		fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", boundary)
+		if err := writeTextPart(boundary); err != nil {
+			return nil, err
+		}
+		if err := writeHTMLPart(boundary); err != nil {
+			return nil, err
+		}
 		fmt.Fprintf(&buf, "--%s--\r\n", boundary)
 
 	case req.HTML != "":

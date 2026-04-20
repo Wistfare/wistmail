@@ -150,7 +150,17 @@ emailRoutes.post('/batch', requireScope('emails:send'), rateLimit(5), async (c) 
     }
   }
 
-  return c.json({ data: results }, 201)
+  // Return both shapes so existing SDK integrations (which read
+  // `data`) and the test suite (which reads `ids`) both see their
+  // expected payload. `ids` is always ordered identically to the
+  // input emails array.
+  return c.json(
+    {
+      data: results,
+      ids: results.map((r) => r.id),
+    },
+    201,
+  )
 })
 
 /**

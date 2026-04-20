@@ -9,10 +9,41 @@ abstract class MailRepository {
   Future<bool> toggleStar(String emailId);
   Future<void> archive(String emailId);
   Future<void> delete(String emailId);
+  /// Hard-delete a single email (must already be in Trash).
+  Future<void> purge(String emailId);
+  /// Empty the whole Trash folder. Returns purged counts for toasts.
+  Future<Map<String, int>> emptyTrash();
+  /// Empty any folder that auto-purges (trash or spam).
+  Future<Map<String, int>> emptyFolder(String folder);
+  /// How many days emails linger in Trash before auto-purge.
+  Future<int> getTrashRetention();
+  /// Retention for any auto-purging folder (trash or spam).
+  Future<int> getFolderRetention(String folder);
+  /// Mark every unread email in `folder` as read — server-side
+  /// filter against the user's mailboxes. `folder='all'` clears
+  /// the unread dot across every folder.
+  Future<int> markAllRead(String folder);
+  /// Snooze a single email until the given UTC instant, or pass
+  /// null to clear a previous snooze.
+  Future<void> snooze(String emailId, DateTime? until);
+  /// Return every email in the same thread as `emailId`, oldest
+  /// first. Caller renders the thread strip.
+  Future<List<Map<String, dynamic>>> getThread(String emailId);
+  /// Bulk mutation helper. Returns the number of affected rows.
+  Future<int> batchAction({
+    required List<String> ids,
+    required String action,
+    String? folder,
+    List<String>? labelIds,
+  });
   Future<Map<String, int>> getUnreadCounts();
   Future<String> compose(ComposeDraft draft);
   Future<List<Mailbox>> getMailboxes();
   Future<EmailPage> search(String query);
+  /// User-initiated retry for an email currently in 'failed' or
+  /// 'rate_limited'. Backend transitions it back to 'sending' and
+  /// the WS event flips the row's pill.
+  Future<void> dispatch(String emailId);
 }
 
 class MailRepositoryImpl implements MailRepository {
@@ -46,6 +77,48 @@ class MailRepositoryImpl implements MailRepository {
   Future<void> delete(String emailId) => _remote.delete(emailId);
 
   @override
+  Future<void> purge(String emailId) => _remote.purge(emailId);
+
+  @override
+  Future<Map<String, int>> emptyTrash() => _remote.emptyTrash();
+
+  @override
+  Future<Map<String, int>> emptyFolder(String folder) =>
+      _remote.emptyFolder(folder);
+
+  @override
+  Future<int> getTrashRetention() => _remote.getTrashRetention();
+
+  @override
+  Future<int> getFolderRetention(String folder) =>
+      _remote.getFolderRetention(folder);
+
+  @override
+  Future<int> markAllRead(String folder) => _remote.markAllRead(folder);
+
+  @override
+  Future<void> snooze(String emailId, DateTime? until) =>
+      _remote.snooze(emailId, until);
+
+  @override
+  Future<List<Map<String, dynamic>>> getThread(String emailId) =>
+      _remote.getThread(emailId);
+
+  @override
+  Future<int> batchAction({
+    required List<String> ids,
+    required String action,
+    String? folder,
+    List<String>? labelIds,
+  }) =>
+      _remote.batchAction(
+        ids: ids,
+        action: action,
+        folder: folder,
+        labelIds: labelIds,
+      );
+
+  @override
   Future<Map<String, int>> getUnreadCounts() => _remote.getUnreadCounts();
 
   @override
@@ -56,4 +129,7 @@ class MailRepositoryImpl implements MailRepository {
 
   @override
   Future<EmailPage> search(String query) => _remote.search(query);
+
+  @override
+  Future<void> dispatch(String emailId) => _remote.dispatch(emailId);
 }
