@@ -92,6 +92,20 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> requestPasswordReset(String email) async {}
+
+  @override
+  Future<ResetPasswordResult> submitPasswordReset({
+    required String token,
+    required String newPassword,
+    String? mfaCode,
+  }) async =>
+      const ResetPasswordDone();
+
+  @override
+  Future<void> requestResetEmailCode(String token) async {}
+
+  @override
   Future<MfaMethodsListing> listMfaMethods() async => const MfaMethodsListing(
         methods: [],
         backupTotal: 0,

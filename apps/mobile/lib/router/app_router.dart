@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/providers/auth_controller.dart';
 import '../features/auth/presentation/screens/sign_in_screen.dart';
 import '../features/auth/presentation/screens/forgot_password_screen.dart';
+import '../features/auth/presentation/screens/reset_password_screen.dart';
 import '../features/auth/presentation/screens/delete_account_screen.dart';
 import '../features/mail/presentation/screens/inbox_screen.dart';
 import '../features/mail/presentation/screens/email_detail_screen.dart';
@@ -83,6 +84,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/auth/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/auth/reset-password',
+        // Accept ?token=… for deep links / App Links once provisioned.
+        // Paste-token flow leaves it null.
+        builder: (context, state) => ResetPasswordScreen(
+          initialToken: state.uri.queryParameters['token'],
+        ),
       ),
 
       // MFA login challenge (after step 1 password). The router redirect

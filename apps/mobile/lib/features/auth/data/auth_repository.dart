@@ -14,6 +14,15 @@ abstract class AuthRepository {
   Future<void> logout();
   Future<void> deleteAccount({required String password});
 
+  // Password reset (forgot-password flow)
+  Future<void> requestPasswordReset(String email);
+  Future<ResetPasswordResult> submitPasswordReset({
+    required String token,
+    required String newPassword,
+    String? mfaCode,
+  });
+  Future<void> requestResetEmailCode(String token);
+
   // MFA enrollment
   Future<MfaMethodsListing> listMfaMethods();
   Future<void> deleteMfaMethod(String methodId);
@@ -52,6 +61,26 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> deleteAccount({required String password}) =>
       _remote.deleteAccount(password: password);
+
+  @override
+  Future<void> requestPasswordReset(String email) =>
+      _remote.requestPasswordReset(email);
+
+  @override
+  Future<ResetPasswordResult> submitPasswordReset({
+    required String token,
+    required String newPassword,
+    String? mfaCode,
+  }) =>
+      _remote.submitPasswordReset(
+        token: token,
+        newPassword: newPassword,
+        mfaCode: mfaCode,
+      );
+
+  @override
+  Future<void> requestResetEmailCode(String token) =>
+      _remote.requestResetEmailCode(token);
 
   @override
   Future<MfaMethodsListing> listMfaMethods() => _remote.listMfaMethods();

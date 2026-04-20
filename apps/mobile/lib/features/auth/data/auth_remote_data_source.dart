@@ -74,6 +74,64 @@ class AuthRemoteDataSource {
     await _client.clearCookies();
   }
 
+  // ── Password reset ─────────────────────────────────────────────────────
+
+  /// Kick off the forgot-password flow. The API always returns 200 to
+  /// avoid leaking which emails exist, so there's no "user not found"
+  /// branch — the UI just tells the user to check their inbox.
+  Future<void> requestPasswordReset(String email) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/auth/forgot-password',
+      data: {'email': email},
+    );
+  }
+
+  /// Submit a new password against a reset token. Returns the
+  /// resolved outcome:
+  ///   • [ResetPasswordDone] — password changed, user can log in.
+  ///   • [ResetPasswordNeedsMfa] — token valid but the account has
+  ///     MFA enabled; the caller has to collect a code and retry
+  ///     with [submitPasswordReset] passing `mfaCode`.
+  /// Throws on genuine errors (bad token, weak password, network).
+  Future<ResetPasswordResult> submitPasswordReset({
+    required String token,
+    required String newPassword,
+    String? mfaCode,
+  }) async {
+    try {
+      await _client.dio.post<Map<String, dynamic>>(
+        '/api/v1/auth/reset-password',
+        data: {
+          'token': token,
+          'newPassword': newPassword,
+          if (mfaCode != null) 'mfaCode': mfaCode,
+        },
+      );
+      return const ResetPasswordDone();
+    } on DioException catch (e) {
+      // 412 Precondition Required — MFA code missing/invalid.
+      if (e.response?.statusCode == 412) {
+        final methods = (e.response!.data as Map<String, dynamic>?)?['mfaMethods'];
+        return ResetPasswordNeedsMfa(
+          methods: methods is List
+              ? methods.whereType<String>().toList()
+              : const ['totp'],
+        );
+      }
+      rethrow;
+    }
+  }
+
+  /// Ask the API to email a fresh 6-digit code to the user's external
+  /// recovery address. Only used when the account has email-MFA and
+  /// we're midway through the reset flow.
+  Future<void> requestResetEmailCode(String token) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/auth/reset-password/email-code',
+      data: {'token': token},
+    );
+  }
+
   // ── MFA enrollment ─────────────────────────────────────────────────────
 
   Future<MfaMethodsListing> listMfaMethods() async {
