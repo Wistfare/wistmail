@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_app_bar.dart';
 import '../../../../core/widgets/wm_avatar.dart';
 import '../../../../core/widgets/wm_tag.dart';
+import '../../data/mail_actions.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
 
@@ -41,18 +44,18 @@ class EmailDetailScreen extends ConsumerWidget {
             _IconAction(
               icon: Icons.archive_outlined,
               onPressed: () async {
-                final repo = await ref.read(mailRepositoryProvider.future);
-                await repo.archive(email.id);
-                ref.read(inboxControllerProvider.notifier).removeLocal(email.id);
+                final actions = await ref.read(mailActionsProvider.future);
+                // Optimistic — UI returns immediately, sync engine
+                // owns the network call.
+                unawaited(actions.archive(email));
                 if (context.mounted) context.pop();
               },
             ),
             _IconAction(
               icon: Icons.delete_outline,
               onPressed: () async {
-                final repo = await ref.read(mailRepositoryProvider.future);
-                await repo.delete(email.id);
-                ref.read(inboxControllerProvider.notifier).removeLocal(email.id);
+                final actions = await ref.read(mailActionsProvider.future);
+                unawaited(actions.delete(email));
                 if (context.mounted) context.pop();
               },
             ),
@@ -65,11 +68,9 @@ class EmailDetailScreen extends ConsumerWidget {
         data: (email) => _Body(
           email: email,
           onToggleStar: () async {
-            final repo = await ref.read(mailRepositoryProvider.future);
-            final starred = await repo.toggleStar(email.id);
-            ref.read(inboxControllerProvider.notifier).applyLocal(
-                  email.copyWith(isStarred: starred),
-                );
+            final actions = await ref.read(mailActionsProvider.future);
+            // Coalesces multiple rapid taps into one HTTP call.
+            await actions.toggleStar(email);
             ref.invalidate(emailDetailProvider(email.id));
           },
         ),
