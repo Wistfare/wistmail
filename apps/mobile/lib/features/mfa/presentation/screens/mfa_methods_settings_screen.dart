@@ -334,7 +334,6 @@ class _BackupCodesRow extends StatelessWidget {
           Container(
             width: 36,
             height: 36,
-            color: AppColors.surface,
             decoration: const BoxDecoration(
               color: AppColors.surface,
               border: Border.fromBorderSide(

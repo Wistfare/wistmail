@@ -28,9 +28,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('New Message'), findsOneWidget);
+    expect(find.text('NEW MESSAGE'), findsOneWidget);
     expect(find.text('me@wistfare.com'), findsOneWidget);
-    expect(find.text('Send'), findsOneWidget);
+    expect(find.text('SEND'), findsOneWidget);
   });
 
   testWidgets('tapping Send calls repository.compose with entered values', (tester) async {
@@ -56,7 +56,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.widgetWithText(TextField, 'name@domain.com'), 'you@x.com');
-    await tester.tap(find.text('Send'));
+    await tester.tap(find.text('SEND'));
     await tester.pumpAndSettle();
 
     expect(mail.composeCalls, 1);
@@ -84,7 +84,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Send'));
+    await tester.tap(find.text('SEND'));
     await tester.pumpAndSettle();
 
     expect(find.text('Add at least one recipient.'), findsOneWidget);

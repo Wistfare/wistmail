@@ -36,6 +36,7 @@ import '../features/mfa/presentation/screens/mfa_backup_codes_screen.dart';
 import '../features/mfa/presentation/screens/mfa_methods_settings_screen.dart';
 import '../features/settings/presentation/screens/pending_sync_screen.dart';
 import '../features/settings/presentation/screens/labels_settings_screen.dart';
+import '../features/settings/presentation/screens/settings_screen.dart';
 import '../features/shell/presentation/screens/main_shell.dart';
 import '../features/shell/presentation/screens/splash_screen.dart';
 
@@ -274,6 +275,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               : ComposeArgs.empty;
           return ComposeScreen(args: args);
         },
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/settings/pending-sync',
