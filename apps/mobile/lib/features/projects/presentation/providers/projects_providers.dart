@@ -14,3 +14,11 @@ final projectsListProvider =
   final repo = await ref.watch(projectsRepositoryProvider.future);
   return repo.list(status: status);
 });
+
+/// Recent docs for the MobileV3 Work screen. Stubbed on the backend
+/// today (returns an empty list unless rows are manually seeded).
+final recentDocsProvider =
+    FutureProvider.autoDispose<List<RecentDoc>>((ref) async {
+  final repo = await ref.watch(projectsRepositoryProvider.future);
+  return repo.listRecentDocs();
+});

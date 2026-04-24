@@ -6,20 +6,24 @@ import '../features/auth/presentation/screens/sign_in_screen.dart';
 import '../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../features/auth/presentation/screens/reset_password_screen.dart';
 import '../features/auth/presentation/screens/delete_account_screen.dart';
-import '../features/mail/presentation/screens/inbox_screen.dart';
+import '../features/mail/presentation/screens/inbox_screen_v3.dart';
 import '../features/mail/presentation/screens/email_detail_screen.dart';
+import '../features/mail/presentation/screens/thread_screen_v3.dart';
 import '../features/mail/domain/compose_args.dart';
 import '../features/mail/presentation/screens/compose_screen.dart';
 import '../features/mail/presentation/screens/mail_search_screen.dart';
+import '../features/search/presentation/screens/search_screen_v3.dart';
 import '../features/chat/presentation/screens/chat_list_screen.dart';
 import '../features/chat/presentation/screens/chat_conversation_screen.dart';
 import '../features/chat/presentation/screens/new_chat_screen.dart';
 import '../features/labels/presentation/screens/label_assign_screen.dart';
-import '../features/calendar/presentation/screens/calendar_screen.dart';
+import '../features/calendar/presentation/screens/calendar_screen_v3.dart';
 import '../features/calendar/presentation/screens/create_event_screen.dart';
 import '../features/calendar/presentation/screens/meet_screen.dart';
 import '../features/calendar/presentation/screens/join_meeting_screen.dart';
-import '../features/projects/presentation/screens/projects_screen.dart';
+import '../features/projects/presentation/screens/work_screen_v3.dart';
+import '../features/today/presentation/screens/today_screen.dart';
+import '../features/me/presentation/screens/me_screen.dart';
 import '../features/projects/presentation/screens/create_project_screen.dart';
 import '../features/calls/presentation/screens/voice_call_screen.dart';
 import '../features/calls/presentation/screens/video_call_screen.dart';
@@ -33,27 +37,41 @@ import '../features/mfa/presentation/screens/mfa_methods_settings_screen.dart';
 import '../features/settings/presentation/screens/pending_sync_screen.dart';
 import '../features/settings/presentation/screens/labels_settings_screen.dart';
 import '../features/shell/presentation/screens/main_shell.dart';
+import '../features/shell/presentation/screens/splash_screen.dart';
 
 /// Root router. Built as a Riverpod provider so its `redirect` callback can
-/// read the auth state directly. There is no splash screen — the app boots
-/// into `/inbox`, which renders its own skeleton while the auth controller
-/// restores the saved session in the background. Once the restore completes,
-/// the router redirects to `/auth/sign-in` if the user is not authenticated;
-/// otherwise the inbox stays put and shows the real list as soon as the
-/// data arrives.
+/// read the auth state directly.
+///
+/// Boot sequence:
+///   1. App launches at `/` — renders [WmSplashScreen] (logo, no content).
+///   2. `AuthController._restore()` runs async; `isRestoring` is true.
+///   3. Any attempt to navigate to a protected route while restoring is
+///      redirected back to `/`, so we never flash a half-loaded Today/
+///      Inbox/etc. before we know whether the user is signed in.
+///   4. When restore completes, the router re-evaluates and sends the
+///      user to `/today` (authenticated) or `/auth/sign-in` (not).
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRefreshNotifier(ref);
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
-    initialLocation: '/inbox',
+    initialLocation: '/',
     refreshListenable: refresh,
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
-      if (auth.isRestoring) return null;
-
       final loc = state.matchedLocation;
       final onAuthRoute = loc.startsWith('/auth/');
+      final onSplash = loc == '/';
+
+      // While the session is being restored we pin the user on the
+      // splash. Without this the initial location would render a
+      // protected screen for a beat before the auth state settled
+      // and the redirect bounced us to /auth/sign-in.
+      if (auth.isRestoring) {
+        return onSplash ? null : '/';
+      }
+
+      // Restore is done — decide the real destination based on auth.
       final onMfaChallenge = loc == '/auth/mfa/challenge' ||
           loc == '/auth/mfa/backup-code';
 
@@ -63,19 +81,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return onMfaChallenge ? null : '/auth/mfa/challenge';
       }
 
-      if (!auth.isAuthenticated && !onAuthRoute) {
-        return '/auth/sign-in';
+      if (!auth.isAuthenticated) {
+        // Already on a sign-in / reset screen? Let it render.
+        return onAuthRoute ? null : '/auth/sign-in';
       }
-      // After login, the MFA enrollment routes are valid auth-protected
-      // pages — don't bounce them back to the inbox.
-      if (auth.isAuthenticated &&
-          onAuthRoute &&
-          !loc.startsWith('/auth/mfa/')) {
-        return '/inbox';
+
+      // Authenticated: kick the user off the splash or any /auth
+      // screen into the primary shell.
+      if (onSplash) return '/today';
+      if (onAuthRoute && !loc.startsWith('/auth/mfa/')) {
+        return '/today';
       }
       return null;
     },
     routes: [
+      // Splash — root route. The `redirect` above pins the user here
+      // while AuthController._restore() resolves.
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const WmSplashScreen(),
+      ),
       // Auth — never wrapped in the shell
       GoRoute(
         path: '/auth/sign-in',
@@ -131,9 +156,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const MfaMethodsSettingsScreen(),
       ),
 
-      // Main shell — five tabs as IndexedStack branches. Each branch keeps
-      // its own state when the user switches tabs, so the bottom nav and
-      // the tab body don't rebuild.
+      // Main shell — four MobileV3 tabs as IndexedStack branches. Each
+      // branch keeps its own state when the user switches tabs, so the
+      // bottom nav and the tab body don't rebuild.
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             MainShell(navigationShell: navigationShell),
@@ -141,16 +166,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/inbox',
-                builder: (context, state) => const InboxScreen(),
+                path: '/today',
+                builder: (context, state) => const TodayScreen(),
               ),
             ],
           ),
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/chat',
-                builder: (context, state) => const ChatListScreen(),
+                path: '/inbox',
+                builder: (context, state) => const InboxScreenV3(),
               ),
             ],
           ),
@@ -158,15 +183,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/calendar',
-                builder: (context, state) => const CalendarScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/meet',
-                builder: (context, state) => const MeetScreen(),
+                builder: (context, state) => const CalendarScreenV3(),
               ),
             ],
           ),
@@ -174,11 +191,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/projects',
-                builder: (context, state) => const ProjectsScreen(),
+                builder: (context, state) => const WorkScreenV3(),
               ),
             ],
           ),
         ],
+      ),
+
+      // Me screen — reachable from the Today header avatar. Full-screen
+      // (no bottom nav) so it can surface logout + account management
+      // without the shell underneath.
+      GoRoute(
+        path: '/me',
+        builder: (context, state) => const MeScreen(),
+      ),
+
+      // Chat list — no longer a bottom-nav tab in MobileV3, but the
+      // route is kept for the Inbox "Chats" filter + deep links.
+      GoRoute(
+        path: '/chat',
+        builder: (context, state) => const ChatListScreen(),
+      ),
+      // Meet lives inside the Calendar tab conceptually; the route is
+      // kept for deep links from notifications.
+      GoRoute(
+        path: '/meet',
+        builder: (context, state) => const MeetScreen(),
       ),
 
       // Full-screen routes (no shell / no bottom nav)
@@ -200,10 +238,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/search',
+        builder: (context, state) => const SearchScreenV3(),
+      ),
+      // Legacy mail-only search, kept for deep links that pre-date the
+      // MobileV3 global search.
+      GoRoute(
+        path: '/search/mail',
         builder: (context, state) => const MailSearchScreen(),
       ),
       GoRoute(
         path: '/email/:id',
+        builder: (context, state) =>
+            ThreadScreenV3(emailId: state.pathParameters['id']!),
+      ),
+      // Legacy detail (retains snooze-action + sibling-thread UI) — kept
+      // reachable for debugging and deep-links until every entry point
+      // is migrated to the MobileV3 thread.
+      GoRoute(
+        path: '/email/:id/legacy',
         builder: (context, state) =>
             EmailDetailScreen(emailId: state.pathParameters['id']!),
       ),

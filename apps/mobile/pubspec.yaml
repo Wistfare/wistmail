@@ -53,6 +53,9 @@ dependencies:
   url_launcher: ^6.3.2
   intl: ^0.20.2
   app_links: ^7.0.0
+  # Lucide icons — the pen design uses lucide exclusively. Pinned to
+  # a broad range; the package wraps the lucide web font.
+  lucide_icons_flutter: ^3.0.0
 
 dev_dependencies:
   flutter_test:
