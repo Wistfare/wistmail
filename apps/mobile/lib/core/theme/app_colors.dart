@@ -5,30 +5,31 @@ import 'package:flutter/material.dart';
 /// Sharp-cornered black-on-black with a single chartreuse accent. Don't
 /// introduce new colors here without referencing a screen in the .pen file.
 abstract final class AppColors {
-  // Surfaces
+  // Surfaces — exact values from design.lib.pen variables.
+  // wm-bg / wm-surface / wm-surface-hover.
   static const Color background = Color(0xFF000000);
   static const Color surface = Color(0xFF111111);
-  static const Color surfaceElevated = Color(0xFF1A1A1A);
+  static const Color surfaceElevated = Color(0xFF1A1A1A); // wm-surface-hover
 
-  // Borders / dividers
+  // Borders / dividers — wm-border.
   static const Color border = Color(0xFF1A1A1A);
   static const Color borderStrong = Color(0xFF222222);
 
-  // Accent (FAB, "Send", active nav, links, unread dots)
+  // Accent — wm-accent / wm-accent-dim (pen-defined exactly).
   static const Color accent = Color(0xFFBFFF00);
   static const Color accentSubtle = Color(0xFF2A3A12);
-  static const Color accentDim = Color(0xFF1A2A08);
+  static const Color accentDim = Color(0xFF1A2200);
 
-  // Text
+  // Text — pen variables wm-text-*.
   static const Color textPrimary = Color(0xFFFFFFFF);
   static const Color textSecondary = Color(0xFF999999);
-  static const Color textTertiary = Color(0xFF666666);
-  static const Color textMuted = Color(0xFF444444);
+  static const Color textTertiary = Color(0xFF6E6E6E);
+  static const Color textMuted = Color(0xFF404040);
 
-  // Status / system
-  static const Color danger = Color(0xFFEF4444);
+  // Status / system — wm-error / wm-success / wm-warning.
+  static const Color danger = Color(0xFFFF4444);
   static const Color dangerSubtle = Color(0xFF2A0E0E);
-  static const Color success = Color(0xFF10B981);
+  static const Color success = Color(0xFFBFFF00);
 
   // Drawer
   static const Color drawerBackground = Color(0xFF111111);

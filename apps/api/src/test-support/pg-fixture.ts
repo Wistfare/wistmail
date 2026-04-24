@@ -26,28 +26,31 @@ let pg: PGlite | null = null
 export async function getTestDb(): Promise<Database> {
   if (sharedDb) return sharedDb
   pg = new PGlite()
-  // Apply the full migration snapshot. We deliberately read the
-  // checked-in .sql rather than re-running ensureSchema: the SQL
-  // file IS the contract we ship to production, so tests validate
-  // exactly that.
+  // Apply every checked-in drizzle migration in numeric order. We
+  // deliberately read the .sql files rather than re-running
+  // ensureSchema: the SQL files ARE the contract we ship to
+  // production, so tests validate exactly that. Picking up new
+  // migrations requires no fixture changes — just drizzle-kit
+  // generate and rerun.
   const here = fileURLToPath(import.meta.url)
-  const migrationPath = resolve(
-    here,
-    '../../../../../packages/db/drizzle/0000_snapshot_from_ensure_schema.sql',
-  )
-  const sql = await readFile(migrationPath, 'utf8')
-  // Drizzle's generated .sql uses --> statement-breakpoint markers.
-  // PGlite runs one statement per .exec — split on the breakpoint
-  // comment so each statement lands as its own exec call.
-  const statements = sql
-    .split('--> statement-breakpoint')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-  for (const stmt of statements) {
-    // Some drizzle-generated statements include trailing semicolons
-    // inside a single block (e.g. CREATE INDEX after CREATE TABLE);
-    // that's fine — PGlite.exec accepts multi-statement blocks.
-    await pg.exec(stmt)
+  const migrationsDir = resolve(here, '../../../../../packages/db/drizzle')
+  const { readdir } = await import('node:fs/promises')
+  const entries = await readdir(migrationsDir)
+  const migrationFiles = entries
+    .filter((f) => /^\d{4}_.+\.sql$/.test(f))
+    .sort()
+  for (const file of migrationFiles) {
+    const sql = await readFile(resolve(migrationsDir, file), 'utf8')
+    // Drizzle's generated .sql uses --> statement-breakpoint markers.
+    // PGlite runs one statement per .exec — split on the breakpoint
+    // comment so each statement lands as its own exec call.
+    const statements = sql
+      .split('--> statement-breakpoint')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+    for (const stmt of statements) {
+      await pg.exec(stmt)
+    }
   }
   sharedDb = drizzle(pg, { schema }) as unknown as Database
   return sharedDb

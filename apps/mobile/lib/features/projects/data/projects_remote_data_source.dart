@@ -31,4 +31,15 @@ class ProjectsRemoteDataSource {
     );
     return response.data!['id'] as String;
   }
+
+  Future<List<RecentDoc>> listRecentDocs({int limit = 10}) async {
+    final response = await _client.dio.get<Map<String, dynamic>>(
+      '/api/v1/projects/docs/recent',
+      queryParameters: {'limit': limit},
+    );
+    final raw = response.data?['docs'] as List<dynamic>? ?? const [];
+    return raw
+        .map((d) => RecentDoc.fromJson(d as Map<String, dynamic>))
+        .toList();
+  }
 }

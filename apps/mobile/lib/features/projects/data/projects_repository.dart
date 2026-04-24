@@ -9,6 +9,7 @@ abstract class ProjectsRepository {
     List<String> memberUserIds,
     DateTime? dueDate,
   });
+  Future<List<RecentDoc>> listRecentDocs({int limit});
 }
 
 class ProjectsRepositoryImpl implements ProjectsRepository {
@@ -31,4 +32,8 @@ class ProjectsRepositoryImpl implements ProjectsRepository {
         memberUserIds: memberUserIds,
         dueDate: dueDate,
       );
+
+  @override
+  Future<List<RecentDoc>> listRecentDocs({int limit = 10}) =>
+      _remote.listRecentDocs(limit: limit);
 }

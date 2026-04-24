@@ -27,6 +27,10 @@ async function ensureSchema() {
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS external_email varchar(255)`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_required boolean NOT NULL DEFAULT true`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_setup_complete boolean NOT NULL DEFAULT false`,
+    // MobileV3 Me screen — focus mode + per-channel notification prefs.
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS focus_mode_enabled boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS focus_mode_until timestamptz`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_prefs jsonb NOT NULL DEFAULT '{"mail":true,"chat":true,"calendar":true}'::jsonb`,
     `CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id varchar(64) PRIMARY KEY,
       user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -150,6 +154,10 @@ async function ensureSchema() {
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS snooze_until timestamptz`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS scheduled_at timestamptz`,
+    // AI-derived "needs reply" flag powering Today screen's Needs Reply feed.
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS needs_reply boolean`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS needs_reply_reason text`,
+    `CREATE INDEX IF NOT EXISTS emails_needs_reply_idx ON emails(mailbox_id, created_at DESC) WHERE needs_reply = true`,
     // Threading: the `threads` table + `thread_id` FK were declared
     // inside the CREATE TABLE block above, but a production DB with
     // an existing `emails` table treats that CREATE as a no-op so
@@ -313,6 +321,34 @@ async function ensureSchema() {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )`,
+    // Project tasks — drive the project progress bar on the Work screen.
+    // A project's computed progress = done / total * 100; the projects.progress
+    // column is kept as a denormalized cache.
+    `CREATE TABLE IF NOT EXISTS project_tasks (
+      id varchar(64) PRIMARY KEY,
+      project_id varchar(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      title varchar(500) NOT NULL,
+      status varchar(20) NOT NULL DEFAULT 'todo',
+      assignee_id varchar(64) REFERENCES users(id) ON DELETE SET NULL,
+      due_date timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS project_tasks_project_idx ON project_tasks(project_id)`,
+    `CREATE INDEX IF NOT EXISTS project_tasks_assignee_idx ON project_tasks(assignee_id) WHERE assignee_id IS NOT NULL`,
+    // Docs — stub for Work screen's "Recent docs" block. Full docs
+    // feature (editor, collab) is scheduled for a later phase; for
+    // now we just store a row per doc with title + project link.
+    `CREATE TABLE IF NOT EXISTS docs (
+      id varchar(64) PRIMARY KEY,
+      owner_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      project_id varchar(64) REFERENCES projects(id) ON DELETE SET NULL,
+      title varchar(500) NOT NULL,
+      icon varchar(32),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS docs_owner_updated_idx ON docs(owner_id, updated_at DESC)`,
     // ── Hot-path indexes (idempotent). Every authenticated request resolves
     // the user's mailboxes; every inbox open paginates emails by folder.
     `CREATE INDEX IF NOT EXISTS mailboxes_user_id_idx ON mailboxes(user_id)`,
