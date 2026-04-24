@@ -68,26 +68,36 @@ class _EmailBodyState extends ConsumerState<EmailBody> {
         if (_hasRemoteImages && !_loadRemote) _RemoteBanner(
           onLoad: () => setState(() => _loadRemote = true),
         ),
-        Html(
-          data: html,
-          style: _styles(),
-          extensions: [
-            // Resolve <img cid:foo> to the inline attachment URL.
-            // Strip remote image src when the user hasn't opted in.
-            TagExtension(
-              tagsToExtend: {'img'},
-              builder: (ctx) => _renderImage(ctx),
-            ),
-          ],
-          onLinkTap: (href, _, _) {
-            if (href == null || href.isEmpty) return;
-            // Open in the device browser. mode=externalApplication
-            // prevents in-app webview shenanigans.
-            launchUrl(
-              Uri.parse(href),
-              mode: LaunchMode.externalApplication,
-            );
-          },
+        // Paper wrapper: marketing emails author light text on an assumed
+        // white background. Without this wrapper we render dark-on-dark
+        // and the body is invisible. A cornerRadius-12 white card matches
+        // the convention Gmail uses in dark mode.
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.hardEdge,
+          padding: const EdgeInsets.all(12),
+          child: Html(
+            data: html,
+            style: _styles(),
+            extensions: [
+              // Resolve <img cid:foo> to the inline attachment URL.
+              // Strip remote image src when the user hasn't opted in.
+              TagExtension(
+                tagsToExtend: {'img'},
+                builder: (ctx) => _renderImage(ctx),
+              ),
+            ],
+            onLinkTap: (href, _, _) {
+              if (href == null || href.isEmpty) return;
+              launchUrl(
+                Uri.parse(href),
+                mode: LaunchMode.externalApplication,
+              );
+            },
+          ),
         ),
       ],
     );
@@ -175,7 +185,10 @@ class _EmailBodyState extends ConsumerState<EmailBody> {
         fontFamily: base.fontFamily,
         fontSize: FontSize(14),
         lineHeight: const LineHeight(1.55),
-        color: AppColors.textPrimary,
+        // Default to black-on-white — the container behind us paints
+        // the white paper. Author inline styles still win per CSS.
+        color: Colors.black,
+        backgroundColor: Colors.white,
         margin: Margins.zero,
         padding: HtmlPaddings.zero,
       ),
@@ -183,39 +196,44 @@ class _EmailBodyState extends ConsumerState<EmailBody> {
       'h1': Style(fontSize: FontSize(22), fontWeight: FontWeight.w700),
       'h2': Style(fontSize: FontSize(18), fontWeight: FontWeight.w700),
       'h3': Style(fontSize: FontSize(16), fontWeight: FontWeight.w600),
-      'a': Style(color: AppColors.accent, textDecoration: TextDecoration.underline),
+      'a': Style(
+        color: const Color(0xFF1B6FE0),
+        textDecoration: TextDecoration.underline,
+      ),
       'strong': Style(fontWeight: FontWeight.w700),
       'em': Style(fontStyle: FontStyle.italic),
       'code': Style(
         fontFamily: mono.fontFamily,
         fontSize: FontSize(12),
-        backgroundColor: AppColors.surfaceElevated,
+        backgroundColor: const Color(0xFFF2F2F2),
         padding: HtmlPaddings.symmetric(horizontal: 4, vertical: 2),
       ),
       'pre': Style(
         fontFamily: mono.fontFamily,
         fontSize: FontSize(12),
-        backgroundColor: AppColors.surfaceElevated,
+        backgroundColor: const Color(0xFFF2F2F2),
         padding: HtmlPaddings.all(12),
       ),
       'blockquote': Style(
-        border: const Border(left: BorderSide(color: AppColors.textMuted, width: 2)),
+        border: const Border(
+          left: BorderSide(color: Color(0xFFCCCCCC), width: 2),
+        ),
         padding: HtmlPaddings.only(left: 12),
         margin: Margins.symmetric(vertical: 8),
-        color: AppColors.textTertiary,
+        color: const Color(0xFF666666),
       ),
       'table': Style(
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFE5E5E5)),
       ),
       'th': Style(
         fontWeight: FontWeight.w700,
         padding: HtmlPaddings.symmetric(horizontal: 8, vertical: 4),
-        backgroundColor: AppColors.surface,
+        backgroundColor: const Color(0xFFF2F2F2),
       ),
       'td': Style(padding: HtmlPaddings.symmetric(horizontal: 8, vertical: 4)),
       'hr': Style(
         height: Height(1),
-        backgroundColor: AppColors.border,
+        backgroundColor: const Color(0xFFE5E5E5),
         margin: Margins.symmetric(vertical: 12),
       ),
     };

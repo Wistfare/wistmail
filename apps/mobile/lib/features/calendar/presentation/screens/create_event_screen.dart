@@ -2,12 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../providers/calendar_providers.dart';
 
-/// Mobile/CreateEvent — design.lib.pen node `wWm5D`. Mobile/CreateMeeting
-/// is the same chrome with `R62yN` (asMeeting=true).
+/// MobileV3 CreateEvent — matches `design.lib.pen` node `uRlkp`.
+///
+/// Layout:
+///   iTop (padding [8,20]): back btn 40×40 wm-surface circle + title
+///     "NEW EVENT"/"NEW MEETING" 11/700 letterSpacing 1.5 + "SAVE" pill
+///     (cornerRadius 14, padding [8,12], fill accent, text "SAVE" 10/700
+///     letterSpacing 1 black).
+///   iBody (padding [16,20,0,20], gap 18 between sections):
+///     DETAILS card: TITLE row + WHERE row (map-pin trailing).
+///     WHEN card: STARTS + ENDS (trailing "Nh" accent pill computed from delta).
+///     VIDEO & PEOPLE card: VIDEO + WITH (with attendee count pill).
+///   ctaWrap: "+ CREATE EVENT" 54h cornerRadius 27 accent button.
 class CreateEventScreen extends ConsumerStatefulWidget {
   const CreateEventScreen({super.key, this.asMeeting = false});
 
@@ -20,12 +30,10 @@ class CreateEventScreen extends ConsumerStatefulWidget {
 class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
   final _titleController = TextEditingController();
   final _locationController = TextEditingController();
-  final _notesController = TextEditingController();
+  final _attendeesController = TextEditingController();
   DateTime _startAt = DateTime.now().add(const Duration(hours: 1));
   DateTime _endAt = DateTime.now().add(const Duration(hours: 2));
   bool _generateMeetingLink = false;
-  bool _hasWaitingRoom = false;
-  int _reminderMinutes = 15;
   bool _saving = false;
   String? _error;
 
@@ -39,7 +47,7 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
   void dispose() {
     _titleController.dispose();
     _locationController.dispose();
-    _notesController.dispose();
+    _attendeesController.dispose();
     super.dispose();
   }
 
@@ -55,6 +63,10 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
     });
     try {
       final repo = await ref.read(calendarRepositoryProvider.future);
+      final attendees = _attendeesController.text
+          .split(RegExp(r'[,;]\s*'))
+          .where((s) => s.trim().isNotEmpty)
+          .toList();
       await repo.createEvent(
         title: title,
         startAt: _startAt,
@@ -62,12 +74,8 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
         location: _locationController.text.trim().isEmpty
             ? null
             : _locationController.text.trim(),
-        notes: _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
+        attendees: attendees,
         meetingLink: _generateMeetingLink ? 'generate' : null,
-        hasWaitingRoom: _hasWaitingRoom,
-        reminderMinutes: [_reminderMinutes],
       );
       ref.invalidate(upcomingEventsProvider);
       ref.invalidate(upcomingMeetingsProvider);
@@ -88,241 +96,124 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
     return m != null ? m.group(1)! : 'Could not save.';
   }
 
+  Future<void> _pickStart() async {
+    final picked = await _pickDateTime(context, _startAt);
+    if (picked == null) return;
+    setState(() {
+      _startAt = picked;
+      if (_endAt.isBefore(_startAt)) {
+        _endAt = _startAt.add(const Duration(hours: 1));
+      }
+    });
+  }
+
+  Future<void> _pickEnd() async {
+    final picked = await _pickDateTime(context, _endAt);
+    if (picked == null) return;
+    if (picked.isBefore(_startAt)) {
+      setState(() => _error = 'Ends must be after Starts');
+      return;
+    }
+    setState(() => _endAt = picked);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final duration = _endAt.difference(_startAt);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
             _Header(
-              title: widget.asMeeting ? 'New Meeting' : 'New Event',
-              ctaLabel: widget.asMeeting ? 'Create' : 'Save',
-              isSaving: _saving,
-              onClose: () => context.pop(),
-              onSave: _save,
+              title: widget.asMeeting ? 'NEW MEETING' : 'NEW EVENT',
+              onBack: () => context.pop(),
+              onSave: _saving ? null : _save,
             ),
             Expanded(
               child: ListView(
-                padding: EdgeInsets.zero,
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 children: [
-                  _IconRow(
-                    icon: Icons.text_fields,
-                    child: TextField(
-                      key: const Key('event-title'),
-                      controller: _titleController,
-                      cursorColor: AppColors.accent,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                  _Section(
+                    eyebrow: 'DETAILS',
+                    children: [
+                      _InputRow(
+                        label: 'TITLE',
+                        controller: _titleController,
+                        placeholder: 'Design review — Q2 roadmap',
                       ),
-                      decoration: InputDecoration(
-                        hintText: widget.asMeeting
-                            ? 'Meeting title...'
-                            : 'Event title...',
-                        hintStyle: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.textTertiary,
-                        ),
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                        contentPadding: EdgeInsets.zero,
+                      const _Divider(),
+                      _InputRow(
+                        label: 'WHERE',
+                        controller: _locationController,
+                        placeholder: 'Conference Room B',
+                        trailing: const Icon(LucideIcons.mapPin,
+                            size: 14, color: AppColors.textSecondary),
                       ),
-                    ),
+                    ],
                   ),
-                  const Divider(color: AppColors.border, height: 1),
-                  _IconRow(
-                    icon: Icons.calendar_today_outlined,
-                    child: GestureDetector(
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: _startAt,
-                          firstDate: DateTime.now()
-                              .subtract(const Duration(days: 365)),
-                          lastDate:
-                              DateTime.now().add(const Duration(days: 365 * 3)),
-                        );
-                        if (picked != null) {
-                          setState(() {
-                            _startAt = DateTime(picked.year, picked.month,
-                                picked.day, _startAt.hour, _startAt.minute);
-                            _endAt = DateTime(picked.year, picked.month,
-                                picked.day, _endAt.hour, _endAt.minute);
-                          });
-                        }
-                      },
-                      child: _readonly(
-                        '${_weekday(_startAt.weekday)}, ${_short(_startAt.month)} ${_startAt.day}, ${_startAt.year}',
+                  const SizedBox(height: 18),
+                  _Section(
+                    eyebrow: 'WHEN',
+                    children: [
+                      _DateRow(
+                        label: 'STARTS',
+                        value: _fmt(_startAt),
+                        onTap: _pickStart,
                       ),
-                    ),
-                  ),
-                  const Divider(color: AppColors.border, height: 1),
-                  _IconRow(
-                    icon: Icons.schedule,
-                    child: Row(
-                      children: [
-                        GestureDetector(
-                          onTap: () => _pickTime(isStart: true),
-                          child: _readonly(_fmtTime(_startAt)),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(' — ',
-                            style: AppTextStyles.bodySmall
-                                .copyWith(color: AppColors.textTertiary)),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () => _pickTime(isStart: false),
-                          child: _readonly(_fmtTime(_endAt)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(color: AppColors.border, height: 1),
-                  _IconRow(
-                    icon: Icons.location_on_outlined,
-                    child: TextField(
-                      controller: _locationController,
-                      cursorColor: AppColors.accent,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
+                      const _Divider(),
+                      _DateRow(
+                        label: 'ENDS',
+                        value: _fmt(_endAt),
+                        onTap: _pickEnd,
+                        trailing: _AccentPill(label: _durationLabel(duration)),
                       ),
-                      decoration: InputDecoration(
-                        hintText: 'Add location',
-                        hintStyle: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.textTertiary,
-                        ),
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                        contentPadding: EdgeInsets.zero,
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _Section(
+                    eyebrow: 'VIDEO & PEOPLE',
+                    children: [
+                      _ToggleRow(
+                        label: 'VIDEO',
+                        value: _generateMeetingLink
+                            ? 'WistMeet — auto-link'
+                            : 'None',
+                        onTap: () => setState(() =>
+                            _generateMeetingLink = !_generateMeetingLink),
+                        trailing: _generateMeetingLink
+                            ? const _AccentPill(label: 'ON')
+                            : null,
                       ),
-                    ),
-                  ),
-                  const Divider(color: AppColors.border, height: 1),
-                  _IconRow(
-                    icon: Icons.people_outline,
-                    child: Text(
-                      'Add participants...',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: AppColors.textTertiary,
+                      const _Divider(),
+                      _InputRow(
+                        label: 'WITH',
+                        controller: _attendeesController,
+                        placeholder: 'email@, email@, …',
+                        trailing: _attendeeCountPill(),
                       ),
-                    ),
+                    ],
                   ),
-                  const Divider(color: AppColors.border, height: 1),
-                  _IconRow(
-                    icon: Icons.repeat,
-                    child: Text(
-                      'Does not repeat',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  const Divider(color: AppColors.border, height: 1),
-                  _ToggleRow(
-                    icon: Icons.link,
-                    iconColor: AppColors.accent,
-                    label: 'Generate Meet link automatically',
-                    labelColor: AppColors.accent,
-                    value: _generateMeetingLink,
-                    onChanged: (v) => setState(() => _generateMeetingLink = v),
-                  ),
-                  const Divider(color: AppColors.border, height: 1),
-                  if (_generateMeetingLink) ...[
-                    _ToggleRow(
-                      icon: Icons.meeting_room_outlined,
-                      iconColor: AppColors.textSecondary,
-                      label: 'Waiting room',
-                      labelColor: AppColors.textPrimary,
-                      value: _hasWaitingRoom,
-                      onChanged: (v) => setState(() => _hasWaitingRoom = v),
-                    ),
-                    const Divider(color: AppColors.border, height: 1),
-                  ],
-                  _IconRow(
-                    icon: Icons.notifications_outlined,
-                    child: DropdownButton<int>(
-                      value: _reminderMinutes,
-                      isDense: true,
-                      isExpanded: true,
-                      dropdownColor: AppColors.surface,
-                      underline: const SizedBox.shrink(),
-                      iconEnabledColor: AppColors.textTertiary,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
-                      ),
-                      items: const [0, 5, 15, 30, 60]
-                          .map((m) => DropdownMenuItem(
-                                value: m,
-                                child: Text('$m min before'),
-                              ))
-                          .toList(),
-                      onChanged: (v) =>
-                          setState(() => _reminderMinutes = v ?? 15),
-                    ),
-                  ),
-                  const Divider(color: AppColors.border, height: 1),
-                  _IconRow(
-                    icon: Icons.notes_outlined,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    child: TextField(
-                      controller: _notesController,
-                      maxLines: 4,
-                      cursorColor: AppColors.accent,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Notes',
-                        hintStyle: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.textTertiary,
-                        ),
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ),
-                  const Divider(color: AppColors.border, height: 1),
-                  _IconRow(
-                    icon: Icons.color_lens_outlined,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Color',
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              color: AppColors.textTertiary,
-                            ),
-                          ),
-                        ),
-                        Container(
-                            width: 16, height: 16, color: AppColors.accent),
-                      ],
-                    ),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
+                  if (_error != null)
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.only(top: 14),
                       child: Text(
                         _error!,
-                        style: AppTextStyles.bodySmall
-                            .copyWith(color: AppColors.danger),
+                        style: GoogleFonts.jetBrainsMono(
+                          color: AppColors.danger,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-                  ],
+                  const SizedBox(height: 24),
                 ],
               ),
+            ),
+            _CtaButton(
+              icon: widget.asMeeting ? LucideIcons.video : LucideIcons.plus,
+              label: widget.asMeeting ? 'CREATE MEETING' : 'CREATE EVENT',
+              loading: _saving,
+              onTap: _saving ? null : _save,
             ),
           ],
         ),
@@ -330,135 +221,252 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
     );
   }
 
-  Future<void> _pickTime({required bool isStart}) async {
-    final initial = isStart
-        ? TimeOfDay.fromDateTime(_startAt)
-        : TimeOfDay.fromDateTime(_endAt);
-    final picked = await showTimePicker(context: context, initialTime: initial);
-    if (picked == null) return;
-    setState(() {
-      if (isStart) {
-        _startAt = DateTime(_startAt.year, _startAt.month, _startAt.day,
-            picked.hour, picked.minute);
-        if (_endAt.isBefore(_startAt)) {
-          _endAt = _startAt.add(const Duration(hours: 1));
-        }
-      } else {
-        _endAt = DateTime(_endAt.year, _endAt.month, _endAt.day,
-            picked.hour, picked.minute);
-      }
-    });
+  Widget? _attendeeCountPill() {
+    final n = _attendeesController.text
+        .split(RegExp(r'[,;]\s*'))
+        .where((s) => s.trim().isNotEmpty)
+        .length;
+    if (n == 0) return null;
+    return _AccentPill(label: '$n');
   }
 
-  Widget _readonly(String value) => Text(
-        value,
-        style: GoogleFonts.inter(fontSize: 14, color: AppColors.textPrimary),
-      );
-
-  String _fmtTime(DateTime d) {
-    final h = d.hour == 0 ? 12 : (d.hour > 12 ? d.hour - 12 : d.hour);
-    final m = d.minute.toString().padLeft(2, '0');
-    final ampm = d.hour >= 12 ? 'PM' : 'AM';
-    return '$h:$m $ampm';
+  static String _fmt(DateTime dt) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '${months[dt.month - 1]} ${dt.day} · $h:$m';
   }
 
-  String _weekday(int w) =>
-      const ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][w];
-  String _short(int m) => const [
-        '',
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec'
-      ][m];
+  static String _durationLabel(Duration d) {
+    final minutes = d.inMinutes;
+    if (minutes < 60) return '${minutes}M';
+    final hours = minutes ~/ 60;
+    final rem = minutes % 60;
+    return rem == 0 ? '${hours}H' : '${hours}H${rem}M';
+  }
 }
 
 class _Header extends StatelessWidget {
   const _Header({
     required this.title,
-    required this.ctaLabel,
-    required this.isSaving,
-    required this.onClose,
+    required this.onBack,
     required this.onSave,
   });
   final String title;
-  final String ctaLabel;
-  final bool isSaving;
-  final VoidCallback onClose;
-  final VoidCallback onSave;
-
+  final VoidCallback onBack;
+  final VoidCallback? onSave;
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
         children: [
-          IconButton(
-            splashRadius: 22,
-            icon: const Icon(Icons.close, size: 22),
-            color: AppColors.textPrimary,
-            onPressed: onClose,
+          InkWell(
+            onTap: onBack,
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(LucideIcons.arrowLeft,
+                  size: 18, color: AppColors.textPrimary),
+            ),
           ),
           Expanded(
             child: Center(
-              child: Text(title, style: AppTextStyles.titleMedium),
-            ),
-          ),
-          Material(
-            color: AppColors.accent,
-            child: InkWell(
-              onTap: isSaving ? null : onSave,
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(
-                  isSaving ? 'Saving…' : ctaLabel,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.background,
-                  ),
+              child: Text(
+                title,
+                style: GoogleFonts.jetBrainsMono(
+                  color: AppColors.textPrimary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5,
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          // "SAVE" pill — pen `GPI5m`: cornerRadius 14, padding [8,12],
+          // fill accent. Text "SAVE" 10/700 letterSpacing 1 black.
+          InkWell(
+            onTap: onSave,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                'SAVE',
+                style: GoogleFonts.jetBrainsMono(
+                  color: AppColors.background,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _IconRow extends StatelessWidget {
-  const _IconRow({
-    required this.icon,
-    required this.child,
-    this.crossAxisAlignment = CrossAxisAlignment.center,
+class _Section extends StatelessWidget {
+  const _Section({required this.eyebrow, required this.children});
+  final String eyebrow;
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          eyebrow,
+          style: GoogleFonts.jetBrainsMono(
+            color: AppColors.textSecondary,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.5,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(children: children),
+        ),
+      ],
+    );
+  }
+}
+
+class _Divider extends StatelessWidget {
+  const _Divider();
+  @override
+  Widget build(BuildContext context) {
+    return Container(height: 1, color: AppColors.border);
+  }
+}
+
+class _InputRow extends StatefulWidget {
+  const _InputRow({
+    required this.label,
+    required this.controller,
+    required this.placeholder,
+    this.trailing,
   });
-  final IconData icon;
-  final Widget child;
-  final CrossAxisAlignment crossAxisAlignment;
+  final String label;
+  final TextEditingController controller;
+  final String placeholder;
+  final Widget? trailing;
+  @override
+  State<_InputRow> createState() => _InputRowState();
+}
+
+class _InputRowState extends State<_InputRow> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_rebuild);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_rebuild);
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
-        crossAxisAlignment: crossAxisAlignment,
         children: [
-          Icon(icon, size: 18, color: AppColors.textTertiary),
-          const SizedBox(width: 16),
-          Expanded(child: child),
+          _Label(label: widget.label),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: widget.controller,
+              cursorColor: AppColors.accent,
+              style: GoogleFonts.jetBrainsMono(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                hintText: widget.placeholder,
+                hintStyle: GoogleFonts.jetBrainsMono(
+                  color: AppColors.textTertiary,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+          if (widget.trailing != null) ...[
+            const SizedBox(width: 8),
+            widget.trailing!,
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _DateRow extends StatelessWidget {
+  const _DateRow({
+    required this.label,
+    required this.value,
+    required this.onTap,
+    this.trailing,
+  });
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+  final Widget? trailing;
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            _Label(label: label),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                value,
+                style: GoogleFonts.jetBrainsMono(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              trailing!,
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -466,57 +474,159 @@ class _IconRow extends StatelessWidget {
 
 class _ToggleRow extends StatelessWidget {
   const _ToggleRow({
-    required this.icon,
-    required this.iconColor,
     required this.label,
-    required this.labelColor,
     required this.value,
-    required this.onChanged,
+    required this.onTap,
+    this.trailing,
   });
-  final IconData icon;
-  final Color iconColor;
   final String label;
-  final Color labelColor;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
+  final String value;
+  final VoidCallback onTap;
+  final Widget? trailing;
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: iconColor),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: labelColor,
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            _Label(label: label),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                value,
+                style: GoogleFonts.jetBrainsMono(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                ),
               ),
             ),
-          ),
-          // Sharp toggle: 40x22 box, lime fill when on
-          GestureDetector(
-            onTap: () => onChanged(!value),
-            child: Container(
-              width: 40,
-              height: 22,
-              padding: const EdgeInsets.all(2),
-              color: value ? AppColors.accent : AppColors.surface,
-              alignment:
-                  value ? Alignment.centerRight : Alignment.centerLeft,
-              child: Container(
-                width: 16,
-                height: 18,
-                color: value ? AppColors.background : AppColors.textTertiary,
-              ),
-            ),
-          ),
-        ],
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              trailing!,
+            ],
+          ],
+        ),
       ),
     );
   }
+}
+
+class _Label extends StatelessWidget {
+  const _Label({required this.label});
+  final String label;
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 76,
+      child: Text(
+        label,
+        style: GoogleFonts.jetBrainsMono(
+          color: AppColors.textSecondary,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _AccentPill extends StatelessWidget {
+  const _AccentPill({required this.label});
+  final String label;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.accentDim,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.jetBrainsMono(
+          color: AppColors.accent,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _CtaButton extends StatelessWidget {
+  const _CtaButton({
+    required this.icon,
+    required this.label,
+    required this.loading,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final bool loading;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(27),
+        child: Container(
+          height: 54,
+          decoration: BoxDecoration(
+            color: AppColors.accent,
+            borderRadius: BorderRadius.circular(27),
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (loading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.background,
+                  ),
+                )
+              else
+                Icon(icon, size: 16, color: AppColors.background),
+              const SizedBox(width: 8),
+              Text(
+                loading ? 'SAVING…' : label,
+                style: GoogleFonts.jetBrainsMono(
+                  color: AppColors.background,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<DateTime?> _pickDateTime(BuildContext context, DateTime seed) async {
+  final now = DateTime.now();
+  final d = await showDatePicker(
+    context: context,
+    initialDate: seed,
+    firstDate: now.subtract(const Duration(days: 7)),
+    lastDate: now.add(const Duration(days: 365)),
+  );
+  if (d == null || !context.mounted) return null;
+  final t = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(seed),
+  );
+  if (t == null) return null;
+  return DateTime(d.year, d.month, d.day, t.hour, t.minute);
 }

@@ -61,7 +61,7 @@ class MeScreen extends ConsumerWidget {
                 user: user,
                 prefs: prefsAsync.valueOrNull,
                 onBack: () => Navigator.of(context).maybePop(),
-                onSettings: () => context.push('/auth/mfa/methods'),
+                onSettings: () => context.push('/settings'),
               ),
               _StatsBlock(stats: stats.valueOrNull ?? MeStats.empty),
               _PreferencesBlock(
