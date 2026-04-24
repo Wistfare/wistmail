@@ -20,6 +20,10 @@ export default defineConfig({
     // PGlite Postgres with the production schema applied, and gets a
     // clean slate before each `it`. See src/test-support/setup.ts.
     setupFiles: ['./src/test-support/setup.ts'],
+    // The boot hook applies every migration file + seeds base fixtures.
+    // Under parallel workers the default 10s isn't enough once the
+    // migration set grows; bump to 30s so the first beforeAll has room.
+    hookTimeout: 30_000,
   },
   resolve: {
     alias: {

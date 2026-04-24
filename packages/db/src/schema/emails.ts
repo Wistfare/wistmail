@@ -1,4 +1,5 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp, varchar, index } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { mailboxes } from './mailboxes'
 
 export const threads = pgTable(
@@ -73,6 +74,12 @@ export const emails = pgTable(
     /// idempotent reconciliation of WS event with local state.
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // AI-derived flag: this message looks like it needs a reply from
+    // the recipient (direct, open question, from a known human, etc).
+    // Set by a background classifier; surfaces in the Today screen's
+    // "Needs Reply" section. null = not yet classified.
+    needsReply: boolean('needs_reply'),
+    needsReplyReason: text('needs_reply_reason'),
   },
   (table) => [
     // Inbox list query — covers WHERE mailbox_id = ? AND folder = ? ORDER BY created_at DESC.
@@ -81,6 +88,10 @@ export const emails = pgTable(
       table.folder,
       table.createdAt,
     ),
+    // Today screen "Needs Reply" section — partial index keeps it small.
+    index('emails_needs_reply_idx')
+      .on(table.mailboxId, table.createdAt)
+      .where(sql`${table.needsReply} = true`),
     // Unread-counts query — WHERE mailbox_id IN (...) AND is_read = false GROUP BY folder.
     index('emails_mailbox_unread_folder_idx').on(
       table.mailboxId,

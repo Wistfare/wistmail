@@ -258,6 +258,35 @@ inboxRoutes.get('/unread-counts', async (c) => {
 })
 
 /**
+ * GET /api/v1/inbox/unified?filter=all|mail|chats&limit=50&before=ISO
+ *
+ * The MobileV3 Inbox screen renders mail + chat in a single time-sorted
+ * feed. Rather than merging on the client (two paginators, racy offsets)
+ * we aggregate server-side: each item carries its source (`mail` | `chat`)
+ * and the client renders the right row widget by source.
+ *
+ * `filter` clamps which sources are included. `before` is a cursor —
+ * pass the oldest item's `occurredAt` to fetch the next page.
+ */
+inboxRoutes.get('/unified', async (c) => {
+  const filter = (c.req.query('filter') || 'all').toLowerCase()
+  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 200)
+  const beforeRaw = c.req.query('before')
+  const before = beforeRaw ? new Date(beforeRaw) : null
+  const userId = c.get('userId')
+
+  const db = getDb()
+  const { unifiedInbox } = await import('../services/unified-inbox.js')
+  const page = await unifiedInbox(db, {
+    userId,
+    filter: filter === 'mail' || filter === 'chats' ? filter : 'all',
+    limit,
+    before,
+  })
+  return c.json(page)
+})
+
+/**
  * GET /api/v1/inbox/search?q=query&page=1&pageSize=25
  *
  * Routes through MeiliSearch when enabled (covers full-text body match);
