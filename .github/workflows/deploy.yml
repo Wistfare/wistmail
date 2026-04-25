@@ -35,6 +35,10 @@ jobs:
               - 'packages/shared/**'
               - 'packages/db/**'
               - 'packages/dns-manager/**'
+              # The api imports queue constants + AI types from @wistmail/ai.
+              # When that package changes, the api binary must be rebuilt or
+              # it will keep enqueuing to a stale queue name.
+              - 'packages/ai/**'
               - 'pnpm-lock.yaml'
               - 'turbo.json'
               - 'tsconfig.json'
