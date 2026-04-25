@@ -4,7 +4,9 @@
  * means a typo on either side breaks at import time, not at runtime.
  */
 
-export const AI_QUEUE = 'wm:ai'
+// BullMQ rejects ':' in queue names (it's the internal Redis key
+// separator). Use a hyphen.
+export const AI_QUEUE = 'wm-ai'
 
 export const JOB_NAMES = {
   classifyNeedsReply: 'classify-needs-reply',
