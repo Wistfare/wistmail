@@ -208,12 +208,15 @@ class EmailLocalStore {
         if (htmlBody != null) 'html_body': htmlBody,
         'attachments_json': jsonEncode(
           (attachments ?? existing.attachments)
-              .map((a) => {
-                    'id': a.id,
-                    'filename': a.filename,
-                    'contentType': a.contentType,
-                    'sizeBytes': a.sizeBytes,
-                  })
+              .map(
+                (a) => {
+                  'id': a.id,
+                  'filename': a.filename,
+                  'contentType': a.contentType,
+                  'sizeBytes': a.sizeBytes,
+                  if (a.contentId != null) 'contentId': a.contentId,
+                },
+              )
               .toList(),
         ),
         'detail_loaded': 1,
@@ -274,21 +277,28 @@ class EmailLocalStore {
     if (incoming.textBody != null) values['text_body'] = incoming.textBody;
     if (incoming.htmlBody != null) values['html_body'] = incoming.htmlBody;
     if (incoming.attachments.isNotEmpty) {
-      values['attachments_json'] = jsonEncode(incoming.attachments
-          .map((a) => {
+      values['attachments_json'] = jsonEncode(
+        incoming.attachments
+            .map(
+              (a) => {
                 'id': a.id,
                 'filename': a.filename,
                 'contentType': a.contentType,
                 'sizeBytes': a.sizeBytes,
-              })
-          .toList());
+                if (a.contentId != null) 'contentId': a.contentId,
+              },
+            )
+            .toList(),
+      );
       values['detail_loaded'] = 1;
     }
     // Labels: persist on every upsert so cached rows render chips
     // offline. Empty lists overwrite too (label removed server-side).
-    values['labels_json'] = jsonEncode(incoming.labels
-        .map((l) => {'id': l.id, 'name': l.name, 'color': l.color})
-        .toList());
+    values['labels_json'] = jsonEncode(
+      incoming.labels
+          .map((l) => {'id': l.id, 'name': l.name, 'color': l.color})
+          .toList(),
+    );
 
     String? touched;
     if (existing.isEmpty) {

@@ -280,6 +280,7 @@ export class EmailService {
         emailId: attachments.emailId,
         filename: attachments.filename,
         contentType: attachments.contentType,
+        contentId: attachments.contentId,
         sizeBytes: attachments.sizeBytes,
         storageKey: attachments.storageKey,
         rsvpResponse: attachments.rsvpResponse,

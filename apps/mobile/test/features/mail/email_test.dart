@@ -8,22 +8,21 @@ Map<String, dynamic> _baseEmail({
   bool isStarred = false,
   String subject = 'Hello',
   String? text = 'Body',
-}) =>
-    {
-      'id': id,
-      'fromAddress': from,
-      'toAddresses': ['me@x.com'],
-      'cc': [],
-      'bcc': [],
-      'subject': subject,
-      'textBody': text,
-      'folder': 'inbox',
-      'isRead': isRead,
-      'isStarred': isStarred,
-      'isDraft': false,
-      'mailboxId': 'mbx_1',
-      'createdAt': DateTime.now().toIso8601String(),
-    };
+}) => {
+  'id': id,
+  'fromAddress': from,
+  'toAddresses': ['me@x.com'],
+  'cc': [],
+  'bcc': [],
+  'subject': subject,
+  'textBody': text,
+  'folder': 'inbox',
+  'isRead': isRead,
+  'isStarred': isStarred,
+  'isDraft': false,
+  'mailboxId': 'mbx_1',
+  'createdAt': DateTime.now().toIso8601String(),
+};
 
 void main() {
   group('Email.fromJson', () {
@@ -54,12 +53,19 @@ void main() {
       final email = Email.fromJson({
         ..._baseEmail(),
         'attachments': [
-          {'id': 'a1', 'filename': 'doc.pdf', 'contentType': 'application/pdf', 'sizeBytes': 1024},
+          {
+            'id': 'a1',
+            'filename': 'doc.pdf',
+            'contentType': 'application/pdf',
+            'sizeBytes': 1024,
+            'contentId': 'inline-1',
+          },
         ],
       });
       expect(email.attachments.length, 1);
       expect(email.attachments.first.filename, 'doc.pdf');
       expect(email.attachments.first.sizeBytes, 1024);
+      expect(email.attachments.first.contentId, 'inline-1');
     });
   });
 

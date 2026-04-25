@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/wm_bottom_nav_v3.dart';
+import '../../../chat/presentation/providers/chat_providers.dart';
 import '../../../mail/presentation/providers/mail_providers.dart';
 
 /// GlobalKey for the shell scaffold. Retained for callers that used to
@@ -22,9 +23,8 @@ class MainShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Inbox tab shows a small dot when any mail is unread. The total
-    // count isn't rendered here — the Inbox header carries that number.
-    final mailUnread = ref.watch(inboxUnreadCountProvider);
+    final mailUnread = ref.watch(mailUnreadTotalProvider);
+    final chatUnread = ref.watch(chatUnreadCountProvider);
 
     return Scaffold(
       key: shellScaffoldKey,
@@ -32,7 +32,7 @@ class MainShell extends ConsumerWidget {
       body: navigationShell,
       bottomNavigationBar: WmBottomNavV3(
         currentIndex: navigationShell.currentIndex,
-        inboxBadge: mailUnread,
+        inboxBadge: mailUnread + chatUnread,
         onTap: _goBranch,
       ),
     );

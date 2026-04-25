@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/network/providers.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/wm_avatar.dart';
 import '../../data/contacts_search.dart';
 
 /// One row of the compose form (To / Cc / Bcc) showing every committed
@@ -176,13 +177,18 @@ class _RecipientChipsFieldState extends ConsumerState<RecipientChipsField> {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.arrowDown && _suggestions.isNotEmpty) {
-      setState(() => _highlighted =
-          (_highlighted + 1).clamp(0, _suggestions.length - 1));
+      setState(
+        () =>
+            _highlighted = (_highlighted + 1).clamp(0, _suggestions.length - 1),
+      );
       _refreshOverlay();
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp && _suggestions.isNotEmpty) {
-      setState(() => _highlighted = (_highlighted - 1).clamp(0, _suggestions.length - 1));
+      setState(
+        () =>
+            _highlighted = (_highlighted - 1).clamp(0, _suggestions.length - 1),
+      );
       _refreshOverlay();
       return KeyEventResult.handled;
     }
@@ -228,7 +234,9 @@ class _RecipientChipsFieldState extends ConsumerState<RecipientChipsField> {
           offset: const Offset(0, 6),
           child: Material(
             color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
             elevation: 6,
+            clipBehavior: Clip.antiAlias,
             child: _SuggestionList(
               suggestions: _suggestions,
               highlighted: _highlighted,
@@ -289,7 +297,9 @@ class _RecipientChipsFieldState extends ConsumerState<RecipientChipsField> {
                       color: AppColors.textPrimary,
                     ),
                     decoration: InputDecoration(
-                      hintText: widget.values.isEmpty ? widget.placeholder : null,
+                      hintText: widget.values.isEmpty
+                          ? widget.placeholder
+                          : null,
                       hintStyle: GoogleFonts.jetBrainsMono(
                         fontSize: 13,
                         color: AppColors.textTertiary,
@@ -350,18 +360,10 @@ class _SuggestionList extends StatelessWidget {
             onTap: () => onTap(s),
             child: Container(
               color: isHi ? AppColors.surfaceElevated : Colors.transparent,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    color: AppColors.accentDim,
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.mail_outline,
-                        size: 14, color: AppColors.accent),
-                  ),
+                  _SuggestionAvatar(suggestion: s),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -429,19 +431,23 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final display = _displayName(label);
     return Material(
-      color: AppColors.accentDim,
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+        padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            WmAvatar(name: display, size: 14),
+            const SizedBox(width: 6),
             Text(
-              label,
+              display,
               style: GoogleFonts.jetBrainsMono(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.accent,
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(width: 4),
@@ -449,12 +455,50 @@ class _Chip extends StatelessWidget {
               onTap: onRemove,
               child: const Padding(
                 padding: EdgeInsets.all(2),
-                child:
-                    Icon(Icons.close, size: 12, color: AppColors.accent),
+                child: Icon(
+                  Icons.close,
+                  size: 12,
+                  color: AppColors.textSecondary,
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  String _displayName(String raw) {
+    final match = RegExp(r'^\s*"?([^"<]+?)"?\s*<[^>]+>\s*$').firstMatch(raw);
+    if (match != null && match.group(1)!.trim().isNotEmpty) {
+      return match.group(1)!.trim();
+    }
+    final at = raw.indexOf('@');
+    if (at > 0) return raw.substring(0, at);
+    return raw;
+  }
+}
+
+class _SuggestionAvatar extends StatelessWidget {
+  const _SuggestionAvatar({required this.suggestion});
+  final ContactSuggestion suggestion;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = suggestion.name?.isNotEmpty == true
+        ? suggestion.name!
+        : suggestion.email;
+    final avatarUrl = suggestion.avatarUrl;
+    if (avatarUrl == null || avatarUrl.isEmpty) {
+      return WmAvatar(name: name, size: 28);
+    }
+    return ClipOval(
+      child: Image.network(
+        avatarUrl,
+        width: 28,
+        height: 28,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => WmAvatar(name: name, size: 28),
       ),
     );
   }

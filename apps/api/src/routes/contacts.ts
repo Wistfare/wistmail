@@ -109,29 +109,43 @@ searchRoutes.get('/search', async (c) => {
     }
   }
 
-  // 2. Recent recipients from sent emails. We unnest to_addresses +
-  // cc + bcc so single-recipient and group sends both contribute.
+  // 2. Recent external correspondents. We include both sent recipients
+  // and inbound senders, so autocomplete works for people the user has
+  // talked to even when they are not org members or saved contacts.
   if (results.length < limit) {
     const remaining = limit - results.length
-    const recentRows = await db.execute<{ addr: string; lastSent: Date }>(sql`
-      SELECT
-        lower(addr) AS addr,
-        max(${emails.createdAt}) AS "lastSent"
-      FROM ${emails}
-      INNER JOIN ${mailboxes} ON ${mailboxes.id} = ${emails.mailboxId}
-      , LATERAL jsonb_array_elements_text(
-        coalesce(${emails.toAddresses}, '[]'::jsonb)
-        || coalesce(${emails.cc}, '[]'::jsonb)
-        || coalesce(${emails.bcc}, '[]'::jsonb)
-      ) AS addr
-      WHERE ${mailboxes.userId} = ${userId}
-        AND ${emails.folder} = 'sent'
-        ${q.length === 0 ? sql`` : sql`AND lower(addr) LIKE ${looseMatch}`}
-      GROUP BY lower(addr)
-      ORDER BY "lastSent" DESC
+    const recentRows = await db.execute<{ addr: string; lastSeen: Date }>(sql`
+      WITH recent_correspondents AS (
+        SELECT
+          lower(addr) AS addr,
+          ${emails.createdAt} AS seen_at
+        FROM ${emails}
+        INNER JOIN ${mailboxes} ON ${mailboxes.id} = ${emails.mailboxId}
+        , LATERAL jsonb_array_elements_text(
+          coalesce(${emails.toAddresses}, '[]'::jsonb)
+          || coalesce(${emails.cc}, '[]'::jsonb)
+          || coalesce(${emails.bcc}, '[]'::jsonb)
+        ) AS addr
+        WHERE ${mailboxes.userId} = ${userId}
+          AND ${emails.folder} = 'sent'
+        UNION ALL
+        SELECT
+          lower(regexp_replace(${emails.fromAddress}, '^.*<([^>]+)>.*$', '\\1')) AS addr,
+          ${emails.createdAt} AS seen_at
+        FROM ${emails}
+        INNER JOIN ${mailboxes} ON ${mailboxes.id} = ${emails.mailboxId}
+        WHERE ${mailboxes.userId} = ${userId}
+          AND ${emails.folder} = 'inbox'
+      )
+      SELECT addr, max(seen_at) AS "lastSeen"
+      FROM recent_correspondents
+      WHERE addr LIKE ${looseMatch}
+        AND addr <> ''
+      GROUP BY addr
+      ORDER BY "lastSeen" DESC
       LIMIT ${remaining * 4}
     `)
-    const recentArr = recentRows as unknown as Array<{ addr: string; lastSent: Date }>
+    const recentArr = recentRows as unknown as Array<{ addr: string; lastSeen: Date }>
     for (const r of recentArr) {
       add({
         id: `recent:${r.addr}`,

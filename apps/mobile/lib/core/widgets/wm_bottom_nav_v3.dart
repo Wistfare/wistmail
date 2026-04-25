@@ -55,13 +55,13 @@ class WmBottomNavV3 extends StatelessWidget {
               children: List.generate(_items.length, (i) {
                 final item = _items[i];
                 final active = i == currentIndex;
-                final hasBadge = i == 1 && (inboxBadge ?? 0) > 0;
+                final badge = i == 1 ? inboxBadge ?? 0 : 0;
                 return Expanded(
                   child: _Tab(
                     icon: item.icon,
                     label: item.label,
                     active: active,
-                    dot: hasBadge && !active,
+                    badge: badge,
                     onTap: () => onTap(i),
                   ),
                 );
@@ -85,14 +85,14 @@ class _Tab extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.active,
-    required this.dot,
+    required this.badge,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
   final bool active;
-  final bool dot;
+  final int badge;
   final VoidCallback onTap;
 
   @override
@@ -120,15 +120,13 @@ class _Tab extends StatelessWidget {
               Icon(
                 icon,
                 size: 24,
-                color: active
-                    ? AppColors.background
-                    : AppColors.textSecondary,
+                color: active ? AppColors.background : AppColors.textSecondary,
               ),
-              if (dot)
-                const Positioned(
-                  top: 4,
-                  right: 4,
-                  child: _UnreadDot(),
+              if (badge > 0)
+                Positioned(
+                  top: 1,
+                  right: badge > 9 ? -12 : -8,
+                  child: _UnreadBadge(count: badge),
                 ),
             ],
           ),
@@ -138,16 +136,28 @@ class _Tab extends StatelessWidget {
   }
 }
 
-class _UnreadDot extends StatelessWidget {
-  const _UnreadDot();
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge({required this.count});
+  final int count;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 6,
-      height: 6,
-      decoration: const BoxDecoration(
+      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
         color: AppColors.accent,
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: AppColors.background,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          height: 1,
+        ),
       ),
     );
   }

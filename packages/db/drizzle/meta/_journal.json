@@ -15,6 +15,13 @@
       "when": 1777010802825,
       "tag": "0001_numerous_living_mummy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777680000000,
+      "tag": "0002_ai_layer",
+      "breakpoints": true
     }
   ]
 }

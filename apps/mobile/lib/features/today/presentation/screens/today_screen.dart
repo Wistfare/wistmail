@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../domain/today_summary.dart';
 import '../providers/today_providers.dart';
 import '../widgets/today_activity_row.dart';
+import '../widgets/today_briefing_card.dart';
 import '../widgets/today_needs_reply_row.dart';
 import '../widgets/today_next_up_card.dart';
 import '../widgets/today_schedule_row.dart';
@@ -202,6 +203,10 @@ class _Content extends StatelessWidget {
       children: [
         if (summary.nextUp != null) ...[
           TodayNextUpCard(nextUp: summary.nextUp!),
+          const SizedBox(height: 14),
+        ],
+        if (summary.digest != null) ...[
+          TodayBriefingCard(digest: summary.digest!),
           const SizedBox(height: 14),
         ],
         if (summary.needsReply.isNotEmpty) ...[

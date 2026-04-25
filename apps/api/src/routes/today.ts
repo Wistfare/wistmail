@@ -6,10 +6,13 @@ import {
   mailboxes,
   projects,
   projectTasks,
+  todayDigests,
   users,
 } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { getDb } from '../lib/db.js'
+import { cached } from '../lib/cache.js'
+import { enqueueTodayDigest } from '../lib/ai-queue.js'
 
 export const todayRoutes = new Hono<SessionEnv>()
 todayRoutes.use('*', sessionAuth)
@@ -28,6 +31,12 @@ todayRoutes.use('*', sessionAuth)
  */
 todayRoutes.get('/', async (c) => {
   const userId = c.get('userId')
+  // 30s cache. Bust triggers on email.new / email.updated / today.digest
+  // writes via Redis pub/sub — the TTL is just a safety floor.
+  return c.json(await cached('today', userId, 30, () => buildToday(userId)))
+})
+
+async function buildToday(userId: string) {
   const db = getDb()
   const now = new Date()
 
@@ -148,13 +157,29 @@ todayRoutes.get('/', async (c) => {
     }))
   }
 
-  return c.json({
+  // AI digest is best-effort. If the worker hasn't generated one yet
+  // (or the user is brand new), the screen falls back to its component
+  // sections — we don't block the response on it.
+  const digestRows = await db
+    .select({ content: todayDigests.content, generatedAt: todayDigests.generatedAt })
+    .from(todayDigests)
+    .where(eq(todayDigests.userId, userId))
+    .limit(1)
+  const digest = digestRows[0]
+  const stale = !digest || Date.now() - digest.generatedAt.getTime() > 12 * 60 * 60 * 1000
+  if (stale) {
+    // Fire-and-forget regen — next pull will see fresh content.
+    enqueueTodayDigest(userId).catch(() => {})
+  }
+
+  return {
     nextUp: nextUpRows[0] ?? null,
     needsReply: needsReplyRows,
     schedule: scheduleRows,
     recentActivity,
-  })
-})
+    digest: digest && !stale ? digest.content : null,
+  }
+}
 
 /**
  * POST /api/v1/today/needs-reply/:emailId

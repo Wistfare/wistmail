@@ -52,6 +52,23 @@ class ComposeFromEmail {
     );
   }
 
+  /// Reply with an AI-generated draft pre-filled above the quoted block.
+  /// Used by the suggestion strip on Thread — the user always edits
+  /// before sending, so we insert the draft, then the standard quote
+  /// preamble (so context is one scroll away).
+  static ComposeArgs replyWithBody(
+    Email source, {
+    String? userEmail,
+    required String prefilledBody,
+  }) {
+    return ComposeArgs(
+      toAddresses: [_extractAddress(source.fromAddress)],
+      subject: _prefixSubject('Re:', source.subject),
+      body: '$prefilledBody\n${_quoteBody(source)}',
+      inReplyTo: source.id,
+    );
+  }
+
   /// Reply to sender + everyone on the original To/Cc, minus the user.
   static ComposeArgs replyAll(Email source, {String? userEmail}) {
     final all = <String>{

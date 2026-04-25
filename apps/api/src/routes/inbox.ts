@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { readFile } from 'node:fs/promises'
 import { ValidationError } from '@wistmail/shared'
-import { attachments, emails, emailLabels, mailboxes } from '@wistmail/db'
+import { attachments, emails, emailLabels, emailReplySuggestions, mailboxes } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
 import { EmailSender, EMAIL_STATUS } from '../services/email-sender.js'
@@ -62,6 +62,47 @@ inboxRoutes.get('/emails/:id', async (c) => {
   }
 
   return c.json(email)
+})
+
+/**
+ * GET /api/v1/inbox/emails/:id/reply-suggestions
+ *
+ * AI-generated reply drafts for an inbound email. Returns up to 3 rows
+ * (concise / warm / decline tones), oldest first. Empty array when the
+ * worker hasn't produced any (yet, or because the model rated all
+ * drafts below the floor).
+ */
+inboxRoutes.get('/emails/:id/reply-suggestions', async (c) => {
+  const emailId = c.req.param('id')
+  const userId = c.get('userId')
+  const db = getDb()
+
+  // Ownership check via mailbox join — same shape the email-detail
+  // endpoint uses.
+  const owned = await db
+    .select({ id: emails.id })
+    .from(emails)
+    .innerJoin(mailboxes, eq(emails.mailboxId, mailboxes.id))
+    .where(and(eq(emails.id, emailId), eq(mailboxes.userId, userId)))
+    .limit(1)
+  if (owned.length === 0) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'Email not found' } },
+      404,
+    )
+  }
+
+  const rows = await db
+    .select({
+      id: emailReplySuggestions.id,
+      tone: emailReplySuggestions.tone,
+      body: emailReplySuggestions.body,
+      score: emailReplySuggestions.score,
+    })
+    .from(emailReplySuggestions)
+    .where(eq(emailReplySuggestions.emailId, emailId))
+    .orderBy(asc(emailReplySuggestions.createdAt))
+  return c.json({ suggestions: rows })
 })
 
 /**

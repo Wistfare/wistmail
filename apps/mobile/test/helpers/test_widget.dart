@@ -8,6 +8,7 @@ import 'package:wistmail/features/auth/domain/user.dart';
 import 'package:wistmail/features/auth/presentation/providers/auth_controller.dart';
 import 'package:wistmail/features/mail/data/mail_repository.dart';
 import 'package:wistmail/features/mail/domain/email.dart';
+import 'package:wistmail/features/mail/domain/reply_suggestion.dart';
 import 'package:wistmail/features/mail/presentation/providers/mail_providers.dart';
 
 /// Minimal router used by widget tests — routes return the screen under test
@@ -306,6 +307,9 @@ class FakeMailRepository implements MailRepository {
   Future<void> dispatch(String emailId) async {
     dispatchCalls++;
   }
+
+  @override
+  Future<List<ReplySuggestion>> getReplySuggestions(String emailId) async => const [];
 }
 
 User sampleUser({String id = 'u_1'}) => User(

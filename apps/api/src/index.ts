@@ -5,6 +5,7 @@ import { getDb } from './lib/db.js'
 import { attachWebSocketServer } from './ws/server.js'
 import { startSendDispatcher } from './services/send-dispatcher.js'
 import { startTrashRetention } from './services/trash-retention.js'
+import { startCacheBus } from './lib/cache-bus.js'
 
 const port = parseInt(process.env.API_PORT || '3001', 10)
 
@@ -138,11 +139,13 @@ async function ensureSchema() {
     `CREATE TABLE IF NOT EXISTS attachments (
       id varchar(64) PRIMARY KEY, email_id varchar(64) NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
       filename varchar(255) NOT NULL, content_type varchar(255) NOT NULL,
+      content_id varchar(255),
       size_bytes int NOT NULL DEFAULT 0, storage_key text NOT NULL
     )`,
     // RSVP state on calendar invite attachments (null for everything
     // else). Lets the client render "You accepted this" without a
     // second round trip and blocks double-RSVPs.
+    `ALTER TABLE attachments ADD COLUMN IF NOT EXISTS content_id varchar(255)`,
     `ALTER TABLE attachments ADD COLUMN IF NOT EXISTS rsvp_response varchar(16)`,
     `ALTER TABLE attachments ADD COLUMN IF NOT EXISTS rsvp_responded_at timestamptz`,
     // Idempotent column adds for the drafts-as-outbox lifecycle
@@ -365,6 +368,26 @@ async function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS device_tokens_user_idx ON device_tokens(user_id)`,
     `CREATE INDEX IF NOT EXISTS audit_logs_user_created_idx ON audit_logs(user_id, created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS calendar_events_user_start_idx ON calendar_events(user_id, start_at)`,
+    // ── AI worker outputs.
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS auto_summary text`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS ai_processed_at timestamptz`,
+    `CREATE INDEX IF NOT EXISTS emails_ai_unprocessed_idx ON emails(created_at) WHERE ai_processed_at IS NULL`,
+    `ALTER TABLE email_labels ADD COLUMN IF NOT EXISTS source varchar(8) NOT NULL DEFAULT 'user'`,
+    `ALTER TABLE email_labels ADD COLUMN IF NOT EXISTS confidence real`,
+    `CREATE TABLE IF NOT EXISTS email_reply_suggestions (
+      id varchar(64) PRIMARY KEY,
+      email_id varchar(64) NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
+      tone varchar(16) NOT NULL,
+      body text NOT NULL,
+      score real NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS email_reply_suggestions_email_idx ON email_reply_suggestions(email_id)`,
+    `CREATE TABLE IF NOT EXISTS today_digests (
+      user_id varchar(64) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      content jsonb NOT NULL,
+      generated_at timestamptz NOT NULL DEFAULT now()
+    )`,
   ]
 
   for (const stmt of createStatements) {
@@ -410,6 +433,11 @@ async function start() {
   if (process.env.DISABLE_TRASH_PURGE !== '1') {
     startTrashRetention(getDb())
   }
+
+  // Cross-process cache invalidation. The AI worker publishes after
+  // writing classify/label/draft results so the API's hot-read cache
+  // (today / unified-inbox / me-stats) refreshes without waiting for TTL.
+  startCacheBus()
 
   console.log(`Wistfare Mail API running on http://localhost:${port}`)
   console.log(`WebSocket stream at ws://localhost:${port}/api/v1/stream`)

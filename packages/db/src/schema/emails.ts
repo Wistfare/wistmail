@@ -80,6 +80,14 @@ export const emails = pgTable(
     // "Needs Reply" section. null = not yet classified.
     needsReply: boolean('needs_reply'),
     needsReplyReason: text('needs_reply_reason'),
+    // AI-generated short summary (~2 sentences) of the email body.
+    // Used for the unified inbox preview when the snippet is too dense.
+    // null = not yet processed.
+    autoSummary: text('auto_summary'),
+    // Timestamp the AI worker last finished processing this email. Used
+    // for idempotency — workers skip emails with this set unless the
+    // job specifies force=true.
+    aiProcessedAt: timestamp('ai_processed_at', { withTimezone: true }),
   },
   (table) => [
     // Inbox list query — covers WHERE mailbox_id = ? AND folder = ? ORDER BY created_at DESC.
@@ -114,6 +122,7 @@ export const attachments = pgTable(
       .references(() => emails.id, { onDelete: 'cascade' }),
     filename: varchar('filename', { length: 255 }).notNull(),
     contentType: varchar('content_type', { length: 127 }).notNull(),
+    contentId: varchar('content_id', { length: 255 }),
     sizeBytes: integer('size_bytes').notNull(),
     storageKey: text('storage_key').notNull(),
     // RSVP state — only set when the attachment is a text/calendar

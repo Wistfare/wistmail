@@ -6,6 +6,7 @@ import '../../../../core/realtime/realtime_event.dart';
 import '../../data/mail_remote_data_source.dart';
 import '../../data/mail_repository.dart';
 import '../../domain/email.dart';
+import '../../domain/reply_suggestion.dart';
 
 const int kInboxPageSize = 50;
 
@@ -76,20 +77,18 @@ final inboxFilterProvider = StateProvider<InboxFilter>((ref) {
 /// (not a local widget State) so it survives hot reload / scroll-
 /// reparenting and so the app bar widget can observe it from
 /// outside the list subtree.
-final selectedEmailIdsProvider = StateProvider<Set<String>>(
-  (ref) {
-    // Clear the selection whenever the active folder flips — a set
-    // of ids from /inbox has no meaning against /trash, and leaving
-    // them staged would silently batch across folders on the next
-    // action.
-    ref.listen<InboxFolder>(currentFolderProvider, (prev, next) {
-      if (prev?.id != next.id) {
-        ref.controller.state = const <String>{};
-      }
-    });
-    return const <String>{};
-  },
-);
+final selectedEmailIdsProvider = StateProvider<Set<String>>((ref) {
+  // Clear the selection whenever the active folder flips — a set
+  // of ids from /inbox has no meaning against /trash, and leaving
+  // them staged would silently batch across folders on the next
+  // action.
+  ref.listen<InboxFolder>(currentFolderProvider, (prev, next) {
+    if (prev?.id != next.id) {
+      ref.controller.state = const <String>{};
+    }
+  });
+  return const <String>{};
+});
 
 final mailRepositoryProvider = FutureProvider<MailRepository>((ref) async {
   final client = await ref.watch(apiClientProvider.future);
@@ -134,16 +133,15 @@ class InboxState {
     bool? hasLoaded,
     bool? hasMore,
     int? page,
-  }) =>
-      InboxState(
-        emails: emails ?? this.emails,
-        isLoading: isLoading ?? this.isLoading,
-        isLoadingMore: isLoadingMore ?? this.isLoadingMore,
-        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-        hasLoaded: hasLoaded ?? this.hasLoaded,
-        hasMore: hasMore ?? this.hasMore,
-        page: page ?? this.page,
-      );
+  }) => InboxState(
+    emails: emails ?? this.emails,
+    isLoading: isLoading ?? this.isLoading,
+    isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+    errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+    hasLoaded: hasLoaded ?? this.hasLoaded,
+    hasMore: hasMore ?? this.hasMore,
+    page: page ?? this.page,
+  );
 }
 
 class InboxController extends StateNotifier<InboxState> {
@@ -161,20 +159,17 @@ class InboxController extends StateNotifier<InboxState> {
   /// We clear local state immediately so the UI doesn't flash stale
   /// rows from the previous folder; load() then fills in the new view.
   void _subscribeToFolder() {
-    _folderSub = _ref.listen<InboxFolder>(
-      currentFolderProvider,
-      (prev, next) {
-        if (prev?.id == next.id) return;
-        state = state.copyWith(
-          emails: const [],
-          hasLoaded: false,
-          page: 0,
-          hasMore: false,
-          clearError: true,
-        );
-        load();
-      },
-    );
+    _folderSub = _ref.listen<InboxFolder>(currentFolderProvider, (prev, next) {
+      if (prev?.id == next.id) return;
+      state = state.copyWith(
+        emails: const [],
+        hasLoaded: false,
+        page: 0,
+        hasMore: false,
+        clearError: true,
+      );
+      load();
+    });
   }
 
   Future<void> load() async {
@@ -285,14 +280,16 @@ class InboxController extends StateNotifier<InboxState> {
         );
         state = state.copyWith(emails: [email, ...state.emails]);
       case EmailUpdatedEvent e:
-        final next = state.emails.map((em) {
-          if (em.id != e.emailId) return em;
-          return em.copyWith(
-            isRead: e.isRead,
-            isStarred: e.isStarred,
-            folder: e.folder,
-          );
-        }).toList(growable: false);
+        final next = state.emails
+            .map((em) {
+              if (em.id != e.emailId) return em;
+              return em.copyWith(
+                isRead: e.isRead,
+                isStarred: e.isStarred,
+                folder: e.folder,
+              );
+            })
+            .toList(growable: false);
         state = state.copyWith(emails: next);
         if (e.folder != null && e.folder != 'inbox') {
           removeLocal(e.emailId);
@@ -302,10 +299,12 @@ class InboxController extends StateNotifier<InboxState> {
       case EmailSendStatusEvent e:
         // Drafts-as-outbox lifecycle — flip the row's pill to its
         // server-confirmed terminal state without a refetch.
-        final next = state.emails.map((em) {
-          if (em.id != e.emailId) return em;
-          return em.copyWith(status: e.status, sendError: e.error);
-        }).toList(growable: false);
+        final next = state.emails
+            .map((em) {
+              if (em.id != e.emailId) return em;
+              return em.copyWith(status: e.status, sendError: e.error);
+            })
+            .toList(growable: false);
         state = state.copyWith(emails: next);
       default:
         break;
@@ -328,8 +327,8 @@ class InboxController extends StateNotifier<InboxState> {
 
 final inboxControllerProvider =
     StateNotifierProvider<InboxController, InboxState>(
-  (ref) => InboxController(ref),
-);
+      (ref) => InboxController(ref),
+    );
 
 /// Stable derived selector — bottom nav and other badge consumers should
 /// `ref.watch(inboxUnreadCountProvider)` so they only rebuild when the
@@ -338,21 +337,49 @@ final inboxUnreadCountProvider = Provider<int>(
   (ref) => ref.watch(inboxControllerProvider.select((s) => s.unreadCount)),
 );
 
-final emailDetailProvider =
-    FutureProvider.autoDispose.family<Email, String>((ref, id) async {
+final mailUnreadCountsProvider = FutureProvider<Map<String, int>>((ref) async {
+  final repo = await ref.watch(mailRepositoryProvider.future);
+  return repo.getUnreadCounts();
+});
+
+final mailUnreadTotalProvider = Provider<int>((ref) {
+  final counts = ref.watch(mailUnreadCountsProvider);
+  return counts.maybeWhen(
+    data: (v) => v['total'] ?? v['inbox'] ?? 0,
+    orElse: () => ref.watch(inboxUnreadCountProvider),
+  );
+});
+
+final emailDetailProvider = FutureProvider.autoDispose.family<Email, String>((
+  ref,
+  id,
+) async {
   final repo = await ref.watch(mailRepositoryProvider.future);
   final email = await repo.getById(id);
   if (!email.isRead) {
     unawaited(() async {
       try {
         await repo.markRead(id);
-        ref.read(inboxControllerProvider.notifier).applyLocal(
-              email.copyWith(isRead: true),
-            );
+        ref
+            .read(inboxControllerProvider.notifier)
+            .applyLocal(email.copyWith(isRead: true));
       } catch (_) {}
     }());
   }
   return email;
+});
+
+/// AI reply suggestions for an open email. The ai-worker produces these
+/// out-of-band, so the provider may resolve to an empty list shortly
+/// after the email arrives — the Thread screen handles that by simply
+/// not rendering the suggestion strip.
+final replySuggestionsProvider =
+    FutureProvider.autoDispose.family<List<ReplySuggestion>, String>((
+  ref,
+  emailId,
+) async {
+  final repo = await ref.watch(mailRepositoryProvider.future);
+  return repo.getReplySuggestions(emailId);
 });
 
 /// Mailboxes change rarely (only when the user adds/removes a domain) so
