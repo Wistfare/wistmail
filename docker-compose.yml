@@ -166,14 +166,16 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-wistmail}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wistmail}
       REDIS_URL: redis://redis:6379
-      # The worker reaches host-side Ollama via the docker bridge.
-      # `host.docker.internal` is mapped via `extra_hosts` below so this
-      # works on Linux (it's a Docker Desktop default elsewhere).
-      OLLAMA_HOST: http://host.docker.internal:11434
+      # The host runs Ollama on the wistmail bridge gateway IP, bound
+      # only to that interface so it isn't reachable from outside the
+      # docker network. host.docker.internal would resolve to the
+      # *default* docker bridge (docker0), not this compose's bridge —
+      # so we hard-code the wistmail_default gateway here. Pair with
+      # `ufw allow from 172.18.0.0/16 to 172.18.0.1 port 11434 proto tcp`
+      # on the host (UFW INPUT chain blocks bridge→host by default).
+      OLLAMA_HOST: http://172.18.0.1:11434
       AI_MODEL: ${AI_MODEL:-gemma4:e4b}
       AI_WORKER_CONCURRENCY: "1"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy

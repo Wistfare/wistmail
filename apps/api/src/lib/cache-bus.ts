@@ -46,7 +46,11 @@ export function startCacheBus(): void {
 
   // Use a duplicate connection for SUBSCRIBE — the main client must
   // stay free for normal commands while subscribed connections block.
-  const sub = redis.duplicate()
+  // Override `enableOfflineQueue: true` so subscribe queues until
+  // the connection is ready (the main client uses `false` to fail
+  // commands fast on outage; for a long-lived subscriber we want
+  // the opposite).
+  const sub = redis.duplicate({ enableOfflineQueue: true })
   sub.subscribe(CHANNEL).catch((err) => {
     console.warn('[cache-bus] subscribe failed:', err)
   })
