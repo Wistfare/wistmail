@@ -10,6 +10,8 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json package.json ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY apps/docs/package.json ./apps/docs/
+COPY apps/ai-worker/package.json ./apps/ai-worker/
+COPY packages/ai/package.json ./packages/ai/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/db/package.json ./packages/db/
 COPY packages/dns-manager/package.json ./packages/dns-manager/
@@ -36,11 +38,13 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./
 COPY --from=deps /app/pnpm-workspace.yaml ./
 COPY --from=deps /app/apps/api/package.json ./apps/api/
+COPY --from=deps /app/packages/ai/package.json ./packages/ai/
 COPY --from=deps /app/packages/shared/package.json ./packages/shared/
 COPY --from=deps /app/packages/db/package.json ./packages/db/
 COPY --from=deps /app/packages/dns-manager/package.json ./packages/dns-manager/
 
 COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build /app/packages/ai/src ./packages/ai/src
 COPY --from=build /app/packages/shared/src ./packages/shared/src
 COPY --from=build /app/packages/db/src ./packages/db/src
 COPY --from=build /app/packages/db/drizzle.config.ts ./packages/db/
@@ -49,6 +53,7 @@ COPY --from=build /app/packages/dns-manager/src ./packages/dns-manager/src
 
 # Copy workspace node_modules symlinks
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=deps /app/packages/ai/node_modules ./packages/ai/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps /app/packages/dns-manager/node_modules ./packages/dns-manager/node_modules
