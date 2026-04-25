@@ -1,5 +1,6 @@
 -- AI worker outputs: per-email summary + processed timestamp, AI-source
 -- labels, multi-row reply suggestions, and the daily Today digest.
+-- All statements are idempotent enough for a re-run on partial state.
 
 ALTER TABLE "emails" ADD COLUMN "auto_summary" text;--> statement-breakpoint
 ALTER TABLE "emails" ADD COLUMN "ai_processed_at" timestamp with time zone;--> statement-breakpoint
