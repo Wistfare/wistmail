@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../chat/presentation/providers/chat_providers.dart';
 import '../../domain/unified_inbox_item.dart';
+import '../providers/mail_providers.dart';
 import '../providers/unified_inbox_providers.dart';
 
 /// MobileV3 Inbox — pen node `TavhO`.
@@ -64,9 +66,11 @@ class _InboxScreenV3State extends ConsumerState<InboxScreenV3> {
   Widget build(BuildContext context) {
     final filter = ref.watch(unifiedInboxFilterProvider);
     final state = ref.watch(unifiedInboxControllerProvider(filter));
+    final mailUnread = ref.watch(mailUnreadTotalProvider);
+    final chatUnread = ref.watch(chatUnreadCountProvider);
+    final totalUnread = mailUnread + chatUnread;
 
     final grouped = _groupByDay(state.items);
-    final unreadCount = state.items.where((i) => i.isUnread).length;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -74,10 +78,12 @@ class _InboxScreenV3State extends ConsumerState<InboxScreenV3> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Header(unreadCount: unreadCount),
+            _Header(unreadCount: totalUnread, chatUnread: chatUnread),
             _SegmentRow(
               current: filter,
-              totalCount: state.items.length,
+              allUnreadCount: totalUnread,
+              mailUnreadCount: mailUnread,
+              chatUnreadCount: chatUnread,
               onChange: (f) =>
                   ref.read(unifiedInboxFilterProvider.notifier).state = f,
             ),
@@ -91,47 +97,44 @@ class _InboxScreenV3State extends ConsumerState<InboxScreenV3> {
                 child: state.isLoading
                     ? const _Loading()
                     : state.items.isEmpty
-                        ? const _EmptyInbox()
-                        : ListView.builder(
-                            controller: _scroll,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: EdgeInsets.zero,
-                            itemCount: grouped.length +
-                                (state.isLoadingMore ? 1 : 0),
-                            itemBuilder: (context, i) {
-                              if (i == grouped.length) {
-                                return const Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                      color: AppColors.accent,
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                );
-                              }
-                              final entry = grouped[i];
-                              if (entry.isHeader) {
-                                return _BucketHeader(
-                                  label: entry.header!,
-                                  count: entry.count!,
-                                  isFirst: entry.isFirst!,
-                                );
-                              }
-                              final prev = i > 0 ? grouped[i - 1] : null;
-                              final showDivider = prev != null && !prev.isHeader;
-                              return Column(
-                                children: [
-                                  if (showDivider)
-                                    Container(
-                                      height: 1,
-                                      color: AppColors.border,
-                                    ),
-                                  _InboxRow(item: entry.item!),
-                                ],
-                              );
-                            },
-                          ),
+                    ? const _EmptyInbox()
+                    : ListView.builder(
+                        controller: _scroll,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount:
+                            grouped.length + (state.isLoadingMore ? 1 : 0),
+                        itemBuilder: (context, i) {
+                          if (i == grouped.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: AppColors.accent,
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            );
+                          }
+                          final entry = grouped[i];
+                          if (entry.isHeader) {
+                            return _BucketHeader(
+                              label: entry.header!,
+                              count: entry.count!,
+                              isFirst: entry.isFirst!,
+                            );
+                          }
+                          final prev = i > 0 ? grouped[i - 1] : null;
+                          final showDivider = prev != null && !prev.isHeader;
+                          return Column(
+                            children: [
+                              if (showDivider)
+                                Container(height: 1, color: AppColors.border),
+                              _InboxRow(item: entry.item!),
+                            ],
+                          );
+                        },
+                      ),
               ),
             ),
           ],
@@ -168,11 +171,13 @@ class _InboxScreenV3State extends ConsumerState<InboxScreenV3> {
     for (final item in items) {
       final label = bucketLabel(item.occurredAt);
       if (label != lastHeader) {
-        out.add(_FeedEntry.header(
-          label: label,
-          count: counts[label] ?? 0,
-          isFirst: headerIndex == 0,
-        ));
+        out.add(
+          _FeedEntry.header(
+            header: label,
+            count: counts[label] ?? 0,
+            isFirst: headerIndex == 0,
+          ),
+        );
         headerIndex++;
         lastHeader = label;
       }
@@ -183,15 +188,12 @@ class _InboxScreenV3State extends ConsumerState<InboxScreenV3> {
 }
 
 class _FeedEntry {
-  _FeedEntry.header({required String label, required int count, required bool isFirst})
-      : header = label,
-        this.count = count,
-        this.isFirst = isFirst,
-        item = null;
-  _FeedEntry.item(this.item)
-      : header = null,
-        count = null,
-        isFirst = null;
+  _FeedEntry.header({
+    required this.header,
+    required this.count,
+    required this.isFirst,
+  }) : item = null;
+  _FeedEntry.item(this.item) : header = null, count = null, isFirst = null;
   final String? header;
   final int? count;
   final bool? isFirst;
@@ -200,13 +202,14 @@ class _FeedEntry {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.unreadCount});
+  const _Header({required this.unreadCount, required this.chatUnread});
   final int unreadCount;
+  final int chatUnread;
   @override
   Widget build(BuildContext context) {
     final eyebrow = unreadCount == 0
         ? 'ALL CAUGHT UP'
-        : '$unreadCount UNREAD${unreadCount > 0 ? '' : ''}';
+        : '$unreadCount UNREAD · $chatUnread CHATS';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Column(
@@ -226,10 +229,12 @@ class _Header extends StatelessWidget {
               ),
               _ComposeButton(onTap: () => context.push('/compose')),
               const SizedBox(width: 10),
-              _FilterButton(onTap: () {
-                // Filter sheet lives inside the segment row today;
-                // the icon slot is kept for parity with the design.
-              }),
+              _FilterButton(
+                onTap: () {
+                  // Filter sheet lives inside the segment row today;
+                  // the icon slot is kept for parity with the design.
+                },
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -264,8 +269,11 @@ class _ComposeButton extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         alignment: Alignment.center,
-        child: const Icon(LucideIcons.penLine,
-            color: AppColors.background, size: 18),
+        child: const Icon(
+          LucideIcons.penLine,
+          color: AppColors.background,
+          size: 18,
+        ),
       ),
     );
   }
@@ -287,8 +295,11 @@ class _FilterButton extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         alignment: Alignment.center,
-        child: const Icon(LucideIcons.slidersHorizontal,
-            color: AppColors.textPrimary, size: 18),
+        child: const Icon(
+          LucideIcons.slidersHorizontal,
+          color: AppColors.textPrimary,
+          size: 18,
+        ),
       ),
     );
   }
@@ -297,11 +308,15 @@ class _FilterButton extends StatelessWidget {
 class _SegmentRow extends StatelessWidget {
   const _SegmentRow({
     required this.current,
-    required this.totalCount,
+    required this.allUnreadCount,
+    required this.mailUnreadCount,
+    required this.chatUnreadCount,
     required this.onChange,
   });
   final UnifiedFilter current;
-  final int totalCount;
+  final int allUnreadCount;
+  final int mailUnreadCount;
+  final int chatUnreadCount;
   final ValueChanged<UnifiedFilter> onChange;
 
   @override
@@ -312,7 +327,7 @@ class _SegmentRow extends StatelessWidget {
         children: [
           _Segment(
             label: 'ALL',
-            trailingCount: totalCount,
+            trailingCount: allUnreadCount,
             active: current == UnifiedFilter.all,
             onTap: () => onChange(UnifiedFilter.all),
           ),
@@ -320,6 +335,7 @@ class _SegmentRow extends StatelessWidget {
           _Segment(
             icon: LucideIcons.mail,
             label: 'MAIL',
+            trailingCount: mailUnreadCount,
             active: current == UnifiedFilter.mail,
             onTap: () => onChange(UnifiedFilter.mail),
           ),
@@ -327,6 +343,7 @@ class _SegmentRow extends StatelessWidget {
           _Segment(
             icon: LucideIcons.messageSquare,
             label: 'CHATS',
+            trailingCount: chatUnreadCount,
             active: current == UnifiedFilter.chats,
             onTap: () => onChange(UnifiedFilter.chats),
           ),
@@ -353,6 +370,9 @@ class _Segment extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textColor = active ? AppColors.background : AppColors.textPrimary;
+    final countColor = active
+        ? AppColors.background.withValues(alpha: 0.62)
+        : AppColors.textSecondary;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
@@ -378,13 +398,13 @@ class _Segment extends StatelessWidget {
                 letterSpacing: 1,
               ),
             ),
-            if (trailingCount != null) ...[
+            if ((trailingCount ?? 0) > 0) ...[
               const SizedBox(width: 6),
               Text(
                 '$trailingCount',
                 style: GoogleFonts.jetBrainsMono(
-                  color: textColor.withValues(alpha: active ? 0.6 : 1.0),
-                  fontSize: 11,
+                  color: countColor,
+                  fontSize: 10,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -444,6 +464,16 @@ class _InboxRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final unread = item.isUnread;
+    final senderColor = unread
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
+    final primaryColor = unread
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
+    final secondaryColor = unread
+        ? AppColors.textSecondary
+        : AppColors.textMuted;
     return InkWell(
       onTap: () {
         if (item.source == UnifiedSource.mail && item.emailId != null) {
@@ -475,9 +505,11 @@ class _InboxRow extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.jetBrainsMono(
-                                  color: AppColors.textPrimary,
+                                  color: senderColor,
                                   fontSize: 14,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: unread
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -506,10 +538,11 @@ class _InboxRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.jetBrainsMono(
-                        color: AppColors.textPrimary,
+                        color: primaryColor,
                         fontSize: 13,
-                        fontWeight:
-                            item.isUnread ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: item.isUnread
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -518,7 +551,7 @@ class _InboxRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.jetBrainsMono(
-                        color: AppColors.textSecondary,
+                        color: secondaryColor,
                         fontSize: 12,
                       ),
                     ),
@@ -528,8 +561,9 @@ class _InboxRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.jetBrainsMono(
-                        color: AppColors.textSecondary,
+                        color: primaryColor,
                         fontSize: 13,
+                        fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
                       ),
                     ),
                   ],
@@ -580,8 +614,9 @@ class _Avatar extends StatelessWidget {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color:
-            isGroupChannel ? const Color(0xFF6D4AD4) : _colorFor(item.senderKey),
+        color: isGroupChannel
+            ? const Color(0xFF6D4AD4)
+            : _colorFor(item.senderKey),
         shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
@@ -601,8 +636,13 @@ class _Avatar extends StatelessWidget {
   static String _initialsFor(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return '?';
-    final parts = trimmed.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
-    if (parts.length >= 2) return (parts.first[0] + parts.last[0]).toUpperCase();
+    final parts = trimmed
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.length >= 2) {
+      return (parts.first[0] + parts.last[0]).toUpperCase();
+    }
     return parts.first.length >= 2
         ? parts.first.substring(0, 2).toUpperCase()
         : parts.first[0].toUpperCase();
@@ -665,15 +705,76 @@ class _Loading extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: EdgeInsets.zero,
       itemCount: 8,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, __) => Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(4),
-        ),
+      separatorBuilder: (context, index) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, i) => _SkeletonRow(seed: i),
+    );
+  }
+}
+
+class _SkeletonRow extends StatelessWidget {
+  const _SkeletonRow({required this.seed});
+  final int seed;
+
+  @override
+  Widget build(BuildContext context) {
+    final nameWidth = 72 + (seed * 13) % 58;
+    final firstLineWidth = 170 + (seed * 19) % 110;
+    final secondLineWidth = 210 + (seed * 17) % 90;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SkeletonBar(width: 40, height: 40, radius: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _SkeletonBar(width: nameWidth.toDouble(), height: 13),
+                    const SizedBox(width: 8),
+                    const _SkeletonBar(width: 36, height: 16, radius: 4),
+                    const Spacer(),
+                    const _SkeletonBar(width: 24, height: 11),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                _SkeletonBar(width: firstLineWidth.toDouble(), height: 13),
+                const SizedBox(height: 6),
+                _SkeletonBar(width: secondLineWidth.toDouble(), height: 12),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkeletonBar extends StatelessWidget {
+  const _SkeletonBar({
+    required this.width,
+    required this.height,
+    this.radius = 2,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(radius),
       ),
     );
   }
@@ -687,8 +788,7 @@ class _EmptyInbox extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         const SizedBox(height: 100),
-        const Icon(LucideIcons.inbox,
-            color: AppColors.textTertiary, size: 56),
+        const Icon(LucideIcons.inbox, color: AppColors.textTertiary, size: 56),
         const SizedBox(height: 12),
         Center(
           child: Text(

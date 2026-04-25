@@ -18,10 +18,7 @@ class ChatListScreen extends ConsumerWidget {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          _TopBar(
-            onSearch: () {},
-            onNew: () => context.push('/chat/new'),
-          ),
+          _TopBar(onSearch: () {}, onNew: () => context.push('/chat/new')),
           Expanded(child: _Body(chat: chat)),
         ],
       ),
@@ -70,14 +67,7 @@ class _Body extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (chat.isLoading && !chat.hasLoaded) {
-      return const Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(
-              strokeWidth: 2, color: AppColors.accent),
-        ),
-      );
+      return const _ChatListSkeleton();
     }
 
     if (chat.errorMessage != null && chat.conversations.isEmpty) {
@@ -87,18 +77,25 @@ class _Body extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline,
-                  color: AppColors.danger, size: 36),
+              const Icon(
+                Icons.error_outline,
+                color: AppColors.danger,
+                size: 36,
+              ),
               const SizedBox(height: 12),
-              Text(chat.errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.bodySmall),
+              Text(
+                chat.errorMessage!,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodySmall,
+              ),
               const SizedBox(height: 12),
               TextButton(
                 onPressed: () =>
                     ref.read(chatListControllerProvider.notifier).refresh(),
-                child: const Text('Try again',
-                    style: TextStyle(color: AppColors.accent)),
+                child: const Text(
+                  'Try again',
+                  style: TextStyle(color: AppColors.accent),
+                ),
               ),
             ],
           ),
@@ -113,14 +110,18 @@ class _Body extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.chat_bubble_outline,
-                  color: AppColors.textTertiary, size: 40),
+              const Icon(
+                Icons.chat_bubble_outline,
+                color: AppColors.textTertiary,
+                size: 40,
+              ),
               const SizedBox(height: 16),
-              Text('No conversations yet',
-                  style: AppTextStyles.titleMedium),
+              Text('No conversations yet', style: AppTextStyles.titleMedium),
               const SizedBox(height: 6),
-              Text('Start one with the + button above.',
-                  style: AppTextStyles.bodySmall),
+              Text(
+                'Start one with the + button above.',
+                style: AppTextStyles.bodySmall,
+              ),
             ],
           ),
         ),
@@ -138,11 +139,79 @@ class _Body extends ConsumerWidget {
           padding: EdgeInsets.zero,
           physics: const AlwaysScrollableScrollPhysics(),
           itemCount: chat.conversations.length,
-          separatorBuilder: (_, __) =>
+          separatorBuilder: (context, index) =>
               const Divider(height: 1, color: AppColors.border),
           itemBuilder: (context, index) =>
               ConversationListItem(conversation: chat.conversations[index]),
         ),
+      ),
+    );
+  }
+}
+
+class _ChatListSkeleton extends StatelessWidget {
+  const _ChatListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 8,
+      separatorBuilder: (context, index) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, i) {
+        final titleWidth = 86 + (i * 17) % 70;
+        final previewWidth = 190 + (i * 23) % 90;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+          child: Row(
+            children: [
+              const _SkeletonBar(width: 40, height: 40, radius: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _SkeletonBar(width: titleWidth.toDouble(), height: 14),
+                        const Spacer(),
+                        const _SkeletonBar(width: 24, height: 10),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _SkeletonBar(width: previewWidth.toDouble(), height: 13),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SkeletonBar extends StatelessWidget {
+  const _SkeletonBar({
+    required this.width,
+    required this.height,
+    this.radius = 2,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(radius),
       ),
     );
   }

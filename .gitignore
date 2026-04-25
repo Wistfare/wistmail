@@ -55,3 +55,7 @@ temp/
 *.pyc
 domain-connect/keys/
 *.tsbuildinfo
+
+# Stray macOS screenshots / scratch image generations
+Screenshot*.png
+images/

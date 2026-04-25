@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +13,7 @@ import '../../domain/compose_args.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_body.dart';
+import '../widgets/reply_suggestion_strip.dart';
 
 /// MobileV3 Thread (email detail) — pen node `NoPsV`.
 ///
@@ -89,7 +91,10 @@ class _ThreadContent extends ConsumerWidget {
           ),
         ),
         SliverToBoxAdapter(child: _SubjectBlock(email: email)),
-        SliverToBoxAdapter(child: _SenderCard(email: email, me: me)),
+        SliverToBoxAdapter(
+          child: _SenderCard(email: email, me: me),
+        ),
+        SliverToBoxAdapter(child: ReplySuggestionStrip(email: email)),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );
@@ -192,20 +197,18 @@ class _TopBar extends StatelessWidget {
           _CircleBtn(icon: LucideIcons.arrowLeft, onTap: onBack),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    folderLabel,
-                    style: GoogleFonts.jetBrainsMono(
-                      color: AppColors.textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.5,
-                    ),
+              padding: const EdgeInsets.only(left: 14, right: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  folderLabel,
+                  style: GoogleFonts.jetBrainsMono(
+                    color: AppColors.textSecondary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -267,6 +270,8 @@ class _SubjectBlock extends StatelessWidget {
           ],
           Text(
             email.subject.isEmpty ? '(no subject)' : email.subject,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.jetBrainsMono(
               color: AppColors.textPrimary,
               fontSize: 20,
@@ -347,63 +352,93 @@ class _SenderCard extends ConsumerWidget {
   }
 }
 
-class _SenderHead extends StatelessWidget {
+class _SenderHead extends StatefulWidget {
   const _SenderHead({required this.email, required this.me});
   final Email email;
   final String? me;
 
   @override
+  State<_SenderHead> createState() => _SenderHeadState();
+}
+
+class _SenderHeadState extends State<_SenderHead> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+    final email = widget.email;
+    final me = widget.me;
+    return Column(
       children: [
-        _SenderAvatar(email: email),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      email.senderName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.jetBrainsMono(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
+              _SenderAvatar(email: email),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            email.senderName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.jetBrainsMono(
+                              color: AppColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _relativeAge(email.createdAt),
+                          style: GoogleFonts.jetBrainsMono(
+                            color: AppColors.textSecondary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  Text(
-                    _relativeAge(email.createdAt),
-                    style: GoogleFonts.jetBrainsMono(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _toLabel(email, me),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.jetBrainsMono(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          _expanded
+                              ? LucideIcons.chevronUp
+                              : LucideIcons.chevronDown,
+                          size: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Text(
-                    _toLabel(email, me),
-                    style: GoogleFonts.jetBrainsMono(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(LucideIcons.chevronDown,
-                      size: 12, color: AppColors.textSecondary),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
         ),
+        if (_expanded) ...[
+          const SizedBox(height: 10),
+          _SenderDetails(email: email),
+        ],
       ],
     );
   }
@@ -420,9 +455,7 @@ class _SenderHead extends StatelessWidget {
     }
     if (to.isEmpty) return '';
     final first = _shortAddress(to.first);
-    return extraCount - 1 > 0
-        ? 'to $first, +${extraCount - 1}'
-        : 'to $first';
+    return extraCount - 1 > 0 ? 'to $first, +${extraCount - 1}' : 'to $first';
   }
 
   String _shortAddress(String addr) {
@@ -437,10 +470,118 @@ class _SenderHead extends StatelessWidget {
     if (delta.inHours < 24) return '${delta.inHours}h ago';
     if (delta.inDays < 7) return '${delta.inDays}d ago';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[t.month - 1]} ${t.day}';
+  }
+}
+
+class _SenderDetails extends StatelessWidget {
+  const _SenderDetails({required this.email});
+  final Email email;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          _DetailLine(label: 'FROM', value: email.fromAddress),
+          _DetailLine(label: 'TO', value: email.toAddresses.join(', ')),
+          if (email.cc.isNotEmpty)
+            _DetailLine(label: 'CC', value: email.cc.join(', ')),
+          _DetailLine(label: 'DATE', value: _fullDate(email.createdAt)),
+        ],
+      ),
+    );
+  }
+
+  String _fullDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final local = date.toLocal();
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${months[local.month - 1]} ${local.day}, ${local.year} '
+        '${local.hour}:$minute';
+  }
+}
+
+class _DetailLine extends StatelessWidget {
+  const _DetailLine({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    if (value.trim().isEmpty) return const SizedBox.shrink();
+    return InkWell(
+      onLongPress: () => _copyValue(value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 42,
+              child: Text(
+                label,
+                style: GoogleFonts.jetBrainsMono(
+                  color: AppColors.textSecondary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                value,
+                softWrap: true,
+                style: GoogleFonts.jetBrainsMono(
+                  color: AppColors.textPrimary,
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _copyValue(String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    HapticFeedback.selectionClick();
   }
 }
 
@@ -517,8 +658,7 @@ class _AttachmentCard extends ConsumerWidget {
         final url = client.absoluteUrl(
           '/api/v1/inbox/attachments/${attachment.id}/download',
         );
-        await launchUrl(Uri.parse(url),
-            mode: LaunchMode.externalApplication);
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
       },
       borderRadius: BorderRadius.circular(10),
       child: Container(
@@ -558,7 +698,9 @@ class _AttachmentCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    isIcs ? _icsSubtitle(attachment) : _fmtSize(attachment.sizeBytes),
+                    isIcs
+                        ? _icsSubtitle(attachment)
+                        : _fmtSize(attachment.sizeBytes),
                     style: GoogleFonts.jetBrainsMono(
                       color: isIcs ? AppColors.accent : AppColors.textSecondary,
                       fontSize: 10,
@@ -640,8 +782,11 @@ class _QuotedSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(LucideIcons.reply,
-                  size: 12, color: AppColors.textSecondary),
+              const Icon(
+                LucideIcons.reply,
+                size: 12,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -674,8 +819,10 @@ class _QuotedSection extends StatelessWidget {
   }
 
   _Quote? _extractQuote(String text) {
-    final headerMatch =
-        RegExp(r'(On .+? wrote:)', multiLine: true).firstMatch(text);
+    final headerMatch = RegExp(
+      r'(On .+? wrote:)',
+      multiLine: true,
+    ).firstMatch(text);
     if (headerMatch == null) return null;
     final after = text.substring(headerMatch.end);
     final cleaned = after
@@ -732,8 +879,98 @@ class _Loading extends StatelessWidget {
   const _Loading();
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2),
+    return const SingleChildScrollView(
+      physics: NeverScrollableScrollPhysics(),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(12, 8, 12, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SkeletonTopBar(),
+            SizedBox(height: 24),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _SkeletonBar(width: double.infinity, height: 28),
+                  SizedBox(height: 10),
+                  _SkeletonBar(width: 230, height: 28),
+                  SizedBox(height: 28),
+                  Row(
+                    children: [
+                      _SkeletonBar(width: 44, height: 44, radius: 22),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _SkeletonBar(width: 140, height: 16),
+                            SizedBox(height: 8),
+                            _SkeletonBar(width: 84, height: 12),
+                          ],
+                        ),
+                      ),
+                      _SkeletonBar(width: 44, height: 12),
+                    ],
+                  ),
+                  SizedBox(height: 28),
+                  _SkeletonBar(width: double.infinity, height: 120, radius: 12),
+                  SizedBox(height: 12),
+                  _SkeletonBar(width: double.infinity, height: 14),
+                  SizedBox(height: 8),
+                  _SkeletonBar(width: 260, height: 14),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonTopBar extends StatelessWidget {
+  const _SkeletonTopBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: const [
+        _SkeletonBar(width: 40, height: 40, radius: 20),
+        SizedBox(width: 22),
+        _SkeletonBar(width: 64, height: 12),
+        Spacer(),
+        _SkeletonBar(width: 40, height: 40, radius: 20),
+        SizedBox(width: 6),
+        _SkeletonBar(width: 40, height: 40, radius: 20),
+        SizedBox(width: 6),
+        _SkeletonBar(width: 40, height: 40, radius: 20),
+      ],
+    );
+  }
+}
+
+class _SkeletonBar extends StatelessWidget {
+  const _SkeletonBar({
+    required this.width,
+    required this.height,
+    this.radius = 3,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(radius),
+      ),
     );
   }
 }
@@ -748,8 +985,11 @@ class _ErrorState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(LucideIcons.cloudOff,
-              color: AppColors.textTertiary, size: 48),
+          const Icon(
+            LucideIcons.cloudOff,
+            color: AppColors.textTertiary,
+            size: 48,
+          ),
           const SizedBox(height: 12),
           Text(
             "Couldn't load this message",

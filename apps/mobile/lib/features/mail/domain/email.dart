@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 final RegExp _whitespaceRegex = RegExp(r'\s+');
 final RegExp _angleBracketSenderRegex = RegExp(r'^\s*(.*?)\s*<(.+)>\s*$');
 final RegExp _angleBracketEmailRegex = RegExp(r'<(.+)>');
+
 /// Initials use whitespace-only splitting to preserve the documented
 /// behavior: 'alex.chen' → 'A', not 'AC'. Display names with spaces
 /// like 'Alex Chen' still produce 'AC'.
@@ -46,12 +47,12 @@ class Email {
     this.attachments = const [],
     this.labels = const [],
     this.threadId,
-  })  : updatedAt = updatedAt ?? createdAt,
-        senderName = _extractSenderName(fromAddress),
-        senderEmail = _extractSenderEmail(fromAddress),
-        senderInitials = _initialsFor(_extractSenderName(fromAddress)),
-        senderAvatarColor = _colorFor(fromAddress),
-        preview = _buildPreview(snippet, textBody);
+  }) : updatedAt = updatedAt ?? createdAt,
+       senderName = _extractSenderName(fromAddress),
+       senderEmail = _extractSenderEmail(fromAddress),
+       senderInitials = _initialsFor(_extractSenderName(fromAddress)),
+       senderAvatarColor = _colorFor(fromAddress),
+       preview = _buildPreview(snippet, textBody);
 
   final String id;
   final String fromAddress;
@@ -68,23 +69,27 @@ class Email {
   final bool isDraft;
   final bool hasAttachments;
   final int sizeBytes;
+
   /// Outbound lifecycle status — mirrors the backend column. 'idle'
   /// for inbound mail; 'sending' / 'sent' / 'failed' / 'rate_limited'
   /// for emails the user has tried to send.
   final String status;
   final String? sendError;
   final DateTime createdAt;
+
   /// Server-side mutation timestamp. Drives last-write-wins
   /// reconciliation in the local store: a server upsert can only
   /// override the local copy when its updatedAt is strictly newer.
   final DateTime updatedAt;
   final String? mailboxId;
   final List<EmailAttachment> attachments;
+
   /// Labels attached to this email. Server ships these inline on every
   /// list response so the row renderer never has to fire a per-row
   /// lookup. Empty in search-result rows (Meili doesn't index label
   /// membership reliably).
   final List<EmailLabelRef> labels;
+
   /// Thread id the email belongs to. Null on pre-threading rows; the
   /// UI treats those as their own single-message thread.
   final String? threadId;
@@ -138,32 +143,31 @@ class Email {
     String? status,
     String? sendError,
     DateTime? updatedAt,
-  }) =>
-      Email(
-        id: id,
-        fromAddress: fromAddress,
-        toAddresses: toAddresses,
-        cc: cc,
-        bcc: bcc,
-        subject: subject,
-        snippet: snippet,
-        textBody: textBody,
-        htmlBody: htmlBody,
-        folder: folder ?? this.folder,
-        isRead: isRead ?? this.isRead,
-        isStarred: isStarred ?? this.isStarred,
-        isDraft: isDraft,
-        hasAttachments: hasAttachments,
-        sizeBytes: sizeBytes,
-        status: status ?? this.status,
-        sendError: sendError ?? this.sendError,
-        createdAt: createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-        mailboxId: mailboxId,
-        attachments: attachments,
-        labels: labels,
-        threadId: threadId,
-      );
+  }) => Email(
+    id: id,
+    fromAddress: fromAddress,
+    toAddresses: toAddresses,
+    cc: cc,
+    bcc: bcc,
+    subject: subject,
+    snippet: snippet,
+    textBody: textBody,
+    htmlBody: htmlBody,
+    folder: folder ?? this.folder,
+    isRead: isRead ?? this.isRead,
+    isStarred: isStarred ?? this.isStarred,
+    isDraft: isDraft,
+    hasAttachments: hasAttachments,
+    sizeBytes: sizeBytes,
+    status: status ?? this.status,
+    sendError: sendError ?? this.sendError,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    mailboxId: mailboxId,
+    attachments: attachments,
+    labels: labels,
+    threadId: threadId,
+  );
 
   /// Merge a fully-loaded body fetched from /emails/:id back into the slim
   /// list row — keeps the cached display fields and just attaches the
@@ -172,32 +176,31 @@ class Email {
     String? textBody,
     String? htmlBody,
     List<EmailAttachment>? attachments,
-  }) =>
-      Email(
-        id: id,
-        fromAddress: fromAddress,
-        toAddresses: toAddresses,
-        cc: cc,
-        bcc: bcc,
-        subject: subject,
-        snippet: snippet,
-        textBody: textBody ?? this.textBody,
-        htmlBody: htmlBody ?? this.htmlBody,
-        folder: folder,
-        isRead: isRead,
-        isStarred: isStarred,
-        isDraft: isDraft,
-        hasAttachments: attachments?.isNotEmpty ?? hasAttachments,
-        sizeBytes: sizeBytes,
-        status: status,
-        sendError: sendError,
-        createdAt: createdAt,
-        updatedAt: updatedAt,
-        mailboxId: mailboxId,
-        attachments: attachments ?? this.attachments,
-        labels: labels,
-        threadId: threadId,
-      );
+  }) => Email(
+    id: id,
+    fromAddress: fromAddress,
+    toAddresses: toAddresses,
+    cc: cc,
+    bcc: bcc,
+    subject: subject,
+    snippet: snippet,
+    textBody: textBody ?? this.textBody,
+    htmlBody: htmlBody ?? this.htmlBody,
+    folder: folder,
+    isRead: isRead,
+    isStarred: isStarred,
+    isDraft: isDraft,
+    hasAttachments: attachments?.isNotEmpty ?? hasAttachments,
+    sizeBytes: sizeBytes,
+    status: status,
+    sendError: sendError,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    mailboxId: mailboxId,
+    attachments: attachments ?? this.attachments,
+    labels: labels,
+    threadId: threadId,
+  );
 
   String get timeAgo => _formatTimeAgo(createdAt);
 
@@ -219,7 +222,10 @@ class Email {
   }
 
   static String _initialsFor(String name) {
-    final parts = name.split(_splitDelimRegex).where((p) => p.isNotEmpty).toList();
+    final parts = name
+        .split(_splitDelimRegex)
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.isEmpty) return '?';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -265,6 +271,7 @@ class EmailAttachment {
     required this.filename,
     required this.contentType,
     required this.sizeBytes,
+    this.contentId,
     this.parsedIcs,
     this.rsvpResponse,
   });
@@ -273,6 +280,7 @@ class EmailAttachment {
   final String filename;
   final String contentType;
   final int sizeBytes;
+  final String? contentId;
 
   /// Present when the server successfully parsed a text/calendar
   /// attachment — lets the UI render title/time/location + working
@@ -290,6 +298,7 @@ class EmailAttachment {
       filename: (json['filename'] as String?) ?? '',
       contentType: (json['contentType'] as String?) ?? '',
       sizeBytes: (json['sizeBytes'] as int?) ?? 0,
+      contentId: json['contentId'] as String?,
       parsedIcs: json['parsedIcs'] is Map<String, dynamic>
           ? ParsedIcs.fromJson(json['parsedIcs'] as Map<String, dynamic>)
           : null,
@@ -457,6 +466,7 @@ class ComposeDraft {
   final String? textBody;
   final String? htmlBody;
   final bool send;
+
   /// When set, the compose is a schedule-send: the server stores the
   /// row with folder='drafts' + scheduledAt, and the dispatcher sends
   /// it at that instant. `send` must stay true for this path so the
@@ -465,19 +475,19 @@ class ComposeDraft {
   final String? inReplyTo;
 
   Map<String, dynamic> toJson() => {
-        'fromAddress': fromAddress,
-        'mailboxId': mailboxId,
-        'toAddresses': toAddresses,
-        if (cc.isNotEmpty) 'cc': cc,
-        if (bcc.isNotEmpty) 'bcc': bcc,
-        'subject': subject,
-        if (textBody != null) 'textBody': textBody,
-        if (htmlBody != null) 'htmlBody': htmlBody,
-        'send': send,
-        if (scheduledAt != null)
-          'scheduledAt': scheduledAt!.toUtc().toIso8601String(),
-        if (inReplyTo != null) 'inReplyTo': inReplyTo,
-      };
+    'fromAddress': fromAddress,
+    'mailboxId': mailboxId,
+    'toAddresses': toAddresses,
+    if (cc.isNotEmpty) 'cc': cc,
+    if (bcc.isNotEmpty) 'bcc': bcc,
+    'subject': subject,
+    if (textBody != null) 'textBody': textBody,
+    if (htmlBody != null) 'htmlBody': htmlBody,
+    'send': send,
+    if (scheduledAt != null)
+      'scheduledAt': scheduledAt!.toUtc().toIso8601String(),
+    if (inReplyTo != null) 'inReplyTo': inReplyTo,
+  };
 }
 
 String _formatTimeAgo(DateTime date) {

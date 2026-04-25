@@ -75,8 +75,7 @@ class EmailDetailScreen extends ConsumerWidget {
                 if (until == null || !context.mounted) return;
                 final messenger = ScaffoldMessenger.of(context);
                 try {
-                  final repo =
-                      await ref.read(mailRepositoryProvider.future);
+                  final repo = await ref.read(mailRepositoryProvider.future);
                   await repo.snooze(email.id, until);
                   ref
                       .read(inboxControllerProvider.notifier)
@@ -92,21 +91,18 @@ class EmailDetailScreen extends ConsumerWidget {
                 }
                 showRootSnackBar(
                   SnackBar(
-                    content: Text(
-                      'Snoozed until ${_snoozeLabel(until)}.',
-                    ),
+                    content: Text('Snoozed until ${_snoozeLabel(until)}.'),
                     duration: const Duration(seconds: 6),
                     action: SnackBarAction(
                       label: 'UNDO',
                       textColor: AppColors.accent,
                       onPressed: () async {
                         try {
-                          final r = await ref
-                              .read(mailRepositoryProvider.future);
+                          final r = await ref.read(
+                            mailRepositoryProvider.future,
+                          );
                           await r.snooze(email.id, null);
-                          ref
-                              .read(inboxControllerProvider.notifier)
-                              .refresh();
+                          ref.read(inboxControllerProvider.notifier).refresh();
                         } catch (_) {}
                       },
                     ),
@@ -143,8 +139,9 @@ class EmailDetailScreen extends ConsumerWidget {
                       textColor: AppColors.accent,
                       onPressed: () async {
                         try {
-                          final r =
-                              await ref.read(mailRepositoryProvider.future);
+                          final r = await ref.read(
+                            mailRepositoryProvider.future,
+                          );
                           // Send it back to inbox — we don't track
                           // the source folder, but archiving from
                           // anywhere else is uncommon and the user
@@ -154,9 +151,7 @@ class EmailDetailScreen extends ConsumerWidget {
                             action: 'move',
                             folder: 'inbox',
                           );
-                          ref
-                              .read(inboxControllerProvider.notifier)
-                              .refresh();
+                          ref.read(inboxControllerProvider.notifier).refresh();
                         } catch (_) {
                           showRootSnackBar(
                             const SnackBar(
@@ -251,16 +246,15 @@ class EmailDetailScreen extends ConsumerWidget {
                       textColor: AppColors.accent,
                       onPressed: () async {
                         try {
-                          final r =
-                              await ref.read(mailRepositoryProvider.future);
+                          final r = await ref.read(
+                            mailRepositoryProvider.future,
+                          );
                           await r.batchAction(
                             ids: [email.id],
                             action: 'move',
                             folder: 'inbox',
                           );
-                          ref
-                              .read(inboxControllerProvider.notifier)
-                              .refresh();
+                          ref.read(inboxControllerProvider.notifier).refresh();
                         } catch (_) {
                           showRootSnackBar(
                             const SnackBar(
@@ -292,9 +286,9 @@ class EmailDetailScreen extends ConsumerWidget {
             } else {
               final repo = await ref.read(mailRepositoryProvider.future);
               final starred = await repo.toggleStar(email.id);
-              ref.read(inboxControllerProvider.notifier).applyLocal(
-                    email.copyWith(isStarred: starred),
-                  );
+              ref
+                  .read(inboxControllerProvider.notifier)
+                  .applyLocal(email.copyWith(isStarred: starred));
             }
             ref.invalidate(emailDetailProvider(email.id));
           },
@@ -304,7 +298,9 @@ class EmailDetailScreen extends ConsumerWidget {
             width: 22,
             height: 22,
             child: CircularProgressIndicator(
-                strokeWidth: 2, color: AppColors.accent),
+              strokeWidth: 2,
+              color: AppColors.accent,
+            ),
           ),
         ),
         error: (err, _) => Center(
@@ -427,16 +423,15 @@ class _Body extends ConsumerWidget {
             AttachmentsStrip(emailId: email.id, attachments: email.attachments),
           _ThreadStrip(anchorId: email.id),
           const SizedBox(height: 20),
-          // Real HTML rendering — flutter_html with our typography +
-          // cid: attachment resolution + remote-image privacy gate.
-          // Falls back to formatted text-with-quotes when there's no
-          // htmlBody (plain-text emails, e.g. from CLI senders).
+          // HTML body rendered in a sandboxed in-process WebView so
+          // newsletter layouts paint faithfully; cid: attachments and
+          // remote-image privacy are handled inside EmailBody. Falls
+          // back to a native text widget for plain-text emails.
           EmailBody(email: email),
         ],
       ),
     );
   }
-
 }
 
 /// Renders the real labels assigned to this email. Empty + collapsed
@@ -484,41 +479,23 @@ Future<DateTime?> _pickSnoozeTime(BuildContext context) async {
     now.day,
     now.hour,
   ).add(const Duration(hours: 3));
-  final tomorrowMorning = DateTime(
-    now.year,
-    now.month,
-    now.day + 1,
-    8,
-  );
+  final tomorrowMorning = DateTime(now.year, now.month, now.day + 1, 8);
   final daysUntilSat = now.weekday == DateTime.saturday
       ? 7
       : (DateTime.saturday - now.weekday + 7) % 7 == 0
-          ? 7
-          : (DateTime.saturday - now.weekday + 7) % 7;
-  final thisWeekend =
-      DateTime(now.year, now.month, now.day + daysUntilSat, 9);
+      ? 7
+      : (DateTime.saturday - now.weekday + 7) % 7;
+  final thisWeekend = DateTime(now.year, now.month, now.day + daysUntilSat, 9);
   final nextWeek = DateTime(now.year, now.month, now.day + 7, 8);
   final presets = <({String label, String hint, DateTime at})>[
-    (
-      label: 'Later today',
-      hint: _snoozeLabel(laterToday),
-      at: laterToday,
-    ),
+    (label: 'Later today', hint: _snoozeLabel(laterToday), at: laterToday),
     (
       label: 'Tomorrow',
       hint: _snoozeLabel(tomorrowMorning),
       at: tomorrowMorning,
     ),
-    (
-      label: 'This weekend',
-      hint: _snoozeLabel(thisWeekend),
-      at: thisWeekend,
-    ),
-    (
-      label: 'Next week',
-      hint: _snoozeLabel(nextWeek),
-      at: nextWeek,
-    ),
+    (label: 'This weekend', hint: _snoozeLabel(thisWeekend), at: thisWeekend),
+    (label: 'Next week', hint: _snoozeLabel(nextWeek), at: nextWeek),
   ];
   return showModalBottomSheet<DateTime>(
     context: context,
@@ -583,8 +560,8 @@ String _snoozeLabel(DateTime dt) {
   final hour = local.hour == 0
       ? 12
       : local.hour > 12
-          ? local.hour - 12
-          : local.hour;
+      ? local.hour - 12
+      : local.hour;
   final ampm = local.hour < 12 ? 'AM' : 'PM';
   final minute = local.minute.toString().padLeft(2, '0');
   return '$dow $hour:$minute $ampm';
@@ -710,8 +687,7 @@ class _ThreadRow extends StatelessWidget {
                     (msg['fromAddress'] as String?) ?? '',
                     style: GoogleFonts.inter(
                       fontSize: 12,
-                      fontWeight:
-                          !isRead ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: !isRead ? FontWeight.w700 : FontWeight.w500,
                       color: AppColors.textPrimary,
                     ),
                     maxLines: 1,
@@ -750,6 +726,19 @@ String _shortDate(String? iso) {
   if (iso == null) return '';
   final dt = DateTime.tryParse(iso)?.toLocal();
   if (dt == null) return '';
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
   return '${months[dt.month - 1]} ${dt.day}';
 }

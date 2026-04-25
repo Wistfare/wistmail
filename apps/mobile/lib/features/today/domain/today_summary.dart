@@ -126,18 +126,75 @@ class TodayActivityItem {
   }
 }
 
+/// AI-generated morning briefing. Null when the worker hasn't produced
+/// one yet (or the user is brand new). The Today screen falls back to
+/// the component sections rather than blocking on the digest.
+class TodayDigest {
+  const TodayDigest({
+    required this.briefing,
+    this.priorities = const [],
+    this.focusBlocks = const [],
+  });
+
+  final String briefing;
+  final List<TodayPriority> priorities;
+  final List<TodayFocusBlock> focusBlocks;
+
+  factory TodayDigest.fromJson(Map<String, dynamic> json) {
+    return TodayDigest(
+      briefing: (json['briefing'] as String?) ?? '',
+      priorities: ((json['priorities'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TodayPriority.fromJson)
+          .toList(growable: false),
+      focusBlocks: ((json['focusBlocks'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TodayFocusBlock.fromJson)
+          .toList(growable: false),
+    );
+  }
+}
+
+class TodayPriority {
+  const TodayPriority({required this.kind, required this.id, required this.reason});
+  final String kind; // email | task | event
+  final String id;
+  final String reason;
+
+  factory TodayPriority.fromJson(Map<String, dynamic> json) => TodayPriority(
+        kind: (json['kind'] as String?) ?? 'email',
+        id: (json['id'] as String?) ?? '',
+        reason: (json['reason'] as String?) ?? '',
+      );
+}
+
+class TodayFocusBlock {
+  const TodayFocusBlock({required this.startAt, required this.endAt, required this.label});
+  final String startAt;
+  final String endAt;
+  final String label;
+
+  factory TodayFocusBlock.fromJson(Map<String, dynamic> json) => TodayFocusBlock(
+        startAt: (json['startAt'] as String?) ?? '',
+        endAt: (json['endAt'] as String?) ?? '',
+        label: (json['label'] as String?) ?? '',
+      );
+}
+
 class TodaySummary {
   const TodaySummary({
     this.nextUp,
     this.needsReply = const [],
     this.schedule = const [],
     this.recentActivity = const [],
+    this.digest,
   });
 
   final TodayNextUp? nextUp;
   final List<TodayNeedsReplyItem> needsReply;
   final List<TodayScheduleEvent> schedule;
   final List<TodayActivityItem> recentActivity;
+  final TodayDigest? digest;
 
   factory TodaySummary.fromJson(Map<String, dynamic> json) {
     return TodaySummary(
@@ -156,6 +213,9 @@ class TodaySummary {
           .whereType<Map<String, dynamic>>()
           .map(TodayActivityItem.fromJson)
           .toList(growable: false),
+      digest: json['digest'] == null
+          ? null
+          : TodayDigest.fromJson(json['digest'] as Map<String, dynamic>),
     );
   }
 
@@ -163,5 +223,6 @@ class TodaySummary {
       nextUp == null &&
       needsReply.isEmpty &&
       schedule.isEmpty &&
-      recentActivity.isEmpty;
+      recentActivity.isEmpty &&
+      digest == null;
 }

@@ -8,6 +8,8 @@ import {
   newAttachmentId,
   putAttachment,
 } from '../lib/attachment-storage.js'
+import { enqueueIngestEmail } from '../lib/ai-queue.js'
+import { publishBust } from '../lib/cache-bus.js'
 import { sendEmailNotification } from './fcm.js'
 import { indexEmail } from './search.js'
 import { ThreadService } from './thread-service.js'
@@ -179,6 +181,7 @@ export class EmailReceiver {
             emailId,
             filename: a.filename,
             contentType: a.contentType,
+            contentId: a.cid,
             sizeBytes: a.sizeBytes,
             storageKey: a.storageKey,
           })),
@@ -210,6 +213,15 @@ export class EmailReceiver {
         createdAt: createdAt.toISOString(),
         preview,
       })
+
+      // Enqueue AI fan-out (classify, summarize, auto-label, draft).
+      // Fire-and-forget; the worker is decoupled from the SMTP path.
+      enqueueIngestEmail(emailId).catch((err) => {
+        console.warn('[email-receiver] AI enqueue failed:', err)
+      })
+
+      // New email invalidates the user's hot reads (today / unified-inbox).
+      publishBust(mailbox.userId).catch(() => {})
 
       // Index in MeiliSearch (fire-and-forget; no-op if disabled)
       indexEmail({

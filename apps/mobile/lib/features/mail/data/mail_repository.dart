@@ -1,4 +1,5 @@
 import '../domain/email.dart';
+import '../domain/reply_suggestion.dart';
 import 'mail_remote_data_source.dart';
 
 abstract class MailRepository {
@@ -44,6 +45,10 @@ abstract class MailRepository {
   /// 'rate_limited'. Backend transitions it back to 'sending' and
   /// the WS event flips the row's pill.
   Future<void> dispatch(String emailId);
+  /// AI-generated reply suggestions for an inbound email. Empty list
+  /// when the worker hasn't produced any (yet, or because all drafts
+  /// scored below the floor).
+  Future<List<ReplySuggestion>> getReplySuggestions(String emailId);
 }
 
 class MailRepositoryImpl implements MailRepository {
@@ -132,4 +137,8 @@ class MailRepositoryImpl implements MailRepository {
 
   @override
   Future<void> dispatch(String emailId) => _remote.dispatch(emailId);
+
+  @override
+  Future<List<ReplySuggestion>> getReplySuggestions(String emailId) =>
+      _remote.getReplySuggestions(emailId);
 }

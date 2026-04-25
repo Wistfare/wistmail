@@ -1,9 +1,24 @@
 import '../../../core/network/api_client.dart';
 import '../domain/email.dart';
+import '../domain/reply_suggestion.dart';
 
 class MailRemoteDataSource {
   MailRemoteDataSource(this._client);
   final ApiClient _client;
+
+  /// Fetch AI reply suggestions for an inbound email. Returns an empty
+  /// list when the worker hasn't produced any (yet). The Thread screen
+  /// renders nothing in that case.
+  Future<List<ReplySuggestion>> getReplySuggestions(String emailId) async {
+    final response = await _client.dio.get<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/reply-suggestions',
+    );
+    final raw = (response.data?['suggestions'] as List?) ?? const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(ReplySuggestion.fromJson)
+        .toList(growable: false);
+  }
 
   Future<EmailPage> listByFolder({
     String folder = 'inbox',

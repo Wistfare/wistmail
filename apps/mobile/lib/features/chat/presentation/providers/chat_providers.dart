@@ -32,13 +32,12 @@ class ChatListState {
     String? errorMessage,
     bool clearError = false,
     bool? hasLoaded,
-  }) =>
-      ChatListState(
-        conversations: conversations ?? this.conversations,
-        isLoading: isLoading ?? this.isLoading,
-        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-        hasLoaded: hasLoaded ?? this.hasLoaded,
-      );
+  }) => ChatListState(
+    conversations: conversations ?? this.conversations,
+    isLoading: isLoading ?? this.isLoading,
+    errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+    hasLoaded: hasLoaded ?? this.hasLoaded,
+  );
 }
 
 class ChatListController extends StateNotifier<ChatListState> {
@@ -84,7 +83,9 @@ class ChatListController extends StateNotifier<ChatListState> {
     switch (event) {
       case ChatMessageNewEvent e:
         // Bump the relevant conversation to the top and update its last message.
-        final idx = state.conversations.indexWhere((c) => c.id == e.conversationId);
+        final idx = state.conversations.indexWhere(
+          (c) => c.id == e.conversationId,
+        );
         if (idx < 0) {
           // Unknown conversation — refresh the list.
           await refresh();
@@ -127,7 +128,15 @@ class ChatListController extends StateNotifier<ChatListState> {
 
 final chatListControllerProvider =
     StateNotifierProvider<ChatListController, ChatListState>(
-  (ref) => ChatListController(ref),
+      (ref) => ChatListController(ref),
+    );
+
+final chatUnreadCountProvider = Provider<int>(
+  (ref) => ref.watch(
+    chatListControllerProvider.select(
+      (s) => s.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount),
+    ),
+  ),
 );
 
 class ConversationState {
@@ -149,18 +158,17 @@ class ConversationState {
     String? errorMessage,
     bool clearError = false,
     bool? isSending,
-  }) =>
-      ConversationState(
-        messages: messages ?? this.messages,
-        isLoading: isLoading ?? this.isLoading,
-        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-        isSending: isSending ?? this.isSending,
-      );
+  }) => ConversationState(
+    messages: messages ?? this.messages,
+    isLoading: isLoading ?? this.isLoading,
+    errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+    isSending: isSending ?? this.isSending,
+  );
 }
 
 class ConversationController extends StateNotifier<ConversationState> {
   ConversationController(this._ref, this._conversationId)
-      : super(const ConversationState(isLoading: true)) {
+    : super(const ConversationState(isLoading: true)) {
     _load();
     _subscribeToRealtime();
   }
@@ -177,10 +185,7 @@ class ConversationController extends StateNotifier<ConversationState> {
       // Mark the conversation as read when opened.
       unawaited(_markRead());
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: _format(e),
-      );
+      state = state.copyWith(isLoading: false, errorMessage: _format(e));
     }
   }
 
@@ -208,10 +213,7 @@ class ConversationController extends StateNotifier<ConversationState> {
       );
       return true;
     } catch (e) {
-      state = state.copyWith(
-        isSending: false,
-        errorMessage: _format(e),
-      );
+      state = state.copyWith(isSending: false, errorMessage: _format(e));
       return false;
     }
   }
@@ -255,5 +257,5 @@ class ConversationController extends StateNotifier<ConversationState> {
 
 final conversationControllerProvider = StateNotifierProvider.autoDispose
     .family<ConversationController, ConversationState, String>(
-  (ref, id) => ConversationController(ref, id),
-);
+      (ref, id) => ConversationController(ref, id),
+    );

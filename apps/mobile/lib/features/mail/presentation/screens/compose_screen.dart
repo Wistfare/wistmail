@@ -101,7 +101,8 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
     _restoreAttempted = true;
     _draftMailboxId = mailboxId;
 
-    final hasPrefilled = widget.args.toAddresses.isNotEmpty ||
+    final hasPrefilled =
+        widget.args.toAddresses.isNotEmpty ||
         widget.args.subject.isNotEmpty ||
         widget.args.body.isNotEmpty;
     if (hasPrefilled) return;
@@ -216,8 +217,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                   Future.microtask(() {
                     if (!mounted) return;
                     mailboxes.whenOrNull(
-                      data: (list) =>
-                          list.isEmpty ? null : _send(list.first),
+                      data: (list) => list.isEmpty ? null : _send(list.first),
                     );
                   });
                 },
@@ -252,6 +252,20 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                       },
                       onShowCcBcc: () =>
                           setState(() => _showCc = _showBcc = true),
+                      onHideCc: () {
+                        setState(() {
+                          _cc = const [];
+                          _showCc = false;
+                        });
+                        _scheduleAutosave();
+                      },
+                      onHideBcc: () {
+                        setState(() {
+                          _bcc = const [];
+                          _showBcc = false;
+                        });
+                        _scheduleAutosave();
+                      },
                       subjectController: _subjectController,
                       bodyController: _bodyController,
                       errorMessage: _errorMessage,
@@ -262,7 +276,9 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                       width: 22,
                       height: 22,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.accent),
+                        strokeWidth: 2,
+                        color: AppColors.accent,
+                      ),
                     ),
                   ),
                   error: (err, _) => Center(
@@ -290,7 +306,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
 /// Top bar — pen `UTlKJ` (padding [8,12], space_between).
 ///   Left: close btn 40×40 circle surface (X icon 18).
 ///   Center: "NEW MESSAGE" 10/700 mono letterSpacing 1.5 secondary.
-///   Right (gap 6): attach, schedule (clock-3), more (ellipsis-vertical),
+///   Right (gap 6): attach, schedule (clock-3),
 ///   SEND pill (accent, cornerRadius 20, height 40, padding [0,14,0,16],
 ///   gap 6, icon send 14 + "SEND" 11/700 letterSpacing 1.5 black).
 class _ComposeTopBar extends StatelessWidget {
@@ -313,9 +329,10 @@ class _ComposeTopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          _CircleBtn(icon: LucideIcons.x, onTap: onClose),
+          _CircleBtn(icon: LucideIcons.arrowLeft, onTap: onClose),
           Expanded(
-            child: Center(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 18),
               child: Text(
                 'NEW MESSAGE',
                 style: GoogleFonts.jetBrainsMono(
@@ -336,8 +353,6 @@ class _ComposeTopBar extends StatelessWidget {
                 ? AppColors.accent
                 : AppColors.textPrimary,
           ),
-          const SizedBox(width: 6),
-          _CircleBtn(icon: LucideIcons.ellipsisVertical, onTap: () {}),
           const SizedBox(width: 6),
           _SendPill(
             isSending: isSending,
@@ -412,8 +427,11 @@ class _SendPill extends StatelessWidget {
                       color: AppColors.background,
                     ),
                   )
-                : const Icon(LucideIcons.send,
-                    size: 14, color: AppColors.background),
+                : const Icon(
+                    LucideIcons.send,
+                    size: 14,
+                    color: AppColors.background,
+                  ),
             const SizedBox(width: 6),
             Text(
               label,
@@ -443,6 +461,8 @@ class _ComposeBody extends StatelessWidget {
     required this.onCcChanged,
     required this.onBccChanged,
     required this.onShowCcBcc,
+    required this.onHideCc,
+    required this.onHideBcc,
     required this.subjectController,
     required this.bodyController,
     required this.errorMessage,
@@ -458,6 +478,8 @@ class _ComposeBody extends StatelessWidget {
   final ValueChanged<List<String>> onCcChanged;
   final ValueChanged<List<String>> onBccChanged;
   final VoidCallback onShowCcBcc;
+  final VoidCallback onHideCc;
+  final VoidCallback onHideBcc;
   final TextEditingController subjectController;
   final TextEditingController bodyController;
   final String? errorMessage;
@@ -470,7 +492,7 @@ class _ComposeBody extends StatelessWidget {
         children: [
           // Fields block — pen `eU0n4` (padding [6,20,0,20]).
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+            padding: const EdgeInsets.only(top: 6),
             child: Column(
               children: [
                 _FromRow(fromAddress: fromAddress),
@@ -485,6 +507,7 @@ class _ComposeBody extends StatelessWidget {
                   const _Divider(),
                   _SimpleRow(
                     label: 'CC',
+                    onRemove: onHideCc,
                     child: RecipientChipsField(
                       values: cc,
                       onChanged: onCcChanged,
@@ -496,6 +519,7 @@ class _ComposeBody extends StatelessWidget {
                   const _Divider(),
                   _SimpleRow(
                     label: 'BCC',
+                    onRemove: onHideBcc,
                     child: RecipientChipsField(
                       values: bcc,
                       onChanged: onBccChanged,
@@ -539,6 +563,8 @@ class _ComposeBody extends StatelessWidget {
                   fontSize: 14,
                   color: AppColors.textTertiary,
                 ),
+                filled: false,
+                fillColor: Colors.transparent,
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -569,7 +595,7 @@ class _FromRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -623,8 +649,11 @@ class _FromPill extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          const Icon(LucideIcons.chevronDown,
-              size: 12, color: AppColors.textSecondary),
+          const Icon(
+            LucideIcons.chevronDown,
+            size: 12,
+            color: AppColors.textSecondary,
+          ),
         ],
       ),
     );
@@ -647,7 +676,7 @@ class _ToRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -688,13 +717,14 @@ class _ToRow extends StatelessWidget {
 
 /// Generic row used for CC/BCC follow-ups.
 class _SimpleRow extends StatelessWidget {
-  const _SimpleRow({required this.label, required this.child});
+  const _SimpleRow({required this.label, required this.child, this.onRemove});
   final String label;
   final Widget child;
+  final VoidCallback? onRemove;
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -704,6 +734,21 @@ class _SimpleRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(child: child),
+          if (onRemove != null) ...[
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: onRemove,
+              customBorder: const CircleBorder(),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(
+                  LucideIcons.x,
+                  size: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -717,7 +762,7 @@ class _SubjectRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -739,6 +784,8 @@ class _SubjectRow extends StatelessWidget {
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
+                filled: false,
+                fillColor: Colors.transparent,
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -807,9 +854,7 @@ Future<DateTime?> _pickScheduledTime(BuildContext context) async {
   if (date == null || !context.mounted) return null;
   final time = await showTimePicker(
     context: context,
-    initialTime: TimeOfDay.fromDateTime(
-      now.add(const Duration(hours: 1)),
-    ),
+    initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
   );
   if (time == null) return null;
   final scheduled = DateTime(
