@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { simpleParser, type ParsedMail, type AddressObject } from 'mailparser'
-import { attachments as attachmentsTable, emails, mailboxes, domains } from '@wistmail/db'
+import { attachments as attachmentsTable, emails, mailboxes, domains, senderNames } from '@wistmail/db'
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 import { eventBus } from '../events/bus.js'
@@ -116,8 +116,52 @@ export class EmailReceiver {
       const emailId = generateId('eml')
       const subject = parsed.subject || '(no subject)'
       const fromAddress = parsed.from || inbound.from
-      const fromName = parsed.fromName
       const createdAt = parsed.date || new Date()
+
+      // Sender display-name resolution:
+      //   1. Use the From-header name if the sender's MTA set one.
+      //   2. Else hit the global sender_names cache — if a prior
+      //      email from this address resolved to a name (header or
+      //      AI-derived), reuse it. Zero AI cost on the hot path.
+      //   3. Else leave fromName=null; the AI worker's
+      //      derive-display-name job will fill it in async.
+      // Also: if we DID get a header name, upsert the cache so future
+      // bot/no-name emails from this person show their real name.
+      let fromName: string | null = parsed.fromName
+      if (fromName) {
+        // Best-effort cache write — don't block the inbound on it.
+        await this.db
+          .insert(senderNames)
+          .values({
+            address: fromAddress.toLowerCase(),
+            displayName: fromName,
+            source: 'header',
+            confidence: null,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: senderNames.address,
+            set: {
+              displayName: fromName,
+              source: 'header',
+              confidence: null,
+              updatedAt: new Date(),
+            },
+          })
+          .catch((err) => {
+            console.warn('[email-receiver] sender_names upsert failed:', err)
+          })
+      } else if (fromAddress) {
+        const cached = await this.db
+          .select({ displayName: senderNames.displayName, source: senderNames.source })
+          .from(senderNames)
+          .where(eq(senderNames.address, fromAddress.toLowerCase()))
+          .limit(1)
+          .catch(() => [])
+        if (cached[0] && cached[0].source !== 'unknown' && cached[0].displayName) {
+          fromName = cached[0].displayName
+        }
+      }
 
       // Persist attachment bytes to disk before we insert the email
       // row — if the disk write fails we don't want a row pointing

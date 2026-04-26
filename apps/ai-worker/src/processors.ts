@@ -14,6 +14,8 @@ import { Queue, type Job } from 'bullmq'
 import {
   autoLabel,
   classifyNeedsReply,
+  deriveDisplayName,
+  deriveLocalPartName,
   draftReply,
   summarizeEmail,
   todayDigest,
@@ -27,6 +29,7 @@ import {
   mailboxes,
   projectTasks,
   projects,
+  senderNames,
   todayDigests,
   users,
   type Database,
@@ -37,6 +40,7 @@ import {
   JOB_NAMES,
   type AutoLabelJob,
   type ClassifyNeedsReplyJob,
+  type DeriveDisplayNameJob,
   type DraftReplyJob,
   type IngestEmailJob,
   type SummarizeJob,
@@ -95,7 +99,7 @@ export async function processIngestEmail(
     }
   }
   const opts = { removeOnComplete: 100, removeOnFail: 200, attempts: 2 }
-  const names = [
+  const names: string[] = [
     JOB_NAMES.classifyNeedsReply,
     JOB_NAMES.summarize,
     JOB_NAMES.autoLabel,
@@ -104,11 +108,146 @@ export async function processIngestEmail(
   for (const name of names) {
     await deps.queue.add(name, { emailId }, opts)
   }
+
+  // If the inbound row didn't get a from_name from the header, also
+  // enqueue a derive-display-name job. Dedup by address so multiple
+  // emails from the same nameless sender collapse to one job.
+  const emailRow = await deps.db
+    .select({ fromName: emails.fromName, fromAddress: emails.fromAddress })
+    .from(emails)
+    .where(eq(emails.id, emailId))
+    .limit(1)
+  const row = emailRow[0]
+  if (row && (row.fromName === null || row.fromName === '') && row.fromAddress) {
+    const addr = row.fromAddress.toLowerCase()
+    await deps.queue.add(
+      JOB_NAMES.deriveDisplayName,
+      { address: addr, emailId },
+      {
+        ...opts,
+        // Per-address dedup — 4 emails from the same unknown sender
+        // arriving in a burst collapse to one model call.
+        jobId: `derive:${addr}`,
+      },
+    )
+    names.push(JOB_NAMES.deriveDisplayName)
+  }
+
   await deps.db
     .update(emails)
     .set({ aiProcessedAt: new Date() })
     .where(eq(emails.id, emailId))
   return { scheduled: names }
+}
+
+/**
+ * Resolve a display name for a sender address. Three-tier cascade:
+ *   1. Cache hit on `sender_names`        → use stored name.
+ *   2. Heuristic on local-part            → use if confidence ≥ 0.7.
+ *   3. AI fallback                        → use if confidence ≥ 0.5.
+ *   else: write `unknown` marker so we never re-run for this address.
+ *
+ * Result is written back to `sender_names` AND, when `emailId` is set,
+ * to that email's `from_name` column so the inbox row reflects it.
+ */
+export async function processDeriveDisplayName(
+  deps: ProcessorDeps,
+  job: Job<DeriveDisplayNameJob>,
+): Promise<{ source: string; name: string; confidence: number | null }> {
+  const { address, emailId } = job.data
+  const lc = address.toLowerCase()
+
+  // Step 1 — cache.
+  const cached = await deps.db
+    .select({
+      displayName: senderNames.displayName,
+      source: senderNames.source,
+      confidence: senderNames.confidence,
+    })
+    .from(senderNames)
+    .where(eq(senderNames.address, lc))
+    .limit(1)
+  if (cached[0]) {
+    if (cached[0].source !== 'unknown' && cached[0].displayName) {
+      await applyToEmail(deps, emailId, cached[0].displayName)
+    }
+    return {
+      source: `cache-${cached[0].source}`,
+      name: cached[0].displayName,
+      confidence: cached[0].confidence,
+    }
+  }
+
+  // Step 2 — heuristic.
+  const at = lc.indexOf('@')
+  if (at < 1) {
+    // Malformed address — write a no-go marker and bail.
+    await upsertSenderName(deps, lc, '', 'unknown', 0)
+    return { source: 'unknown', name: '', confidence: 0 }
+  }
+  const localPart = lc.slice(0, at)
+  const domain = lc.slice(at + 1)
+  const heuristic = deriveLocalPartName(localPart)
+  if (heuristic.confidence >= 0.7 && heuristic.name) {
+    await upsertSenderName(deps, lc, heuristic.name, 'heuristic', heuristic.confidence)
+    await applyToEmail(deps, emailId, heuristic.name)
+    return { source: 'heuristic', name: heuristic.name, confidence: heuristic.confidence }
+  }
+  // High-confidence "this is a role/system address" → store empty
+  // marker, skip AI.
+  if (heuristic.confidence >= 0.9 && heuristic.name === '') {
+    await upsertSenderName(deps, lc, '', 'unknown', heuristic.confidence)
+    return { source: 'unknown', name: '', confidence: heuristic.confidence }
+  }
+
+  // Step 3 — AI.
+  const ai = await deriveDisplayName(deps.provider, deps.model, { localPart, domain })
+  if (ai.name && ai.confidence >= 0.5) {
+    await upsertSenderName(deps, lc, ai.name, 'ai', ai.confidence)
+    await applyToEmail(deps, emailId, ai.name)
+    return { source: 'ai', name: ai.name, confidence: ai.confidence }
+  }
+  // Either model said "this is a role" (name='') or its confidence
+  // was too low to commit. Cache 'unknown' to skip future attempts.
+  await upsertSenderName(deps, lc, '', 'unknown', ai.confidence)
+  return { source: 'unknown', name: ai.name, confidence: ai.confidence }
+}
+
+async function upsertSenderName(
+  deps: ProcessorDeps,
+  address: string,
+  displayName: string,
+  source: 'header' | 'heuristic' | 'ai' | 'unknown',
+  confidence: number | null,
+): Promise<void> {
+  await deps.db
+    .insert(senderNames)
+    .values({
+      address,
+      displayName,
+      source,
+      confidence,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: senderNames.address,
+      set: { displayName, source, confidence, updatedAt: new Date() },
+      // Never overwrite a 'header' entry with anything weaker — the
+      // human-set From-header name is the ground truth.
+      setWhere: sql`${senderNames.source} <> 'header' OR ${source} = 'header'`,
+    })
+}
+
+async function applyToEmail(
+  deps: ProcessorDeps,
+  emailId: string | null,
+  name: string,
+): Promise<void> {
+  if (!emailId || !name) return
+  await deps.db
+    .update(emails)
+    .set({ fromName: name })
+    .where(and(eq(emails.id, emailId), isNull(emails.fromName)))
 }
 
 export async function processClassifyNeedsReply(

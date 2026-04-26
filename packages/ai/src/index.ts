@@ -9,6 +9,7 @@ export {
   type AutoLabelJob,
   type DraftReplyJob,
   type TodayDigestJob,
+  type DeriveDisplayNameJob,
 } from './queues'
 export { OllamaProvider } from './ollama'
 export { OpenAIProvider } from './openai'
@@ -32,6 +33,10 @@ export { summarizeEmail } from './jobs/summarize'
 export { autoLabel } from './jobs/auto-label'
 export { draftReply } from './jobs/draft-reply'
 export { todayDigest } from './jobs/today-digest'
+export { deriveDisplayName } from './jobs/derive-display-name'
+export type { DeriveInput, DeriveOutput } from './jobs/derive-display-name'
+export { deriveLocalPartName } from './jobs/local-part-heuristic'
+export type { HeuristicResult } from './jobs/local-part-heuristic'
 export type {
   ClassifyInput,
   ClassifyOutput,
