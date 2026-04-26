@@ -129,7 +129,15 @@ class _WmCodeInputState extends State<WmCodeInput> {
                   ),
                   decoration: const InputDecoration(
                     counterText: '',
+                    // All four border slots must be InputBorder.none —
+                    // setting only `border` lets the app's
+                    // inputDecorationTheme's enabledBorder /
+                    // focusedBorder leak through as a horizontal line
+                    // bisecting each code box.
                     border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
                     isCollapsed: true,
                     contentPadding: EdgeInsets.zero,
                   ),
