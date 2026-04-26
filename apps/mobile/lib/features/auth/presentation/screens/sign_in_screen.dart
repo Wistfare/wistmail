@@ -58,30 +58,46 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-          child: Column(
-            children: [
-              // Header occupies the top portion
-              const Spacer(flex: 1),
-              const _Header(),
-              const Spacer(flex: 2),
-              // Form + CTA pinned closer to the bottom
-              _Form(
-                emailController: _emailController,
-                passwordController: _passwordController,
-                isLoading: authState.isLoading,
-                errorMessage: authState.errorMessage,
-                onSubmit: _submit,
+        // LayoutBuilder + IntrinsicHeight inside a SingleChildScrollView is
+        // the canonical pattern for a sign-in screen with Spacers: when
+        // the viewport has room, the column lays out as designed (header
+        // up top, form near the bottom, copyright pinned). When the
+        // keyboard opens and the body shrinks past the column's intrinsic
+        // height, the Spacers collapse and the whole thing becomes
+        // scrollable instead of overflowing.
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+                    child: Column(
+                      children: [
+                        const Spacer(flex: 1),
+                        const _Header(),
+                        const Spacer(flex: 2),
+                        _Form(
+                          emailController: _emailController,
+                          passwordController: _passwordController,
+                          isLoading: authState.isLoading,
+                          errorMessage: authState.errorMessage,
+                          onSubmit: _submit,
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          '© 2026 Wistfare Mail',
+                          style: AppTextStyles.caption.copyWith(
+                              color: AppColors.textMuted, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 20),
-              Text(
-                '© 2026 Wistfare Mail',
-                style: AppTextStyles.caption
-                    .copyWith(color: AppColors.textMuted, fontSize: 11),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
