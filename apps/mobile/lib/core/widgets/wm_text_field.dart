@@ -65,6 +65,14 @@ class _WmTextFieldState extends State<WmTextField> {
         ),
         const SizedBox(height: 10),
         Container(
+          // clipBehavior is what keeps the TextField's inner background
+          // (autofill highlight, IME hint backing) inside the rounded
+          // corners. Without it, the email field — which has no right-
+          // side icon to bound it — bleeds rectangular fill past the
+          // top-right and bottom-right corners. The password field
+          // looked clean only because its visibility-toggle IconButton
+          // happened to absorb the right edge.
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: AppColors.surface,
             border: Border.all(color: AppColors.border, width: 1),
