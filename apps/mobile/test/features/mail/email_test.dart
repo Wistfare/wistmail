@@ -150,4 +150,27 @@ void main() {
       expect(json['send'], true);
     });
   });
+
+  group('Email.fromJson labels', () {
+    test('parses inline labels array (auto-applied AI labels included)', () {
+      // The list endpoint ships a flat `labels` array — AI-applied
+      // and user-applied labels look identical to the row renderer,
+      // which is the contract we want to lock in here.
+      final email = Email.fromJson({
+        ..._baseEmail(),
+        'labels': [
+          {'id': 'lbl_user', 'name': 'Work', 'color': '#FF0000'},
+          {'id': 'lbl_ai', 'name': 'Urgent', 'color': '#FFCC00'},
+        ],
+      });
+      expect(email.labels, hasLength(2));
+      final names = email.labels.map((l) => l.name).toList()..sort();
+      expect(names, ['Urgent', 'Work']);
+    });
+
+    test('defaults to an empty list when the field is missing', () {
+      final email = Email.fromJson(_baseEmail());
+      expect(email.labels, isEmpty);
+    });
+  });
 }

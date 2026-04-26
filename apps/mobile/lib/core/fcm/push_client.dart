@@ -53,12 +53,21 @@ class PushClient {
   }
 
   /// Delete the current token from the backend and stop refresh listeners.
+  /// Also invalidates the FCM-side token via `messaging.deleteToken()`
+  /// so any in-flight messages addressed to the old token are dropped
+  /// by FCM rather than landing on this device — closes the privacy
+  /// window where the previous account's notifications could leak in
+  /// on the next user's session.
   Future<void> unregister() async {
     final token = _currentToken;
     await _tokenSub?.cancel();
     _tokenSub = null;
     _currentToken = null;
     if (token == null) return;
+    // Order matters: delete server-side first so the backend stops
+    // sending; THEN invalidate the FCM token. Reversed order leaves
+    // a brief window where the server still sends to a token that's
+    // about to be invalidated, wasting an FCM call.
     try {
       await apiClient.dio.delete<Map<String, dynamic>>(
         '/api/v1/user/device-tokens',
@@ -66,6 +75,16 @@ class PushClient {
       );
     } catch (_) {
       // Best-effort; don't block logout.
+    }
+    final messaging = _messaging;
+    if (messaging != null) {
+      try {
+        await messaging.deleteToken();
+      } catch (_) {
+        // Best-effort. The next sign-in will fetch a fresh token via
+        // `getToken()` regardless of whether the old one was cleanly
+        // invalidated.
+      }
     }
   }
 

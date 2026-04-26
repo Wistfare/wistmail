@@ -229,9 +229,11 @@ class EmailListItem extends ConsumerWidget {
                   ),
                 ),
               ],
-              // Real labels — fetched on demand from /labels/email/:id.
-              // The autoDispose family caches per-email, so scrolling
-              // back to a row reuses the result instead of refetching.
+              // Labels ship inline in the list response (the backend
+              // joins email_labels in `EmailService.list`), so this is
+              // a render of the already-parsed array — no per-row
+              // fetch. Auto-applied AI labels (source='ai') flow
+              // through the same array as user-defined ones.
               _RowLabels(labels: email.labels),
             ],
           ),
