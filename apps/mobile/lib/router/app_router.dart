@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/providers/auth_controller.dart';
@@ -40,17 +40,21 @@ import '../features/settings/presentation/screens/pending_sync_screen.dart';
 import '../features/settings/presentation/screens/labels_settings_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
 import '../features/shell/presentation/screens/main_shell.dart';
-import '../features/shell/presentation/screens/splash_screen.dart';
 
 /// Root router. Built as a Riverpod provider so its `redirect` callback can
 /// read the auth state directly.
 ///
 /// Boot sequence:
-///   1. App launches at `/` — renders [WmSplashScreen] (logo, no content).
-///   2. `AuthController._restore()` runs async; `isRestoring` is true.
-///   3. Any attempt to navigate to a protected route while restoring is
-///      redirected back to `/`, so we never flash a half-loaded Today/
-///      Inbox/etc. before we know whether the user is signed in.
+///   1. The OS shows the native launch splash (Android
+///      drawable/launch_background.xml + drawable-night/; iOS
+///      LaunchScreen.storyboard) with the brand mark.
+///   2. The Flutter engine starts, hits `/`, which renders only a
+///      theme-matching solid background — no second logo, so the
+///      native splash hands off invisibly.
+///   3. `AuthController._restore()` runs async; `isRestoring` is true.
+///      Any attempt to navigate to a protected route while restoring
+///      is redirected back to `/`, so we never flash a half-loaded
+///      Today/Inbox/etc. before we know whether the user is signed in.
 ///   4. When restore completes, the router re-evaluates and sends the
 ///      user to `/today` (authenticated) or `/auth/sign-in` (not).
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -98,11 +102,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      // Splash — root route. The `redirect` above pins the user here
-      // while AuthController._restore() resolves.
+      // Root route. The `redirect` above pins the user here while
+      // AuthController._restore() resolves. The native launch splash
+      // (Android: drawable/launch_background.xml + drawable-night/;
+      // iOS: LaunchScreen.storyboard) shows the brand mark; this
+      // Flutter route renders only a theme-matching solid background
+      // so there's no logo flash when the engine takes over from the
+      // OS splash. Restore typically completes in <300ms.
       GoRoute(
         path: '/',
-        builder: (context, state) => const WmSplashScreen(),
+        builder: (context, state) => Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          body: const SizedBox.expand(),
+        ),
       ),
       // Auth — never wrapped in the shell
       GoRoute(

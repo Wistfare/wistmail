@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dark-mode launch splash. Black background, white logo. The
+  density-specific white logo PNGs live in
+  drawable-night-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/splash_logo.png so
+  the resource resolver picks the white version automatically when
+  the system theme is dark.
+
+  Note: the existing drawable-v21/launch_background.xml is kept as a
+  no-op fallback for very old Android 5 devices, but in practice
+  every Android 10+ device hits this file via the night qualifier.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/black" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/splash_logo" />
+    </item>
+</layer-list>

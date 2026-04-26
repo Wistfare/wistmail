@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!--
+  Light-mode launch splash. Shown by Android while the app process
+  starts. The corresponding dark variant lives at
+  drawable-night/launch_background.xml — the system picks one based on
+  the user's system theme.
+
+  Density-specific PNGs live alongside this file in
+  drawable-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/splash_logo.png. The
+  resource resolver walks the bucket list automatically; no per-density
+  XML override is needed.
+-->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@android:color/white" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
+    <item>
         <bitmap
             android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+            android:src="@drawable/splash_logo" />
+    </item>
 </layer-list>
