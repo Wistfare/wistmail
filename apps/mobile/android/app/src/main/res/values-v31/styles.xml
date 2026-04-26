@@ -6,17 +6,22 @@
   the white rounded-square adaptive background baked in — not what we
   want as a splash).
 
-  windowSplashScreenAnimatedIcon picks @drawable/splash_logo, and the
-  resource resolver swaps to drawable-night-* automatically when the
-  user's system theme is dark. windowSplashScreenBrandingImage pins
-  the "Wistfare Mail" wordmark at the bottom — same role as
-  "from Meta" on WhatsApp's splash.
+  windowSplashScreenAnimatedIcon points at @drawable/splash_icon — a
+  variant of the brand mark with the art inset to ~50% of the canvas
+  so the round W + satellites fit comfortably in the API's inner 192dp
+  visible circle without clipping. (The legacy launch_background.xml
+  keeps using @drawable/splash_logo which is full-canvas — that path
+  has different sizing rules.) The night qualifier picks the white
+  variant automatically.
+
+  windowSplashScreenBrandingImage pins the "Wistfare Mail" wordmark
+  at the bottom — same role as "from Meta" on WhatsApp's splash.
 -->
 <resources>
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
         <item name="android:windowSplashScreenBackground">@android:color/white</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
         <item name="android:windowSplashScreenBrandingImage">@drawable/wm_brand_text</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
