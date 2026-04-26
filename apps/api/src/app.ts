@@ -16,6 +16,7 @@ import { authRoutes } from './routes/auth.js'
 import { setupRoutes } from './routes/setup.js'
 import { adminRoutes } from './routes/admin.js'
 import { inboxRoutes } from './routes/inbox.js'
+import { notificationActionRoutes } from './routes/notification-actions.js'
 import { attachmentRoutes } from './routes/attachments.js'
 import { inboundRoutes } from './routes/inbound.js'
 import { userRoutes } from './routes/user.js'
@@ -43,9 +44,22 @@ app.use('*', logger())
 app.use(
   '*',
   cors({
+    // In development we accept any localhost / 127.0.0.1 port so dev
+    // setups using auto-allocated preview ports (Next's port shuffle
+    // when 3000 is busy, Storybook, etc) don't get CORS-blocked. In
+    // production we still pin the canonical web origin.
     origin: process.env.NODE_ENV === 'production'
       ? ['https://mail.wistfare.com']
-      : ['http://localhost:3000', 'http://localhost:3001', 'https://mail.wistfare.com'],
+      : (origin) => {
+          if (!origin) return null
+          if (
+            /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+            origin === 'https://mail.wistfare.com'
+          ) {
+            return origin
+          }
+          return null
+        },
     credentials: true,
   }),
 )
@@ -122,5 +136,9 @@ v1.route('/projects', projectRoutes)
 v1.route('/today', todayRoutes)
 v1.route('/search', searchRoutes)
 v1.route('/mfa', mfaRoutes)
+// Notification action routes — Bearer-token authenticated, NOT
+// session-cookied. Live under their own prefix so the auth contract
+// is unambiguous from the URL alone.
+v1.route('/notify', notificationActionRoutes)
 
 app.route('/api/v1', v1)

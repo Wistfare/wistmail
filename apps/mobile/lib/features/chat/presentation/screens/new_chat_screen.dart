@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,10 +9,12 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/wm_app_bar.dart';
 import '../../../../core/widgets/wm_avatar.dart';
 import '../../../../core/widgets/wm_primary_button.dart';
+import '../../domain/contact.dart';
 import '../providers/chat_providers.dart';
 
-/// Mobile/NewChat — design.lib.pen node `5yCVj`. Group-chat row at top
-/// (lime icon + lime text), then "CONTACTS" section with people rows.
+/// Mobile/NewChat — search-by-name/email picker with a manual
+/// "enter an email" fallback. Replaces the previous static contact
+/// list with the live `/api/v1/chat/users/search` endpoint.
 class NewChatScreen extends ConsumerStatefulWidget {
   const NewChatScreen({super.key});
 
@@ -19,14 +23,62 @@ class NewChatScreen extends ConsumerStatefulWidget {
 }
 
 class _NewChatScreenState extends ConsumerState<NewChatScreen> {
+  final _searchController = TextEditingController();
   final _emailController = TextEditingController();
+
+  String _query = '';
+  List<Contact> _results = const [];
+  bool _searching = false;
   bool _creating = false;
   String? _error;
+  Timer? _debounce;
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
     _emailController.dispose();
     super.dispose();
+  }
+
+  void _onQueryChanged(String value) {
+    setState(() {
+      _query = value;
+      _error = null;
+    });
+    _debounce?.cancel();
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      setState(() {
+        _results = const [];
+        _searching = false;
+      });
+      return;
+    }
+    setState(() => _searching = true);
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      _runSearch(trimmed);
+    });
+  }
+
+  Future<void> _runSearch(String trimmed) async {
+    try {
+      final repo = await ref.read(chatRepositoryProvider.future);
+      final users = await repo.searchUsers(trimmed);
+      if (!mounted) return;
+      // Drop late results that no longer match the input.
+      if (trimmed != _searchController.text.trim()) return;
+      setState(() {
+        _results = users;
+        _searching = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _error = _format(e);
+      });
+    }
   }
 
   Future<void> _createDirect([String? overrideEmail]) async {
@@ -58,7 +110,7 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   String _format(Object error) {
     final msg = error.toString();
     final m = RegExp(r'ApiException\([^)]*\):\s*(.*)$').firstMatch(msg);
-    return m != null ? m.group(1)! : 'Could not create chat.';
+    return m != null ? m.group(1)! : 'Could not start chat.';
   }
 
   @override
@@ -70,39 +122,107 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _GroupChatTile(onTap: () {}),
+            _GroupChatTile(onTap: () => context.push('/chat/new/group')),
             const Divider(color: AppColors.border, height: 1),
             const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child:
-                  Text('CONTACTS', style: AppTextStyles.sectionLabel),
+              child: Text('FIND A TEAMMATE',
+                  style: AppTextStyles.sectionLabel),
             ),
-            const SizedBox(height: 4),
-            _ContactRow(
-              name: 'Alex Chen',
-              email: 'alex.chen@wistfare.com',
-              onTap: () => _createDirect('alex.chen@wistfare.com'),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.fromBorderSide(
+                    BorderSide(color: AppColors.border, width: 1),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(left: 14, right: 8),
+                      child: Icon(Icons.search,
+                          size: 16, color: AppColors.textTertiary),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        key: const Key('new-chat-search'),
+                        controller: _searchController,
+                        cursorColor: AppColors.accent,
+                        style: AppTextStyles.monoSmall.copyWith(
+                          color: AppColors.textPrimary,
+                          fontSize: 13,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Search by name or email…',
+                          hintStyle: AppTextStyles.monoSmall.copyWith(
+                            color: AppColors.textTertiary,
+                            fontSize: 13,
+                          ),
+                          border: InputBorder.none,
+                          isCollapsed: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        onChanged: _onQueryChanged,
+                      ),
+                    ),
+                    if (_searching)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 12),
+                        child: SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.6,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-            const Divider(color: AppColors.border, height: 1),
-            _ContactRow(
-              name: 'Sarah Miller',
-              email: 'sarah.miller@wistfare.com',
-              onTap: () => _createDirect('sarah.miller@wistfare.com'),
-            ),
-            const Divider(color: AppColors.border, height: 1),
-            _ContactRow(
-              name: 'Jordan Park',
-              email: 'jordan.park@wistfare.com',
-              onTap: () => _createDirect('jordan.park@wistfare.com'),
-            ),
-            const Divider(color: AppColors.border, height: 1),
-            _ContactRow(
-              name: 'Lisa Wang',
-              email: 'lisa.wang@wistfare.com',
-              onTap: () => _createDirect('lisa.wang@wistfare.com'),
-            ),
-            const Divider(color: AppColors.border, height: 1),
+            const SizedBox(height: 16),
+            if (_query.trim().isEmpty)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: Text(
+                  'Start typing to find teammates in your organization.',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textTertiary),
+                ),
+              )
+            else if (!_searching && _results.isEmpty)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Text(
+                  'No matches.',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textTertiary),
+                ),
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final c in _results) ...[
+                    _ContactRow(
+                      name: c.name,
+                      email: c.email,
+                      avatarUrl: c.avatarUrl,
+                      onTap:
+                          _creating ? null : () => _createDirect(c.email),
+                    ),
+                    const Divider(color: AppColors.border, height: 1),
+                  ],
+                ],
+              ),
             const SizedBox(height: 24),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -222,11 +342,13 @@ class _ContactRow extends StatelessWidget {
   const _ContactRow({
     required this.name,
     required this.email,
+    required this.avatarUrl,
     required this.onTap,
   });
   final String name;
   final String email;
-  final VoidCallback onTap;
+  final String? avatarUrl;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

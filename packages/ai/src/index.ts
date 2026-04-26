@@ -11,6 +11,14 @@ export {
   type TodayDigestJob,
 } from './queues'
 export { OllamaProvider } from './ollama'
+export { OpenAIProvider } from './openai'
+export { AnthropicProvider } from './anthropic'
+export {
+  createProvider,
+  readProviderKindFromEnv,
+  type AiProviderKind,
+  type CreateProviderOptions,
+} from './factory'
 export type {
   ContentPart,
   GenerateOptions,

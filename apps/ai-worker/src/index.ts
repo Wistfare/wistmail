@@ -6,7 +6,7 @@
 
 import { Queue, Worker, type Job } from 'bullmq'
 import IORedis from 'ioredis'
-import { OllamaProvider } from '@wistmail/ai'
+import { createProvider } from '@wistmail/ai'
 import { createDb } from '@wistmail/db'
 import { loadConfig } from './config.js'
 import {
@@ -24,7 +24,14 @@ import { AI_QUEUE, JOB_NAMES } from '@wistmail/ai'
 async function main() {
   const config = loadConfig()
   const db = createDb(config.databaseUrl)
-  const provider = new OllamaProvider({ host: config.ollamaHost })
+  const provider = createProvider({
+    kind: config.provider,
+    ollamaHost: config.ollamaHost,
+    openaiApiKey: config.openaiApiKey,
+    openaiBaseUrl: config.openaiBaseUrl,
+    anthropicApiKey: config.anthropicApiKey,
+    anthropicBaseUrl: config.anthropicBaseUrl,
+  })
   const connection = new IORedis(config.redisUrl, {
     maxRetriesPerRequest: null,
   })
@@ -76,7 +83,7 @@ async function main() {
   const schedulerHandle = startDigestScheduler({ db, queue })
 
   console.log(
-    `[ai-worker] up — queue=${AI_QUEUE} model=${config.model} concurrency=${config.concurrency}`,
+    `[ai-worker] up — provider=${provider.name} queue=${AI_QUEUE} model=${config.model} concurrency=${config.concurrency}`,
   )
 
   const shutdown = async () => {

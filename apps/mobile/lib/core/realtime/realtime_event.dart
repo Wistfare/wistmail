@@ -59,6 +59,32 @@ sealed class RealtimeEvent {
           lastMessageAt: DateTime.parse(json['lastMessageAt'] as String),
           unreadCount: (json['unreadCount'] as num).toInt(),
         );
+      case 'chat.message.updated':
+        return ChatMessageUpdatedEvent(
+          conversationId: json['conversationId'] as String,
+          messageId: json['messageId'] as String,
+          content: json['content'] as String,
+          editedAt: DateTime.parse(json['editedAt'] as String),
+        );
+      case 'chat.message.deleted':
+        return ChatMessageDeletedEvent(
+          conversationId: json['conversationId'] as String,
+          messageId: json['messageId'] as String,
+          deletedAt: DateTime.parse(json['deletedAt'] as String),
+        );
+      case 'chat.conversation.read':
+        return ChatConversationReadEvent(
+          conversationId: json['conversationId'] as String,
+          readerId: json['readerId'] as String,
+          readAt: DateTime.parse(json['readAt'] as String),
+        );
+      case 'chat.typing':
+        return ChatTypingEvent(
+          conversationId: json['conversationId'] as String,
+          typerId: json['typerId'] as String,
+          typerName: (json['typerName'] as String?) ?? 'Someone',
+          at: DateTime.parse(json['at'] as String),
+        );
       default:
         return null;
     }
@@ -164,4 +190,67 @@ class ChatConversationUpdatedEvent extends RealtimeEvent {
   final String conversationId;
   final DateTime lastMessageAt;
   final int unreadCount;
+}
+
+/// Sender edited a message body. Receivers patch their local message
+/// list so the new content + "(edited)" stamp shows up without a
+/// refetch.
+class ChatMessageUpdatedEvent extends RealtimeEvent {
+  const ChatMessageUpdatedEvent({
+    required this.conversationId,
+    required this.messageId,
+    required this.content,
+    required this.editedAt,
+  });
+
+  final String conversationId;
+  final String messageId;
+  final String content;
+  final DateTime editedAt;
+}
+
+/// Sender soft-deleted a message. Receivers blank the body in their
+/// local cache and render a placeholder bubble.
+class ChatMessageDeletedEvent extends RealtimeEvent {
+  const ChatMessageDeletedEvent({
+    required this.conversationId,
+    required this.messageId,
+    required this.deletedAt,
+  });
+
+  final String conversationId;
+  final String messageId;
+  final DateTime deletedAt;
+}
+
+/// A user opened a conversation, marking everything in it as read.
+/// Fan-out to all participants — the sender uses this to refresh the
+/// "seen by" avatars under their messages.
+class ChatConversationReadEvent extends RealtimeEvent {
+  const ChatConversationReadEvent({
+    required this.conversationId,
+    required this.readerId,
+    required this.readAt,
+  });
+
+  final String conversationId;
+  final String readerId;
+  final DateTime readAt;
+}
+
+/// Ephemeral "user is typing" ping. The conversation controller
+/// folds incoming events into a per-typer expiry timer (5 s default)
+/// and exposes the live set to the bubble screen.
+class ChatTypingEvent extends RealtimeEvent {
+  const ChatTypingEvent({
+    required this.conversationId,
+    required this.typerId,
+    required this.typerName,
+    required this.at,
+  });
+
+  final String conversationId;
+  final String typerId;
+  final String typerName;
+  final DateTime at;
 }

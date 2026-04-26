@@ -1,6 +1,14 @@
 import { eq } from 'drizzle-orm'
 import { getDb } from '../lib/db.js'
-import { deviceTokens } from '@wistmail/db'
+import { deviceTokens, users } from '@wistmail/db'
+import { issueNotificationToken } from './notification-tokens.js'
+
+/// Notification channels honored by Focus Mode + per-channel prefs.
+/// `mail` and `chat` are user-controllable; `calendar` is reserved
+/// (calendar reminders should pierce Focus mode by design — they
+/// represent a commitment, not an interruption). Add a key here +
+/// extend `notification_prefs` JSON when introducing a new channel.
+export type NotificationChannel = 'mail' | 'chat' | 'calendar'
 
 /**
  * Firebase Cloud Messaging sender.
@@ -92,7 +100,20 @@ export interface ChatNotificationInput {
 }
 
 export async function sendEmailNotification(input: EmailNotificationInput): Promise<number> {
-  return sendToUser(input.userId, {
+  // Pre-issue per-action tokens so the OS-level notification can
+  // call /api/v1/notify/emails/:id/quick-{reply,read} without ever
+  // touching the user's session cookie. Each token is least-
+  // privilege (one resource × one action) and one-shot via the
+  // Redis deny-list. If JWT_SECRET isn't configured we silently
+  // omit the tokens — the notification still appears, just without
+  // action buttons. Production deployments are expected to set the
+  // secret regardless because login uses it too.
+  const tokens = tryIssueActionTokens({
+    userId: input.userId,
+    resourceType: 'email',
+    resourceId: input.emailId,
+  })
+  return sendToUser(input.userId, 'mail', {
     notification: {
       title: senderDisplayName(input.fromAddress),
       body: input.subject || input.preview,
@@ -100,12 +121,18 @@ export async function sendEmailNotification(input: EmailNotificationInput): Prom
     data: {
       type: 'email.new',
       emailId: input.emailId,
+      ...tokens,
     },
   })
 }
 
 export async function sendChatNotification(input: ChatNotificationInput): Promise<number> {
-  return sendToUser(input.userId, {
+  const tokens = tryIssueActionTokens({
+    userId: input.userId,
+    resourceType: 'chat',
+    resourceId: input.conversationId,
+  })
+  return sendToUser(input.userId, 'chat', {
     notification: {
       title: input.senderName,
       body: input.content.slice(0, 140),
@@ -113,13 +140,154 @@ export async function sendChatNotification(input: ChatNotificationInput): Promis
     data: {
       type: 'chat.message.new',
       conversationId: input.conversationId,
+      ...tokens,
     },
   })
 }
 
-async function sendToUser(userId: string, payload: Record<string, unknown>): Promise<number> {
+/// Build the data-only FCM payload for a "AI suggestions ready"
+/// follow-up push. Pure function so we can lock in the payload shape
+/// in unit tests without standing up firebase-admin. The `tag` is
+/// what the native side uses to find + replace the existing email
+/// notification (matching by id pattern).
+export function buildEmailSuggestionsPayload(input: {
+  userId: string
+  emailId: string
+  suggestions: Array<{ id: string; tone: string; body: string }>
+}): Record<string, unknown> {
+  const tokens = tryIssueActionTokens({
+    userId: input.userId,
+    resourceType: 'email',
+    resourceId: input.emailId,
+  })
+  return {
+    data: {
+      type: 'email.new.update',
+      emailId: input.emailId,
+      tag: `email-${input.emailId}`,
+      suggestions: JSON.stringify(input.suggestions),
+      ...tokens,
+    },
+  }
+}
+
+/// Follow-up push that lets the device replace the existing email
+/// notification (same `tag`) with one carrying AI-generated reply
+/// suggestion chips. Fired by the AI worker via the
+/// `notification-update-bus` once the `draft-reply` job finishes.
+///
+/// Silent — no `notification` block, only `data`. The native side
+/// reads the JSON, locates the existing notification by tag, and
+/// rebuilds it with the chips. Calendar-pierce semantics don't apply
+/// (this is an update of an existing mail notification, not a new
+/// one), but we still gate on Focus mode + the mail channel pref so
+/// a "this conversation got an AI suggestion" update doesn't pop
+/// while the user is in Focus.
+export async function sendEmailSuggestionsUpdate(input: {
+  userId: string
+  emailId: string
+  suggestions: Array<{ id: string; tone: string; body: string }>
+}): Promise<number> {
+  const payload = buildEmailSuggestionsPayload(input)
+  return sendToUser(input.userId, 'mail', payload)
+}
+
+/// Issue both reply + read tokens for a notification target. Wrapped
+/// in a try so a missing JWT_SECRET (or any HMAC failure) degrades
+/// gracefully — the push still goes out, just without action chips.
+function tryIssueActionTokens(input: {
+  userId: string
+  resourceType: 'email' | 'chat'
+  resourceId: string
+}): { actionTokenReply?: string; actionTokenRead?: string } {
+  try {
+    const reply = issueNotificationToken({
+      ...input,
+      scope: 'reply',
+    })
+    const read = issueNotificationToken({
+      ...input,
+      scope: 'read',
+    })
+    return {
+      actionTokenReply: reply.token,
+      actionTokenRead: read.token,
+    }
+  } catch (err) {
+    console.warn(
+      '[fcm] could not issue action tokens (notification will lack action chips):',
+      (err as Error).message,
+    )
+    return {}
+  }
+}
+
+/// Returns true if a push for `channel` should reach `userId` right
+/// now. Honors:
+///   1. `users.focus_mode_enabled` + `users.focus_mode_until` — when
+///      Focus is on and the until-time hasn't passed, drop pushes
+///      for `mail` and `chat`. Calendar reminders pierce Focus by
+///      design (they represent a commitment, not an interruption).
+///   2. `users.notification_prefs[channel]` — explicit per-channel
+///      mute. Missing key defaults to `true` (opt-out, not opt-in).
+///
+/// Exported for tests; call sites use `sendToUser` which gates
+/// internally.
+export async function shouldDeliverPush(
+  userId: string,
+  channel: NotificationChannel,
+  now: Date = new Date(),
+): Promise<{ deliver: boolean; reason?: string }> {
+  const db = getDb()
+  const rows = await db
+    .select({
+      focusModeEnabled: users.focusModeEnabled,
+      focusModeUntil: users.focusModeUntil,
+      notificationPrefs: users.notificationPrefs,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+  if (rows.length === 0) {
+    // Unknown user — fail safe by NOT pushing. Better to miss a
+    // notification than to leak one to a deleted account's tokens
+    // (which should already be gone via FK cascade, but belt-and-
+    // suspenders).
+    return { deliver: false, reason: 'user-not-found' }
+  }
+  const row = rows[0]
+
+  // Focus mode: skip mail + chat while active. Calendar reminders
+  // intentionally pierce.
+  if (row.focusModeEnabled && (channel === 'mail' || channel === 'chat')) {
+    const until = row.focusModeUntil
+    // `focusModeUntil` is null for indefinite Focus; treat that as
+    // "still on". A populated value gates on the timestamp.
+    if (until === null || until > now) {
+      return { deliver: false, reason: 'focus-mode' }
+    }
+  }
+
+  // Per-channel pref. Missing key → opt-out (true), not opt-in.
+  const prefs = (row.notificationPrefs ?? {}) as Partial<Record<NotificationChannel, boolean>>
+  if (prefs[channel] === false) {
+    return { deliver: false, reason: 'channel-muted' }
+  }
+  return { deliver: true }
+}
+
+async function sendToUser(
+  userId: string,
+  channel: NotificationChannel,
+  payload: Record<string, unknown>,
+): Promise<number> {
   const messaging = await getMessaging()
   if (!messaging) return 0
+
+  // Honor Focus mode + per-channel prefs BEFORE looking up tokens
+  // so an opted-out user pays no DB cost beyond the prefs lookup.
+  const gate = await shouldDeliverPush(userId, channel)
+  if (!gate.deliver) return 0
 
   const db = getDb()
   const tokens = await db

@@ -15,6 +15,8 @@ import '../features/mail/presentation/screens/mail_search_screen.dart';
 import '../features/search/presentation/screens/search_screen_v3.dart';
 import '../features/chat/presentation/screens/chat_list_screen.dart';
 import '../features/chat/presentation/screens/chat_conversation_screen.dart';
+import '../features/chat/presentation/screens/chat_search_screen.dart';
+import '../features/chat/presentation/screens/create_group_screen.dart';
 import '../features/chat/presentation/screens/new_chat_screen.dart';
 import '../features/labels/presentation/screens/label_assign_screen.dart';
 import '../features/calendar/presentation/screens/calendar_screen_v3.dart';
@@ -287,6 +289,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/chat/new',
         builder: (context, state) => const NewChatScreen(),
+      ),
+      GoRoute(
+        path: '/chat/new/group',
+        builder: (context, state) => const CreateGroupScreen(),
+      ),
+      GoRoute(
+        path: '/chat/search',
+        builder: (context, state) => const ChatSearchScreen(),
       ),
       GoRoute(
         path: '/conversation/:id',

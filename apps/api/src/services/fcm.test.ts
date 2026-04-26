@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { senderDisplayName } from './fcm.js'
+import { randomBytes } from 'node:crypto'
+import { eq, sql } from 'drizzle-orm'
+import { users } from '@wistmail/db'
+import { getDb } from '../lib/db.js'
+import { senderDisplayName, shouldDeliverPush } from './fcm.js'
 
 describe('senderDisplayName', () => {
   it('extracts the display name from "Name <email>" format', () => {
@@ -56,5 +60,93 @@ describe('FCM credential resolution (env parsing)', () => {
     // Should not throw at import time.
     const mod = await import('./fcm.js')
     expect(mod.senderDisplayName).toBeTypeOf('function')
+  })
+})
+
+const DB_URL = process.env.DATABASE_URL
+const describeIf = DB_URL ? describe : describe.skip
+
+async function seedUser(overrides: Record<string, unknown> = {}): Promise<string> {
+  const id = `u_fcm_${randomBytes(3).toString('hex')}`
+  const db = getDb()
+  await db.insert(users).values({
+    id,
+    email: `fcm.${randomBytes(2).toString('hex')}@gate-test.example`,
+    name: 'Gate',
+    passwordHash: 'unused',
+    setupComplete: true,
+    ...overrides,
+  })
+  return id
+}
+
+describeIf('shouldDeliverPush — focus mode + per-channel prefs', () => {
+  it('delivers when focus mode is off and channel pref is unset', async () => {
+    const userId = await seedUser()
+    const r = await shouldDeliverPush(userId, 'mail')
+    expect(r.deliver).toBe(true)
+  })
+
+  it('drops mail + chat while focus is on with a future until-time', async () => {
+    const userId = await seedUser({
+      focusModeEnabled: true,
+      focusModeUntil: new Date(Date.now() + 60 * 60 * 1000),
+    })
+    const mail = await shouldDeliverPush(userId, 'mail')
+    expect(mail.deliver).toBe(false)
+    expect(mail.reason).toBe('focus-mode')
+    const chat = await shouldDeliverPush(userId, 'chat')
+    expect(chat.deliver).toBe(false)
+  })
+
+  it('lets calendar pierce focus mode', async () => {
+    const userId = await seedUser({
+      focusModeEnabled: true,
+      focusModeUntil: new Date(Date.now() + 60 * 60 * 1000),
+    })
+    const r = await shouldDeliverPush(userId, 'calendar')
+    expect(r.deliver).toBe(true)
+  })
+
+  it('treats focus mode as expired once until-time has passed', async () => {
+    const userId = await seedUser({
+      focusModeEnabled: true,
+      focusModeUntil: new Date(Date.now() - 60 * 1000),
+    })
+    const r = await shouldDeliverPush(userId, 'mail')
+    expect(r.deliver).toBe(true)
+  })
+
+  it('treats null focus_mode_until as indefinite (still on)', async () => {
+    const userId = await seedUser({
+      focusModeEnabled: true,
+      focusModeUntil: null,
+    })
+    const r = await shouldDeliverPush(userId, 'mail')
+    expect(r.deliver).toBe(false)
+    expect(r.reason).toBe('focus-mode')
+  })
+
+  it('drops the channel when notification_prefs[channel] is false', async () => {
+    const userId = await seedUser()
+    // Update prefs to mute chat. notification_prefs ships as JSON;
+    // overwrite it explicitly with a known shape.
+    await getDb()
+      .update(users)
+      .set({
+        notificationPrefs: sql`'{"mail":true,"chat":false,"calendar":true}'::jsonb`,
+      })
+      .where(eq(users.id, userId))
+    const chat = await shouldDeliverPush(userId, 'chat')
+    expect(chat.deliver).toBe(false)
+    expect(chat.reason).toBe('channel-muted')
+    const mail = await shouldDeliverPush(userId, 'mail')
+    expect(mail.deliver).toBe(true)
+  })
+
+  it('returns deliver:false for an unknown user (fail-safe)', async () => {
+    const r = await shouldDeliverPush('u_does_not_exist', 'mail')
+    expect(r.deliver).toBe(false)
+    expect(r.reason).toBe('user-not-found')
   })
 })

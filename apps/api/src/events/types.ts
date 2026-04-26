@@ -11,7 +11,11 @@ export type RealtimeEvent =
   | EmailDeletedEvent
   | EmailSendStatusEvent
   | ChatMessageNewEvent
+  | ChatMessageUpdatedEvent
+  | ChatMessageDeletedEvent
   | ChatConversationUpdatedEvent
+  | ChatConversationReadEvent
+  | ChatTypingEvent
 
 /// Carries the full slim list-row payload so subscribers can render the
 /// new inbox row without a second HTTP fetch.
@@ -87,4 +91,51 @@ export interface ChatConversationUpdatedEvent {
   conversationId: string
   lastMessageAt: string
   unreadCount: number
+}
+
+/// Sender edited a message body. Fan-out to every participant of the
+/// conversation so threads update without a refetch. `editedAt` is
+/// the new edit-time stamp so clients can render "(edited)".
+export interface ChatMessageUpdatedEvent {
+  type: 'chat.message.updated'
+  userId: string
+  conversationId: string
+  messageId: string
+  content: string
+  editedAt: string
+}
+
+/// Sender soft-deleted a message. Fan-out to every participant. The
+/// row stays for ordering / reply context; clients render a placeholder
+/// bubble keyed off this event so the body can never reappear.
+export interface ChatMessageDeletedEvent {
+  type: 'chat.message.deleted'
+  userId: string
+  conversationId: string
+  messageId: string
+  deletedAt: string
+}
+
+/// User opened a conversation, marking everything in it as read.
+/// Sent to ALL participants so seen-by avatars update for the
+/// sender's view too. Receivers refetch reads on demand.
+export interface ChatConversationReadEvent {
+  type: 'chat.conversation.read'
+  userId: string
+  conversationId: string
+  readerId: string
+  readAt: string
+}
+
+/// Ephemeral "user is typing" ping. Not persisted. Clients debounce
+/// emission (one ping every ~3s while keystrokes flow) and treat the
+/// indicator as expired ~5s after the last received event for a given
+/// (conversationId, typerId) pair.
+export interface ChatTypingEvent {
+  type: 'chat.typing'
+  userId: string
+  conversationId: string
+  typerId: string
+  typerName: string
+  at: string
 }
