@@ -64,7 +64,7 @@ describe('EmailItem', () => {
       <EmailItem
         {...baseProps}
         labels={[
-          { name: 'Primary', color: '#BFFF00' },
+          { name: 'Primary', color: '#589B4C' },
           { name: 'Updates', color: '#3B82F6' },
         ]}
       />,

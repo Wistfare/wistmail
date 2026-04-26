@@ -6,9 +6,9 @@
   --color-wm-surface: #111111;
   --color-wm-surface-hover: #1A1A1A;
   --color-wm-border: #1A1A1A;
-  --color-wm-accent: #BFFF00;
-  --color-wm-accent-dim: #1A2200;
-  --color-wm-accent-hover: #A8E600;
+  --color-wm-accent: #589B4C;
+  --color-wm-accent-dim: #10220D;
+  --color-wm-accent-hover: #4A8540;
   --color-wm-text-primary: #FFFFFF;
   --color-wm-text-secondary: #999999;
   --color-wm-text-tertiary: #6E6E6E;
@@ -17,7 +17,7 @@
   --color-wm-error: #FF4444;
   --color-wm-warning: #F59E0B;
   --color-wm-info: #3B82F6;
-  --color-wm-success: #BFFF00;
+  --color-wm-success: #589B4C;
 
   /* ── Typography ── */
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
