@@ -24,7 +24,14 @@ FROM deps AS build
 
 COPY . .
 RUN pnpm turbo build --filter=@wistmail/api
-RUN cd packages/db && npx drizzle-kit generate
+# DO NOT run `drizzle-kit generate` here. When the snapshot for a
+# committed migration is missing or out of date, drizzle-kit silently
+# emits a NEW migration covering the diff (e.g. 0003_random_name.sql)
+# that duplicates the committed one. The migrator then tries to apply
+# both, the second fails with "already exists", and the bootstrap path
+# in migrate-runner ends up marking unapplied migrations as applied.
+# Migrations + snapshots must be generated locally with `pnpm --filter
+# @wistmail/db generate` and committed together.
 
 # ── Runner ───────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
