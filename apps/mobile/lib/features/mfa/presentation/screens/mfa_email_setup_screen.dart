@@ -124,11 +124,12 @@ class _MfaEmailSetupScreenState extends ConsumerState<MfaEmailSetupScreen> {
             )),
         const SizedBox(height: 10),
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.surface,
-            border: Border.fromBorderSide(
+            border: const Border.fromBorderSide(
               BorderSide(color: AppColors.border, width: 1),
             ),
+            borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
@@ -176,11 +177,12 @@ class _MfaEmailSetupScreenState extends ConsumerState<MfaEmailSetupScreen> {
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(14),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.surface,
-            border: Border.fromBorderSide(
+            border: const Border.fromBorderSide(
               BorderSide(color: AppColors.border, width: 1),
             ),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,

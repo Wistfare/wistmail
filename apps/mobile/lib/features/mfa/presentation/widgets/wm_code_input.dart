@@ -4,9 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 
 /// 6-digit code input matching design.lib.pen MfaChallenge `vBdQj`.
-/// Six fixed-width sharp boxes. Active boxes (next to type) are
-/// outlined in lime; filled boxes show the digit in JetBrains Mono.
-/// Auto-advances + supports paste of a full code.
+/// Six fixed-width boxes with subtle 8px radius. Active boxes (next to
+/// type) are outlined in the brand accent; filled boxes show the digit
+/// in JetBrains Mono. Auto-advances + supports paste of a full code.
 class WmCodeInput extends StatefulWidget {
   const WmCodeInput({
     super.key,
@@ -97,6 +97,10 @@ class _WmCodeInputState extends State<WmCodeInput> {
             child: Focus(
               onKeyEvent: (node, event) => _onKey(i, node, event),
               child: Container(
+                // Clip children to the rounded shape so the TextField's
+                // internal layers (autofill / IME backing) don't leak
+                // past the corners — same fix family as WmTextField.
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   color: AppColors.surface,
                   border: Border.all(
@@ -105,34 +109,50 @@ class _WmCodeInputState extends State<WmCodeInput> {
                         : AppColors.border,
                     width: 1,
                   ),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: TextField(
-                  controller: _ctrls[i],
-                  focusNode: _focuses[i],
-                  autofocus: widget.autofocus && i == 0,
-                  textAlign: TextAlign.center,
-                  keyboardType: TextInputType.number,
-                  cursorColor: AppColors.accent,
-                  cursorWidth: 2,
-                  cursorHeight: 24,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    // Allow up to length when pasting; otherwise single char
-                    LengthLimitingTextInputFormatter(widget.length),
-                  ],
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    height: 1.1,
+                // Center wrapper + textAlignVertical pull the digit and
+                // its cursor to the optical centre of the box. Without
+                // them, isCollapsed + EdgeInsets.zero pin the baseline
+                // to the top of the container.
+                child: Center(
+                  child: TextField(
+                    controller: _ctrls[i],
+                    focusNode: _focuses[i],
+                    autofocus: widget.autofocus && i == 0,
+                    textAlign: TextAlign.center,
+                    textAlignVertical: TextAlignVertical.center,
+                    keyboardType: TextInputType.number,
+                    cursorColor: AppColors.accent,
+                    cursorWidth: 2,
+                    cursorHeight: 24,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      // Allow up to length when pasting; otherwise single char
+                      LengthLimitingTextInputFormatter(widget.length),
+                    ],
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                      height: 1.1,
+                    ),
+                    decoration: const InputDecoration(
+                      counterText: '',
+                      // All four border slots must be InputBorder.none —
+                      // setting only `border` lets the app's
+                      // inputDecorationTheme's enabledBorder /
+                      // focusedBorder leak through as a horizontal line
+                      // bisecting each code box.
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (v) => _onCharChanged(i, v),
                   ),
-                  decoration: const InputDecoration(
-                    counterText: '',
-                    border: InputBorder.none,
-                    isCollapsed: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  onChanged: (v) => _onCharChanged(i, v),
                 ),
               ),
             ),

@@ -86,10 +86,15 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # Brand mark PNGs — the green-on-transparent variant is the canonical
+  # logo, the white-on-transparent variant is its dark-mode pair.
+  # `WmLogo` reads `Theme.of(context).brightness` and picks one. The
+  # native splash screens (Android drawable-night, iOS LaunchImage's
+  # luminosity-dark variant) ship the same images outside the Flutter
+  # asset bundle so they render before the engine starts.
+  assets:
+    - assets/wimail-logo.png
+    - assets/wimail-logo-white.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

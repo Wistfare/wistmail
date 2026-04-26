@@ -116,12 +116,15 @@ class _MethodCard extends StatelessWidget {
 
     return Material(
       color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: disabled ? null : onTap,
+        borderRadius: BorderRadius.circular(12),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: recommended ? AppColors.accent : AppColors.border,
               width: 1,
@@ -132,7 +135,10 @@ class _MethodCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                color: iconBg,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 alignment: Alignment.center,
                 child: Icon(icon, size: 18, color: iconColor),
               ),
@@ -168,7 +174,10 @@ class _MethodCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 6, vertical: 2),
-                  color: AppColors.accent,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Text(
                     'RECOMMENDED',
                     style: GoogleFonts.jetBrainsMono(
@@ -187,6 +196,7 @@ class _MethodCard extends StatelessWidget {
                       color: AppColors.textTertiary,
                       width: 1,
                     ),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     badge!,

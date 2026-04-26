@@ -149,7 +149,10 @@ class _Glyph extends StatelessWidget {
     return Container(
       width: 64,
       height: 64,
-      color: AppColors.accentDim,
+      decoration: BoxDecoration(
+        color: AppColors.accentDim,
+        borderRadius: BorderRadius.circular(14),
+      ),
       alignment: Alignment.center,
       child: const Icon(
         Icons.shield_outlined,
