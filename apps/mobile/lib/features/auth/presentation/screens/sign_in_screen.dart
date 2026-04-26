@@ -95,7 +95,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const WmLogo(size: 64, colored: true),
+        const WmLogo(size: 132, colored: true),
         const SizedBox(height: 20),
         Text('Wistfare Mail', style: AppTextStyles.headlineMedium),
         const SizedBox(height: 8),

@@ -5,8 +5,13 @@ import '../theme/app_text_styles.dart';
 
 /// Text field with mono uppercase label above it.
 /// Matches Mobile/SignIn email/password and Mobile/ForgotPassword inputs.
-/// Subtle 12px radius keeps it in the same family as the V3 inbox/today
-/// cards without going soft.
+///
+/// Border, radius and surface fill live on the TextField's own
+/// InputDecoration (OutlineInputBorder + filled: true) — wrapping it in
+/// an outer rounded Container caused the field's internal layers
+/// (autofill highlight, IME hint backing) to bleed past the corners on
+/// fields with no right-side widget to bound them. One surface, no
+/// clip mismatch.
 class WmTextField extends StatefulWidget {
   const WmTextField({
     super.key,
@@ -50,6 +55,10 @@ class _WmTextFieldState extends State<WmTextField> {
 
   @override
   Widget build(BuildContext context) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.border, width: 1),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -64,79 +73,62 @@ class _WmTextFieldState extends State<WmTextField> {
           ],
         ),
         const SizedBox(height: 10),
-        Container(
-          // clipBehavior is what keeps the TextField's inner background
-          // (autofill highlight, IME hint backing) inside the rounded
-          // corners. Without it, the email field — which has no right-
-          // side icon to bound it — bleeds rectangular fill past the
-          // top-right and bottom-right corners. The password field
-          // looked clean only because its visibility-toggle IconButton
-          // happened to absorb the right edge.
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border.all(color: AppColors.border, width: 1),
-            borderRadius: BorderRadius.circular(12),
+        TextField(
+          controller: widget.controller,
+          obscureText: widget.isPassword && _obscure,
+          keyboardType: widget.keyboardType,
+          textCapitalization: widget.textCapitalization,
+          autofillHints: widget.autofillHints,
+          autofocus: widget.autofocus,
+          onChanged: widget.onChanged,
+          onSubmitted: widget.onSubmitted,
+          cursorColor: AppColors.accent,
+          cursorWidth: 1.5,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 13,
+            color: AppColors.textPrimary,
           ),
-          child: Row(
-            children: [
-              if (widget.prefixIcon != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 14, right: 8),
-                  child: Icon(
+          decoration: InputDecoration(
+            hintText: widget.hint,
+            hintStyle: GoogleFonts.jetBrainsMono(
+              fontSize: 13,
+              color: AppColors.textTertiary,
+            ),
+            filled: true,
+            fillColor: AppColors.surface,
+            prefixIcon: widget.prefixIcon == null
+                ? null
+                : Icon(
                     widget.prefixIcon,
                     size: 16,
                     color: AppColors.textTertiary,
                   ),
-                ),
-              Expanded(
-                child: TextField(
-                  controller: widget.controller,
-                  obscureText: widget.isPassword && _obscure,
-                  keyboardType: widget.keyboardType,
-                  textCapitalization: widget.textCapitalization,
-                  autofillHints: widget.autofillHints,
-                  autofocus: widget.autofocus,
-                  onChanged: widget.onChanged,
-                  onSubmitted: widget.onSubmitted,
-                  cursorColor: AppColors.accent,
-                  cursorWidth: 1.5,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 13,
-                    color: AppColors.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: widget.hint,
-                    hintStyle: GoogleFonts.jetBrainsMono(
-                      fontSize: 13,
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 40,
+              minHeight: 40,
+            ),
+            suffixIcon: widget.isPassword
+                ? IconButton(
+                    splashRadius: 20,
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 18,
                       color: AppColors.textTertiary,
                     ),
-                    isCollapsed: true,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.fromLTRB(
-                      widget.prefixIcon != null ? 0 : 14,
-                      14,
-                      14,
-                      14,
-                    ),
-                  ),
-                ),
-              ),
-              if (widget.isPassword)
-                IconButton(
-                  splashRadius: 20,
-                  icon: Icon(
-                    _obscure
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                    size: 18,
-                    color: AppColors.textTertiary,
-                  ),
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                ),
-            ],
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  )
+                : null,
+            border: border,
+            enabledBorder: border,
+            focusedBorder: border,
+            contentPadding: EdgeInsets.fromLTRB(
+              widget.prefixIcon != null ? 0 : 14,
+              14,
+              14,
+              14,
+            ),
           ),
         ),
       ],
