@@ -231,6 +231,10 @@ export async function searchEmails(
       id: h.id,
       mailboxId: h.mailboxId,
       fromAddress: h.fromAddress,
+      // Meili index predates the from_name column. The detail view
+      // re-fetches from Postgres and gets the real value; surfacing
+      // null here keeps the type honest.
+      fromName: null,
       toAddresses: h.toAddresses ?? [],
       cc: h.cc ?? [],
       subject: h.subject ?? '',

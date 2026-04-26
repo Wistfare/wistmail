@@ -19,7 +19,10 @@ class TodayNeedsReplyRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final senderName = _extractName(item.fromAddress);
+    // Prefer the From-header display name surfaced by the API; fall
+    // back to the local-part heuristic (handles legacy rows + sender
+    // MTAs that didn't supply a display name).
+    final senderName = item.displayName;
     final initials = _initials(senderName);
     final age = _relativeAge(item.createdAt);
     // Deterministic color from sender so repeat senders get the same avatar.

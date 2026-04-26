@@ -79,6 +79,7 @@ async function buildToday(userId: string) {
               id: emails.id,
               subject: emails.subject,
               fromAddress: emails.fromAddress,
+              fromName: emails.fromName,
               createdAt: emails.createdAt,
               needsReplyReason: emails.needsReplyReason,
             })

@@ -396,6 +396,8 @@ async function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS calendar_events_user_start_idx ON calendar_events(user_id, start_at)`,
     // ── Per-user IANA timezone (drives the AI digest's local 04:00).
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone varchar(64) NOT NULL DEFAULT 'UTC'`,
+    // ── Display name from the inbound email's RFC-5322 From header.
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS from_name varchar(255)`,
     // ── AI worker outputs.
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS auto_summary text`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS ai_processed_at timestamptz`,

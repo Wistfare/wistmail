@@ -27,6 +27,10 @@ interface InboundEmail {
 interface NormalisedEmail {
   messageId: string
   from: string
+  /// Display name from the RFC-5322 From header. `null` when the
+  /// sender's MTA didn't set one (most automated bots, basic SMTP
+  /// scripts). Mobile UI prefers this over the bare address when set.
+  fromName: string | null
   to: string[]
   cc: string[]
   subject: string
@@ -112,6 +116,7 @@ export class EmailReceiver {
       const emailId = generateId('eml')
       const subject = parsed.subject || '(no subject)'
       const fromAddress = parsed.from || inbound.from
+      const fromName = parsed.fromName
       const createdAt = parsed.date || new Date()
 
       // Persist attachment bytes to disk before we insert the email
@@ -156,6 +161,7 @@ export class EmailReceiver {
         id: emailId,
         messageId: parsed.messageId || `${emailId}@inbound`,
         fromAddress,
+        fromName,
         toAddresses: parsed.to.length > 0 ? parsed.to : inbound.to,
         cc: parsed.cc,
         subject,
@@ -201,6 +207,7 @@ export class EmailReceiver {
         mailboxId: mailbox.id,
         folder: 'inbox',
         fromAddress,
+        fromName,
         toAddresses: parsed.to.length > 0 ? parsed.to : inbound.to,
         cc: parsed.cc,
         subject,
@@ -313,10 +320,19 @@ export class EmailReceiver {
       }))
 
     const fromAddr = parsed.from?.value[0]?.address?.toLowerCase() ?? ''
+    const fromNameRaw = parsed.from?.value[0]?.name?.trim() ?? ''
+    // Reject names that are just the email echoed back (some MTAs
+    // do this when the user hasn't set a real display name). No
+    // value over the bare address.
+    const fromName =
+      fromNameRaw.length > 0 && fromNameRaw.toLowerCase() !== fromAddr
+        ? fromNameRaw.slice(0, 255)
+        : null
 
     return {
       messageId: (parsed.messageId ?? '').replace(/[<>]/g, ''),
       from: fromAddr,
+      fromName,
       to: addresses(parsed.to),
       cc: addresses(parsed.cc),
       subject: parsed.subject ?? '',
