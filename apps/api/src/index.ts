@@ -295,6 +295,16 @@ async function ensureSchema() {
       content text NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     )`,
+    // Phase 3 — message lifecycle. Idempotent column adds for legacy DBs.
+    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_at timestamptz`,
+    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
+    `CREATE TABLE IF NOT EXISTS chat_message_reads (
+      message_id varchar(64) NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      read_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (message_id, user_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS chat_message_reads_user_id_idx ON chat_message_reads(user_id)`,
     `CREATE TABLE IF NOT EXISTS calendar_events (
       id varchar(64) PRIMARY KEY,
       user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -368,6 +378,8 @@ async function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS device_tokens_user_idx ON device_tokens(user_id)`,
     `CREATE INDEX IF NOT EXISTS audit_logs_user_created_idx ON audit_logs(user_id, created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS calendar_events_user_start_idx ON calendar_events(user_id, start_at)`,
+    // ── Per-user IANA timezone (drives the AI digest's local 04:00).
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone varchar(64) NOT NULL DEFAULT 'UTC'`,
     // ── AI worker outputs.
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS auto_summary text`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS ai_processed_at timestamptz`,

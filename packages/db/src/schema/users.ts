@@ -23,6 +23,13 @@ export const users = pgTable('users', {
     .$type<{ mail?: boolean; chat?: boolean; calendar?: boolean }>()
     .notNull()
     .default({ mail: true, chat: true, calendar: true }),
+  // IANA timezone (e.g. "Africa/Kigali"). The mobile client sends
+  // `X-Client-Timezone` on every authenticated request, and the API
+  // middleware persists it here when it changes. Used by the AI
+  // worker to fire the daily Today digest at the user's local 04:00
+  // — without this, every user gets their digest at the same wall
+  // time regardless of where they live.
+  timezone: varchar('timezone', { length: 64 }).notNull().default('UTC'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })

@@ -53,6 +53,11 @@ dependencies:
   url_launcher: ^6.3.2
   intl: ^0.20.2
   app_links: ^7.0.0
+  # Returns the device's IANA timezone (e.g. "Africa/Kigali").
+  # The Dio interceptor sends it on every authenticated request as
+  # X-Client-Timezone so the AI worker can fire each user's daily
+  # Today digest at their local 00:00.
+  flutter_timezone: ^4.1.0
   # Lucide icons — the pen design uses lucide exclusively. Pinned to
   # a broad range; the package wraps the lucide web font.
   lucide_icons_flutter: ^3.0.0

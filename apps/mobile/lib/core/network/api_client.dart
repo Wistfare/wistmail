@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'api_exception.dart';
+import 'timezone_interceptor.dart';
 
 class ApiClient {
   ApiClient._(this._dio, this.cookieJar);
@@ -65,6 +66,7 @@ class ApiClient {
     );
 
     dio.interceptors.add(CookieManager(cookieJar));
+    dio.interceptors.add(TimezoneInterceptor());
     dio.interceptors.add(_ErrorInterceptor());
     return ApiClient._(dio, cookieJar);
   }

@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
 import { errorHandler } from './middleware/error-handler.js'
+import { timezoneTracker } from './middleware/timezone-tracker.js'
 import { emailRoutes } from './routes/emails.js'
 import { domainRoutes } from './routes/domains.js'
 import { apiKeyRoutes } from './routes/api-keys.js'
@@ -93,6 +94,11 @@ app.get('/api/v1/domains/registered', async (c) => {
 
 // API v1 routes
 const v1 = new Hono<AppEnv>()
+
+// Per-user IANA timezone tracking. Reads X-Client-Timezone, persists
+// when changed (debounced to ~1/hr per user). Runs after each route
+// group's own sessionAuth, so it's a no-op for unauthenticated calls.
+v1.use('*', timezoneTracker)
 
 v1.route('/auth', authRoutes)
 v1.route('/emails', emailRoutes)

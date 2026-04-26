@@ -10,7 +10,6 @@ import { OllamaProvider } from '@wistmail/ai'
 import { createDb } from '@wistmail/db'
 import { loadConfig } from './config.js'
 import {
-  enqueueAllDigests,
   processAutoLabel,
   processClassifyNeedsReply,
   processDraftReply,
@@ -19,6 +18,7 @@ import {
   processTodayDigest,
   type ProcessorDeps,
 } from './processors.js'
+import { startDigestScheduler } from './digest-scheduler.js'
 import { AI_QUEUE, JOB_NAMES } from '@wistmail/ai'
 
 async function main() {
@@ -68,21 +68,12 @@ async function main() {
     console.warn(`[ai-worker] ${job?.name} ${job?.id} failed:`, err.message)
   })
 
-  // Daily 04:00 server-time digest fan-out. Tick every minute and fire
-  // when the wall clock crosses 04:00 — replaces a cron dependency.
-  let lastDigestDay = -1
-  setInterval(async () => {
-    const now = new Date()
-    if (now.getHours() === 4 && now.getDate() !== lastDigestDay) {
-      lastDigestDay = now.getDate()
-      try {
-        const n = await enqueueAllDigests(deps)
-        console.log(`[ai-worker] digest fan-out enqueued ${n} users`)
-      } catch (err) {
-        console.error('[ai-worker] digest fan-out failed', err)
-      }
-    }
-  }, 60_000)
+  // Per-user TZ-aware digest scheduling — every 5 min the scheduler
+  // sweeps the user list, enqueues a digest for everyone whose local
+  // clock is inside the morning window. Replaces the old "fire at
+  // server-UTC 04:00" cron which was useless once users live across
+  // timezones.
+  const schedulerHandle = startDigestScheduler({ db, queue })
 
   console.log(
     `[ai-worker] up — queue=${AI_QUEUE} model=${config.model} concurrency=${config.concurrency}`,
@@ -90,6 +81,7 @@ async function main() {
 
   const shutdown = async () => {
     console.log('[ai-worker] shutting down')
+    clearInterval(schedulerHandle)
     await worker.close()
     await queue.close()
     await publisher.quit()
