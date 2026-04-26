@@ -13,6 +13,11 @@ import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { getDb } from '../lib/db.js'
 import { cached } from '../lib/cache.js'
 import { enqueueTodayDigest } from '../lib/ai-queue.js'
+import {
+  isValidTimezone,
+  startOfDayInTz,
+  startOfNextDayInTz,
+} from '../lib/timezone.js'
 
 export const todayRoutes = new Hono<SessionEnv>()
 todayRoutes.use('*', sessionAuth)
@@ -23,29 +28,56 @@ todayRoutes.use('*', sessionAuth)
  * One-shot aggregator for the Today screen. Returns four sections:
  *  - nextUp:       the next upcoming meeting (with meeting link) within 24h
  *  - needsReply:   up to 3 unread emails the AI flagged as needing a reply
- *  - schedule:     today's calendar events (midnight-to-midnight, user tz-naive)
+ *  - schedule:     today's calendar events (00:00–24:00 in the user's tz)
  *  - recentActivity: recent project updates (task moves, recent touches)
+ *
+ * Day boundaries respect the user's IANA timezone — taken from the
+ * X-Client-Timezone header (mobile sends it via the Dio interceptor)
+ * with a fallback to the persisted users.timezone column, and finally
+ * UTC. Without this a meeting at 11am Kigali (UTC+2) does not appear
+ * in the schedule when the server runs on UTC, because the schedule
+ * window is computed as 00:00 UTC → 24:00 UTC.
  *
  * The screen makes this one call on mount and again on pull-to-refresh.
  * WS `today.updated` broadcasts invalidate the client cache.
  */
 todayRoutes.get('/', async (c) => {
   const userId = c.get('userId')
-  // 30s cache. Bust triggers on email.new / email.updated / today.digest
-  // writes via Redis pub/sub — the TTL is just a safety floor.
-  return c.json(await cached('today', userId, 30, () => buildToday(userId)))
+  const headerTz = c.req.header('x-client-timezone')
+  const tz =
+    headerTz && isValidTimezone(headerTz)
+      ? headerTz
+      : await loadUserTimezone(userId)
+  // Cache key is per-(user, tz) — different tz means different day window.
+  return c.json(
+    await cached(`today:${tz}`, userId, 30, () => buildToday(userId, tz)),
+  )
 })
 
-async function buildToday(userId: string) {
+async function loadUserTimezone(userId: string): Promise<string> {
+  try {
+    const row = await getDb()
+      .select({ tz: users.timezone })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+    const stored = row[0]?.tz
+    if (stored && isValidTimezone(stored)) return stored
+  } catch {
+    /* fall through to UTC */
+  }
+  return 'UTC'
+}
+
+async function buildToday(userId: string, tz: string) {
   const db = getDb()
   const now = new Date()
 
-  // Today's window in server time. The mobile client passes `?tz=` once
-  // we add full-timezone support; for now all boundaries use server tz.
-  const dayStart = new Date(now)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart)
-  dayEnd.setDate(dayEnd.getDate() + 1)
+  // Day window in the user's tz. The mobile client and the user's
+  // persisted users.timezone both feed in via the route handler; this
+  // function is tz-agnostic.
+  const dayStart = startOfDayInTz(now, tz)
+  const dayEnd = startOfNextDayInTz(now, tz)
   const twentyFourHoursOut = new Date(now.getTime() + 24 * 60 * 60 * 1000)
 
   // Resolve the user's mailbox set once — needsReply + nextUp both need it.
@@ -173,13 +205,146 @@ async function buildToday(userId: string) {
     enqueueTodayDigest(userId).catch(() => {})
   }
 
+  // Hydrate digest.priorities[] with display data so the mobile/web
+  // can render rich rows (subject + sender + reason, etc.) instead of
+  // bare ids. Without this the briefing mentions the email by reason
+  // text but nothing surfaces as a tappable card on Today.
+  const digestContent =
+    digest && !stale
+      ? await hydrateDigestPriorities(digest.content, userId, mailboxIds)
+      : null
+
   return {
     nextUp: nextUpRows[0] ?? null,
     needsReply: needsReplyRows,
     schedule: scheduleRows,
     recentActivity,
-    digest: digest && !stale ? digest.content : null,
+    digest: digestContent,
   }
+}
+
+/// Pull display metadata for each priority id so the client can render
+/// rich rows. Best-effort — a missing reference is just dropped.
+async function hydrateDigestPriorities(
+  content: unknown,
+  userId: string,
+  mailboxIds: string[],
+): Promise<unknown> {
+  if (!content || typeof content !== 'object') return content
+  const root = content as Record<string, unknown>
+  const priorities = Array.isArray(root.priorities)
+    ? (root.priorities as Array<Record<string, unknown>>)
+    : null
+  if (!priorities || priorities.length === 0) return content
+
+  const emailIds = priorities
+    .filter((p) => p.kind === 'email' && typeof p.id === 'string')
+    .map((p) => p.id as string)
+  const eventIds = priorities
+    .filter((p) => p.kind === 'event' && typeof p.id === 'string')
+    .map((p) => p.id as string)
+  const taskIds = priorities
+    .filter((p) => p.kind === 'task' && typeof p.id === 'string')
+    .map((p) => p.id as string)
+
+  const db = getDb()
+  const [emailRows, eventRows, taskRows] = await Promise.all([
+    emailIds.length === 0 || mailboxIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: emails.id,
+            subject: emails.subject,
+            fromName: emails.fromName,
+            fromAddress: emails.fromAddress,
+            createdAt: emails.createdAt,
+          })
+          .from(emails)
+          .where(
+            and(
+              inArray(emails.id, emailIds),
+              inArray(emails.mailboxId, mailboxIds),
+            ),
+          ),
+    eventIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: calendarEvents.id,
+            title: calendarEvents.title,
+            startAt: calendarEvents.startAt,
+            endAt: calendarEvents.endAt,
+            location: calendarEvents.location,
+          })
+          .from(calendarEvents)
+          .where(
+            and(
+              inArray(calendarEvents.id, eventIds),
+              eq(calendarEvents.userId, userId),
+            ),
+          ),
+    taskIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: projectTasks.id,
+            title: projectTasks.title,
+            status: projectTasks.status,
+            projectId: projectTasks.projectId,
+          })
+          .from(projectTasks)
+          .innerJoin(projects, eq(projectTasks.projectId, projects.id))
+          .where(
+            and(
+              inArray(projectTasks.id, taskIds),
+              eq(projects.ownerId, userId),
+            ),
+          ),
+  ])
+
+  const emailById = new Map(emailRows.map((r) => [r.id, r]))
+  const eventById = new Map(eventRows.map((r) => [r.id, r]))
+  const taskById = new Map(taskRows.map((r) => [r.id, r]))
+
+  const hydrated = priorities
+    .map((p) => {
+      const id = p.id as string
+      let meta: Record<string, unknown> | null = null
+      if (p.kind === 'email') {
+        const e = emailById.get(id)
+        if (e)
+          meta = {
+            subject: e.subject,
+            fromName: e.fromName,
+            fromAddress: e.fromAddress,
+            createdAt: e.createdAt,
+          }
+      } else if (p.kind === 'event') {
+        const e = eventById.get(id)
+        if (e)
+          meta = {
+            title: e.title,
+            startAt: e.startAt,
+            endAt: e.endAt,
+            location: e.location,
+          }
+      } else if (p.kind === 'task') {
+        const t = taskById.get(id)
+        if (t)
+          meta = {
+            title: t.title,
+            status: t.status,
+            projectId: t.projectId,
+          }
+      }
+      // Drop priorities whose target was deleted or is no longer
+      // accessible — the user can't act on a stale link.
+      if (!meta) return null
+      return { ...p, meta }
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null)
+
+  return { ...root, priorities: hydrated }
 }
 
 /**
@@ -223,5 +388,3 @@ todayRoutes.post('/needs-reply/:emailId', async (c) => {
   return c.json({ ok: true })
 })
 
-// Keep the `users` import in use for future expansion (avatar surfacing etc).
-void users

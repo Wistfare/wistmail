@@ -3,7 +3,15 @@ import { z } from 'zod'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { readFile } from 'node:fs/promises'
 import { ValidationError } from '@wistmail/shared'
-import { attachments, emails, emailLabels, emailReplySuggestions, mailboxes } from '@wistmail/db'
+import {
+  attachments,
+  calendarEvents,
+  emailEventExtractions,
+  emails,
+  emailLabels,
+  emailReplySuggestions,
+  mailboxes,
+} from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { EmailService } from '../services/email.js'
 import { EmailSender, EMAIL_STATUS } from '../services/email-sender.js'
@@ -103,6 +111,85 @@ inboxRoutes.get('/emails/:id/reply-suggestions', async (c) => {
     .where(eq(emailReplySuggestions.emailId, emailId))
     .orderBy(asc(emailReplySuggestions.createdAt))
   return c.json({ suggestions: rows })
+})
+
+/**
+ * GET /api/v1/inbox/emails/:id/meeting-extraction
+ *
+ * Returns the AI extraction for this email if one exists, plus the
+ * linked calendar event when the worker auto-created one. The mobile
+ * thread reads this to render an "Added to calendar — VIEW" chip
+ * (outcome=2) or an "Add to calendar?" chip (outcome=1).
+ *
+ * 404 when no extraction has been written yet (worker pending or the
+ * email arrived before this feature shipped).
+ */
+inboxRoutes.get('/emails/:id/meeting-extraction', async (c) => {
+  const emailId = c.req.param('id')
+  const userId = c.get('userId')
+  const db = getDb()
+
+  const owned = await db
+    .select({ id: emails.id })
+    .from(emails)
+    .innerJoin(mailboxes, eq(emails.mailboxId, mailboxes.id))
+    .where(and(eq(emails.id, emailId), eq(mailboxes.userId, userId)))
+    .limit(1)
+  if (owned.length === 0) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'Email not found' } },
+      404,
+    )
+  }
+
+  const rows = await db
+    .select({
+      hasMeeting: emailEventExtractions.hasMeeting,
+      title: emailEventExtractions.title,
+      startAt: emailEventExtractions.startAt,
+      endAt: emailEventExtractions.endAt,
+      location: emailEventExtractions.location,
+      attendees: emailEventExtractions.attendees,
+      confidence: emailEventExtractions.confidence,
+      outcome: emailEventExtractions.outcome,
+      createdEventId: emailEventExtractions.createdEventId,
+    })
+    .from(emailEventExtractions)
+    .where(eq(emailEventExtractions.emailId, emailId))
+    .limit(1)
+  const row = rows[0]
+  if (!row) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'No extraction yet' } },
+      404,
+    )
+  }
+
+  // Hydrate the linked event so the mobile chip can route + show
+  // the time without a second round-trip.
+  let event: {
+    id: string
+    title: string
+    startAt: Date
+    endAt: Date
+    location: string | null
+  } | null = null
+  if (row.createdEventId) {
+    const evRows = await db
+      .select({
+        id: calendarEvents.id,
+        title: calendarEvents.title,
+        startAt: calendarEvents.startAt,
+        endAt: calendarEvents.endAt,
+        location: calendarEvents.location,
+      })
+      .from(calendarEvents)
+      .where(eq(calendarEvents.id, row.createdEventId))
+      .limit(1)
+    event = evRows[0] ?? null
+  }
+
+  return c.json({ extraction: row, event })
 })
 
 /**

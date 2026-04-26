@@ -30,6 +30,9 @@ abstract class MailRepository {
   /// Return every email in the same thread as `emailId`, oldest
   /// first. Caller renders the thread strip.
   Future<List<Map<String, dynamic>>> getThread(String emailId);
+  /// AI-extracted meeting metadata + linked calendar event (when one
+  /// was auto-created). Null when the worker hasn't produced one yet.
+  Future<Map<String, dynamic>?> getMeetingExtraction(String emailId);
   /// Bulk mutation helper. Returns the number of affected rows.
   Future<int> batchAction({
     required List<String> ids,
@@ -108,6 +111,10 @@ class MailRepositoryImpl implements MailRepository {
   @override
   Future<List<Map<String, dynamic>>> getThread(String emailId) =>
       _remote.getThread(emailId);
+
+  @override
+  Future<Map<String, dynamic>?> getMeetingExtraction(String emailId) =>
+      _remote.getMeetingExtraction(emailId);
 
   @override
   Future<int> batchAction({

@@ -170,16 +170,60 @@ class TodayDigest {
 }
 
 class TodayPriority {
-  const TodayPriority({required this.kind, required this.id, required this.reason});
+  const TodayPriority({
+    required this.kind,
+    required this.id,
+    required this.reason,
+    this.subject,
+    this.fromName,
+    this.fromAddress,
+    this.startAt,
+    this.endAt,
+    this.location,
+    this.title,
+    this.projectId,
+    this.status,
+  });
   final String kind; // email | task | event
   final String id;
   final String reason;
 
-  factory TodayPriority.fromJson(Map<String, dynamic> json) => TodayPriority(
-        kind: (json['kind'] as String?) ?? 'email',
-        id: (json['id'] as String?) ?? '',
-        reason: (json['reason'] as String?) ?? '',
-      );
+  // email meta
+  final String? subject;
+  final String? fromName;
+  final String? fromAddress;
+
+  // event meta
+  final DateTime? startAt;
+  final DateTime? endAt;
+  final String? location;
+
+  // task / event meta (title is shared)
+  final String? title;
+  final String? projectId;
+  final String? status;
+
+  factory TodayPriority.fromJson(Map<String, dynamic> json) {
+    final meta = (json['meta'] as Map?)?.cast<String, dynamic>();
+    return TodayPriority(
+      kind: (json['kind'] as String?) ?? 'email',
+      id: (json['id'] as String?) ?? '',
+      reason: (json['reason'] as String?) ?? '',
+      subject: meta?['subject'] as String?,
+      fromName: meta?['fromName'] as String?,
+      fromAddress: meta?['fromAddress'] as String?,
+      title: meta?['title'] as String?,
+      startAt: meta?['startAt'] is String
+          ? DateTime.tryParse(meta!['startAt'] as String)
+          : null,
+      endAt: meta?['endAt'] is String
+          ? DateTime.tryParse(meta!['endAt'] as String)
+          : null,
+      location: meta?['location'] as String?,
+      projectId: meta?['projectId'] as String?,
+      status: meta?['status'] as String?,
+    );
+  }
 }
 
 class TodayFocusBlock {

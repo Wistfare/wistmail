@@ -21,7 +21,7 @@ export {
   chatMessageReads,
   chatAttachments,
 } from './chat'
-export { calendarEvents } from './calendar'
+export { calendarEvents, emailEventExtractions } from './calendar'
 export { projects } from './projects'
 export { projectTasks } from './project-tasks'
 export { docs } from './docs'
