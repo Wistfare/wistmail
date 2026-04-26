@@ -398,6 +398,16 @@ async function ensureSchema() {
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone varchar(64) NOT NULL DEFAULT 'UTC'`,
     // ── Display name from the inbound email's RFC-5322 From header.
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS from_name varchar(255)`,
+    // ── Cross-user cache of resolved sender display names. Keeps the
+    // AI display-name derivation to one model call per unique sender.
+    `CREATE TABLE IF NOT EXISTS sender_names (
+      address varchar(255) PRIMARY KEY,
+      display_name varchar(255) NOT NULL,
+      source varchar(12) NOT NULL,
+      confidence real,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS sender_names_source_idx ON sender_names(source)`,
     // ── AI worker outputs.
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS auto_summary text`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS ai_processed_at timestamptz`,

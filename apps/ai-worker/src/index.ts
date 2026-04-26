@@ -12,6 +12,7 @@ import { loadConfig } from './config.js'
 import {
   processAutoLabel,
   processClassifyNeedsReply,
+  processDeriveDisplayName,
   processDraftReply,
   processIngestEmail,
   processSummarize,
@@ -58,6 +59,8 @@ async function main() {
           return processDraftReply(deps, job as Job)
         case JOB_NAMES.todayDigest:
           return processTodayDigest(deps, job as Job)
+        case JOB_NAMES.deriveDisplayName:
+          return processDeriveDisplayName(deps, job as Job)
         default:
           throw new Error(`Unknown job name: ${job.name}`)
       }

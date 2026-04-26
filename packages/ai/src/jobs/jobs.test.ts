@@ -5,6 +5,7 @@ import { classifyNeedsReply } from './classify-needs-reply'
 import { autoLabel } from './auto-label'
 import { draftReply } from './draft-reply'
 import { todayDigest } from './today-digest'
+import { deriveDisplayName } from './derive-display-name'
 
 function fake(out: unknown): AiProvider {
   return {
@@ -160,5 +161,38 @@ describe('todayDigest', () => {
     expect(r.priorities[0]!.urgency).toBe(1)
     // Missing urgency defaults to 0.5 — moderate, not at top, not at bottom.
     expect(r.priorities[1]!.urgency).toBe(0.5)
+  })
+})
+
+describe('deriveDisplayName', () => {
+  it('passes through valid model output', async () => {
+    const r = await deriveDisplayName(
+      fake({ name: 'Nsengimana Veda Dom', confidence: 0.62 }),
+      'm',
+      { localPart: 'nsengimanavedadom', domain: 'gmail.com' },
+    )
+    expect(r.name).toBe('Nsengimana Veda Dom')
+    expect(r.confidence).toBe(0.62)
+  })
+
+  it('clamps confidence to [0, 1] and truncates name to 255', async () => {
+    const long = 'A'.repeat(500)
+    const r = await deriveDisplayName(
+      fake({ name: long, confidence: 5 }),
+      'm',
+      { localPart: 'x', domain: 'y' },
+    )
+    expect(r.name.length).toBe(255)
+    expect(r.confidence).toBe(1)
+  })
+
+  it('throws on missing fields', async () => {
+    await expect(
+      deriveDisplayName(
+        fake({ name: 'X' }),
+        'm',
+        { localPart: 'a', domain: 'b' },
+      ),
+    ).rejects.toThrow(/invalid model output/)
   })
 })
