@@ -51,7 +51,9 @@ export async function enqueueTodayDigest(userId: string): Promise<void> {
   // hammered, with a fresh job allowed once the date rolls over.
   const dayKey = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
   await queue.add(JOB_NAMES.todayDigest, { userId }, {
-    jobId: `digest:${userId}:${dayKey}`,
+    // BullMQ rejects ':' in custom jobIds (it's the internal Redis
+    // key separator). Use '-'.
+    jobId: `digest-${userId}-${dayKey}`,
     attempts: 1,
     removeOnComplete: 50,
     removeOnFail: 50,

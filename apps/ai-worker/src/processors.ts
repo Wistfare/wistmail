@@ -127,7 +127,8 @@ export async function processIngestEmail(
         ...opts,
         // Per-address dedup — 4 emails from the same unknown sender
         // arriving in a burst collapse to one model call.
-        jobId: `derive:${addr}`,
+        // BullMQ rejects ':' in custom jobIds. Use '-' as separator.
+        jobId: `derive-${addr}`,
       },
     )
     names.push(JOB_NAMES.deriveDisplayName)

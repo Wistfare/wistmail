@@ -61,7 +61,8 @@ async function run(): Promise<void> {
         JOB_NAMES.deriveDisplayName,
         { address: addr, emailId: row.emailId },
         {
-          jobId: `derive:${addr}`,
+          // BullMQ rejects ':' in custom jobIds. Use '-' as separator.
+          jobId: `derive-${addr}`,
           attempts: 1,
           removeOnComplete: 200,
           removeOnFail: 200,

@@ -106,15 +106,22 @@ export async function tickDigestSchedule(
         JOB_NAMES.todayDigest,
         { userId: u.id },
         {
-          jobId: `digest:${u.id}:${day}`,
+          // BullMQ rejects ':' in custom jobIds. Use '-' as separator.
+          jobId: `digest-${u.id}-${day}`,
           attempts: 1,
           removeOnComplete: 50,
           removeOnFail: 50,
         },
       )
       enqueued++
-    } catch {
-      // jobId collision — already enqueued today. Fine.
+    } catch (err) {
+      // Real error (not just dedup) — log it so we don't silently
+      // drop digest jobs the way we did pre-fix when the colon
+      // separator made every add throw.
+      const msg = (err as Error).message ?? ''
+      if (!/already exists/i.test(msg)) {
+        console.warn(`[ai-worker] digest enqueue failed for ${u.id}: ${msg}`)
+      }
     }
   }
   return { scanned: userRows.length, enqueued }
