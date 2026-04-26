@@ -21,6 +21,7 @@
     "db:generate": "pnpm --filter @wistmail/db generate",
     "db:migrate": "pnpm --filter @wistmail/db migrate",
     "db:seed": "pnpm --filter @wistmail/db seed",
+    "dev:seed": "pnpm --filter @wistmail/api dev:seed",
     "clean": "turbo clean"
   },
   "devDependencies": {
