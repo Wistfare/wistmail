@@ -17,7 +17,7 @@
 
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { ValidationError } from '@wistmail/shared'
 import { emails, mailboxes } from '@wistmail/db'
 import { getDb } from '../lib/db.js'
