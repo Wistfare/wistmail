@@ -9,6 +9,9 @@
   drawable-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/splash_logo.png. The
   resource resolver walks the bucket list automatically; no per-density
   XML override is needed.
+
+  The wm_brand_text bitmap pinned at the bottom is the "Wistfare Mail"
+  wordmark — same role as "from Meta" on the WhatsApp splash.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@android:color/white" />
@@ -16,5 +19,10 @@
         <bitmap
             android:gravity="center"
             android:src="@drawable/splash_logo" />
+    </item>
+    <item android:bottom="48dp">
+        <bitmap
+            android:gravity="bottom"
+            android:src="@drawable/wm_brand_text" />
     </item>
 </layer-list>

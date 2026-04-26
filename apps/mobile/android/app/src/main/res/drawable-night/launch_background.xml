@@ -9,6 +9,10 @@
   Note: the existing drawable-v21/launch_background.xml is kept as a
   no-op fallback for very old Android 5 devices, but in practice
   every Android 10+ device hits this file via the night qualifier.
+
+  The wm_brand_text bitmap pinned at the bottom is the "Wistfare Mail"
+  wordmark — same role as "from Meta" on the WhatsApp splash. The
+  dark-bg variant lives in drawable-night-*/wm_brand_text.png.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@android:color/black" />
@@ -16,5 +20,10 @@
         <bitmap
             android:gravity="center"
             android:src="@drawable/splash_logo" />
+    </item>
+    <item android:bottom="48dp">
+        <bitmap
+            android:gravity="bottom"
+            android:src="@drawable/wm_brand_text" />
     </item>
 </layer-list>
