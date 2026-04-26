@@ -44,7 +44,14 @@ export async function enqueueIngestEmail(emailId: string): Promise<void> {
 export async function enqueueTodayDigest(userId: string): Promise<void> {
   const queue = getQueue()
   if (!queue) return
+  // Deterministic jobId per user → BullMQ dedups. Without this, every
+  // /today fetch from the same user re-enqueues the digest because the
+  // stored row is stale-or-missing (chicken-and-egg). Keying on date
+  // means we get one digest job per user per day even if /today is
+  // hammered, with a fresh job allowed once the date rolls over.
+  const dayKey = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
   await queue.add(JOB_NAMES.todayDigest, { userId }, {
+    jobId: `digest:${userId}:${dayKey}`,
     attempts: 1,
     removeOnComplete: 50,
     removeOnFail: 50,

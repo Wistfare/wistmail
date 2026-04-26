@@ -9,7 +9,7 @@
  * per the queue config in worker.ts.
  */
 
-import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
 import { Queue, type Job } from 'bullmq'
 import {
   autoLabel,
@@ -245,7 +245,12 @@ export async function processTodayDigest(deps: ProcessorDeps, job: Job<TodayDige
           .from(emails)
           .where(
             and(
-              sql`${emails.mailboxId} = ANY(${mailboxIds})`,
+              // inArray binds the JS array as a parameterised list.
+              // Earlier this was a raw `sql\`= ANY(${arr})\`` which
+              // postgres-js expanded to N positional params instead
+              // of one array param — every digest job died with
+              // "Failed query".
+              inArray(emails.mailboxId, mailboxIds),
               eq(emails.isRead, false),
               eq(emails.folder, 'inbox'),
             ),
