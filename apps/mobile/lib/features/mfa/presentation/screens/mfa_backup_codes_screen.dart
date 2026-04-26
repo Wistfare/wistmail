@@ -94,11 +94,12 @@ class _Warning extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.dangerSubtle,
-        border: Border.fromBorderSide(
+        border: const Border.fromBorderSide(
           BorderSide(color: AppColors.danger, width: 1),
         ),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -148,11 +149,12 @@ class _CodeGrid extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
-        border: Border.fromBorderSide(
+        border: const Border.fromBorderSide(
           BorderSide(color: AppColors.border, width: 1),
         ),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(children: rows),
     );
@@ -190,14 +192,15 @@ class _OutlinedAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
         child: Container(
           height: 44,
-          decoration: const BoxDecoration(
-            border: Border.fromBorderSide(
-              BorderSide(color: AppColors.border, width: 1),
-            ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border, width: 1),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,

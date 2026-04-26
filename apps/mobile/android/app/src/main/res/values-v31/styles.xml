@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31) splash. The new SplashScreen API takes over from
+  the legacy windowBackground path: without these attributes the system
+  ignores launch_background.xml and shows the launcher icon (which has
+  the white rounded-square adaptive background baked in — not what we
+  want as a splash).
+
+  windowSplashScreenAnimatedIcon picks @drawable/splash_logo, and the
+  resource resolver swaps to drawable-night-* automatically when the
+  user's system theme is dark. windowSplashScreenBrandingImage pins
+  the "Wistfare Mail" wordmark at the bottom — same role as
+  "from Meta" on WhatsApp's splash.
+-->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@android:color/white</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="android:windowSplashScreenBrandingImage">@drawable/wm_brand_text</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>

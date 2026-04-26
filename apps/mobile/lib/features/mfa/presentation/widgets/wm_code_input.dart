@@ -4,9 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 
 /// 6-digit code input matching design.lib.pen MfaChallenge `vBdQj`.
-/// Six fixed-width sharp boxes. Active boxes (next to type) are
-/// outlined in lime; filled boxes show the digit in JetBrains Mono.
-/// Auto-advances + supports paste of a full code.
+/// Six fixed-width boxes with subtle 8px radius. Active boxes (next to
+/// type) are outlined in the brand accent; filled boxes show the digit
+/// in JetBrains Mono. Auto-advances + supports paste of a full code.
 class WmCodeInput extends StatefulWidget {
   const WmCodeInput({
     super.key,
@@ -105,6 +105,7 @@ class _WmCodeInputState extends State<WmCodeInput> {
                         : AppColors.border,
                     width: 1,
                   ),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: TextField(
                   controller: _ctrls[i],

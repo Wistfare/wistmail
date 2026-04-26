@@ -3,8 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
-/// Sharp-cornered text field with mono uppercase label above it.
+/// Text field with mono uppercase label above it.
 /// Matches Mobile/SignIn email/password and Mobile/ForgotPassword inputs.
+/// Subtle 12px radius keeps it in the same family as the V3 inbox/today
+/// cards without going soft.
 class WmTextField extends StatefulWidget {
   const WmTextField({
     super.key,
@@ -63,11 +65,10 @@ class _WmTextFieldState extends State<WmTextField> {
         ),
         const SizedBox(height: 10),
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.surface,
-            border: Border.fromBorderSide(
-              BorderSide(color: AppColors.border, width: 1),
-            ),
+            border: Border.all(color: AppColors.border, width: 1),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             children: [

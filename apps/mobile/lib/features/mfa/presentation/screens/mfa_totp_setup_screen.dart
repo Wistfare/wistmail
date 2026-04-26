@@ -183,7 +183,10 @@ class _Step extends StatelessWidget {
         Container(
           width: 24,
           height: 24,
-          color: active ? AppColors.accentDim : AppColors.surface,
+          decoration: BoxDecoration(
+            color: active ? AppColors.accentDim : AppColors.surface,
+            borderRadius: BorderRadius.circular(8),
+          ),
           alignment: Alignment.center,
           child: Text(
             '$index',
@@ -238,7 +241,10 @@ class _QrSection extends StatelessWidget {
         Container(
           width: 160,
           height: 160,
-          color: Colors.white,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
           padding: const EdgeInsets.all(8),
           child: QrImageView(
             data: challenge.otpauthUrl,
@@ -258,11 +264,12 @@ class _QrSection extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.surface,
-            border: Border.fromBorderSide(
+            border: const Border.fromBorderSide(
               BorderSide(color: AppColors.border, width: 1),
             ),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             children: [
