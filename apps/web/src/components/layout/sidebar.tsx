@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Inbox, Star, Clock, Send, FileText, CalendarClock, ShieldAlert, Trash2,
   Plus, Mail, Settings, LogOut, Users, Building2, ScrollText,
-  User, Globe, Key, Webhook, PenLine, ShieldCheck, Tag,
+  User, Globe, Key, Webhook, PenLine, ShieldCheck, Tag, MessageSquare,
 } from 'lucide-react'
 import { NavItem } from './nav-item'
 import { Avatar } from '@/components/ui/avatar'
@@ -67,6 +67,8 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
   const [showUserMenu, setShowUserMenu] = useState(false)
   const isAdmin = user.role === 'owner' || user.role === 'admin'
   const isOnAdmin = pathname.startsWith('/admin') || pathname.startsWith('/settings')
+  const isOnChat = pathname.startsWith('/chat')
+  const isOnMail = !isOnAdmin && !isOnChat
   const currentFolder = searchParams.get('folder') || (pathname === '/inbox' ? 'inbox' : '')
 
   // Real labels via TanStack Query. Falls back to the explicit
@@ -110,11 +112,28 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
         >
           <div className={cn(
             'flex h-9 w-10 items-center justify-center',
-            !isOnAdmin ? 'bg-wm-accent/15' : 'hover:bg-wm-surface-hover',
+            isOnMail ? 'bg-wm-accent/15' : 'hover:bg-wm-surface-hover',
           )}>
             <Mail className={cn(
               'h-5 w-5',
-              !isOnAdmin ? 'text-wm-accent' : 'text-wm-text-muted',
+              isOnMail ? 'text-wm-accent' : 'text-wm-text-muted',
+            )} />
+          </div>
+        </Link>
+
+        {/* Chat icon */}
+        <Link
+          href="/chat"
+          className="flex h-12 w-14 items-center justify-center"
+          title="Chat"
+        >
+          <div className={cn(
+            'flex h-9 w-10 items-center justify-center',
+            isOnChat ? 'bg-wm-accent/15' : 'hover:bg-wm-surface-hover',
+          )}>
+            <MessageSquare className={cn(
+              'h-5 w-5',
+              isOnChat ? 'text-wm-accent' : 'text-wm-text-muted',
             )} />
           </div>
         </Link>
@@ -180,7 +199,10 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
 
       {/* ── Detail Panel ── */}
       <div className="flex w-[180px] flex-col border-r border-wm-border bg-wm-surface">
-        {isOnAdmin ? (
+        {isOnChat ? (
+          /* ── CHAT MODE ── */
+          <ChatDetailPanelInner />
+        ) : isOnAdmin ? (
           /* ── ADMIN / SETTINGS MODE ── */
           <div className="flex flex-col overflow-y-auto">
             {/* Settings section */}
@@ -254,5 +276,40 @@ export function Sidebar({ user, unreadCounts = {}, labels, className }: SidebarP
         )}
       </div>
     </aside>
+  )
+}
+
+/// Detail panel rendered in the sidebar's middle column when the
+/// user is on /chat/*. Mirrors the Mail panel's "Compose" button +
+/// section header pattern: a "New chat" call-to-action + a single
+/// "All chats" entry that routes back to the index, since the
+/// conversation list lives in the page itself.
+function ChatDetailPanelInner() {
+  return (
+    <>
+      <div className="px-3 pt-4 pb-2">
+        <Link
+          href="/chat/new"
+          className="flex w-full cursor-pointer items-center justify-center gap-2 bg-wm-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
+        >
+          <Plus className="h-4 w-4" />
+          New chat
+        </Link>
+      </div>
+
+      <div className="px-4 pb-1 pt-3">
+        <span className="font-sans text-[10px] font-semibold tracking-[2px] text-wm-text-muted">
+          CHAT
+        </span>
+      </div>
+
+      <Link
+        href="/chat"
+        className="flex items-center gap-2 px-5 py-2 text-[12px] text-wm-text-secondary hover:bg-wm-surface-hover"
+      >
+        <Inbox className="h-4 w-4" />
+        All chats
+      </Link>
+    </>
   )
 }

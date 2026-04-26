@@ -14,7 +14,13 @@ export { auditLogs } from './audit-logs'
 export { organizations, orgMembers } from './organizations'
 export { setupTokens } from './setup-tokens'
 export { deviceTokens } from './device-tokens'
-export { conversations, conversationParticipants, chatMessages } from './chat'
+export {
+  conversations,
+  conversationParticipants,
+  chatMessages,
+  chatMessageReads,
+  chatAttachments,
+} from './chat'
 export { calendarEvents } from './calendar'
 export { projects } from './projects'
 export { projectTasks } from './project-tasks'

@@ -51,6 +51,11 @@ dependencies:
   rxdart: ^0.28.0
   flutter_inappwebview: ^6.1.5
   url_launcher: ^6.3.2
+  # Cross-platform file picker for chat attachments + email
+  # composer attachments. Works without extra Info.plist edits
+  # for the generic-file picker mode we use here; if we ever
+  # add a photo-library mode it'll need iOS NSPhotoLibraryUsage.
+  file_picker: ^8.1.4
   intl: ^0.20.2
   app_links: ^7.0.0
   # Returns the device's IANA timezone (e.g. "Africa/Kigali").

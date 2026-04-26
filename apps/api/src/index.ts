@@ -5,7 +5,9 @@ import { getDb } from './lib/db.js'
 import { attachWebSocketServer } from './ws/server.js'
 import { startSendDispatcher } from './services/send-dispatcher.js'
 import { startTrashRetention } from './services/trash-retention.js'
+import { startChatAttachmentCleanup } from './services/chat-attachment-cleanup.js'
 import { startCacheBus } from './lib/cache-bus.js'
+import { startNotificationUpdateBus } from './lib/notification-update-bus.js'
 
 const port = parseInt(process.env.API_PORT || '3001', 10)
 
@@ -305,6 +307,20 @@ async function ensureSchema() {
       PRIMARY KEY (message_id, user_id)
     )`,
     `CREATE INDEX IF NOT EXISTS chat_message_reads_user_id_idx ON chat_message_reads(user_id)`,
+    // Phase 4 — chat attachments. Two-step upload: orphan rows have
+    // null message_id; the send route claims them by stamping it.
+    `CREATE TABLE IF NOT EXISTS chat_attachments (
+      id varchar(64) PRIMARY KEY,
+      message_id varchar(64) REFERENCES chat_messages(id) ON DELETE CASCADE,
+      uploader_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      filename varchar(255) NOT NULL,
+      content_type varchar(127) NOT NULL,
+      size_bytes integer NOT NULL,
+      storage_key text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS chat_attachments_message_id_idx ON chat_attachments(message_id)`,
+    `CREATE INDEX IF NOT EXISTS chat_attachments_uploader_id_idx ON chat_attachments(uploader_id)`,
     `CREATE TABLE IF NOT EXISTS calendar_events (
       id varchar(64) PRIMARY KEY,
       user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -450,6 +466,20 @@ async function start() {
   // writing classify/label/draft results so the API's hot-read cache
   // (today / unified-inbox / me-stats) refreshes without waiting for TTL.
   startCacheBus()
+
+  // Cross-process notification updates. The AI worker publishes after
+  // a `draft-reply` job completes so this process can fire a follow-up
+  // FCM push that updates the existing email notification with reply
+  // suggestion chips.
+  startNotificationUpdateBus()
+
+  // Hourly sweep of orphan chat attachments — uploads that were
+  // staged but never claimed by a `sendMessage`. Bytes + DB row
+  // gone after 24h. Skipped under the same flag as trash purge so
+  // dev/CI doesn't reap fixtures unexpectedly.
+  if (process.env.DISABLE_TRASH_PURGE !== '1') {
+    startChatAttachmentCleanup(getDb())
+  }
 
   console.log(`Wistfare Mail API running on http://localhost:${port}`)
   console.log(`WebSocket stream at ws://localhost:${port}/api/v1/stream`)

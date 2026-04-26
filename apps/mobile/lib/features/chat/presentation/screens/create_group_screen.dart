@@ -12,19 +12,20 @@ import '../../../../core/widgets/wm_primary_button.dart';
 import '../../domain/contact.dart';
 import '../providers/chat_providers.dart';
 
-/// Mobile/NewChat — search-by-name/email picker with a manual
-/// "enter an email" fallback. Replaces the previous static contact
-/// list with the live `/api/v1/chat/users/search` endpoint.
-class NewChatScreen extends ConsumerStatefulWidget {
-  const NewChatScreen({super.key});
+/// Mobile group-create flow. The user enters a title, searches for
+/// teammates, and taps to multi-select. "Create group" hits the
+/// `/chat/conversations/group` endpoint and pushes the new thread.
+class CreateGroupScreen extends ConsumerStatefulWidget {
+  const CreateGroupScreen({super.key});
 
   @override
-  ConsumerState<NewChatScreen> createState() => _NewChatScreenState();
+  ConsumerState<CreateGroupScreen> createState() => _CreateGroupScreenState();
 }
 
-class _NewChatScreenState extends ConsumerState<NewChatScreen> {
+class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
+  final _titleController = TextEditingController();
   final _searchController = TextEditingController();
-  final _emailController = TextEditingController();
+  final _selected = <String, Contact>{};
 
   String _query = '';
   List<Contact> _results = const [];
@@ -36,8 +37,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _titleController.dispose();
     _searchController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -66,7 +67,6 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
       final repo = await ref.read(chatRepositoryProvider.future);
       final users = await repo.searchUsers(trimmed);
       if (!mounted) return;
-      // Drop late results that no longer match the input.
       if (trimmed != _searchController.text.trim()) return;
       setState(() {
         _results = users;
@@ -81,12 +81,27 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
     }
   }
 
-  Future<void> _createDirect([String? overrideEmail]) async {
-    final email = (overrideEmail ?? _emailController.text).trim();
-    if (email.isEmpty) {
-      setState(() => _error = "Enter the person's email");
+  void _toggleSelect(Contact c) {
+    setState(() {
+      if (_selected.containsKey(c.id)) {
+        _selected.remove(c.id);
+      } else {
+        _selected[c.id] = c;
+      }
+    });
+  }
+
+  Future<void> _createGroup() async {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      setState(() => _error = 'Give the group a name.');
       return;
     }
+    if (_selected.isEmpty) {
+      setState(() => _error = 'Pick at least one teammate.');
+      return;
+    }
+
     setState(() {
       _creating = true;
       _error = null;
@@ -94,7 +109,10 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
 
     try {
       final repo = await ref.read(chatRepositoryProvider.future);
-      final id = await repo.createDirectConversation(email);
+      final id = await repo.createGroupConversation(
+        title: title,
+        participantIds: _selected.keys.toList(),
+      );
       ref.invalidate(chatListControllerProvider);
       if (!mounted) return;
       context.pushReplacement('/conversation/$id');
@@ -110,27 +128,121 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   String _format(Object error) {
     final msg = error.toString();
     final m = RegExp(r'ApiException\([^)]*\):\s*(.*)$').firstMatch(msg);
-    return m != null ? m.group(1)! : 'Could not start chat.';
+    return m != null ? m.group(1)! : 'Could not create group.';
   }
 
   @override
   Widget build(BuildContext context) {
+    final selectedList = _selected.values.toList();
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: const WmAppBar(title: 'New Chat'),
+      appBar: const WmAppBar(title: 'New Group'),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _GroupChatTile(onTap: () => context.push('/chat/new/group')),
-            const Divider(color: AppColors.border, height: 1),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text('FIND A TEAMMATE',
-                  style: AppTextStyles.sectionLabel),
+              child: Text('GROUP NAME', style: AppTextStyles.sectionLabel),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.fromBorderSide(
+                    BorderSide(color: AppColors.border, width: 1),
+                  ),
+                ),
+                child: TextField(
+                  key: const Key('create-group-title'),
+                  controller: _titleController,
+                  cursorColor: AppColors.accent,
+                  style: AppTextStyles.monoSmall.copyWith(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Engineering',
+                    hintStyle: AppTextStyles.monoSmall.copyWith(
+                      color: AppColors.textTertiary,
+                      fontSize: 13,
+                    ),
+                    border: InputBorder.none,
+                    isCollapsed: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Text('MEMBERS', style: AppTextStyles.sectionLabel),
+                  const SizedBox(width: 8),
+                  if (selectedList.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      color: AppColors.accentDim,
+                      child: Text(
+                        '${selectedList.length}',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (selectedList.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final c in selectedList)
+                      InkWell(
+                        onTap: () => _toggleSelect(c),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentDim,
+                            border: Border.all(
+                              color: AppColors.accent.withValues(alpha: 0.4),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                c.name,
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 11,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.close,
+                                  size: 12, color: AppColors.textTertiary),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
@@ -149,7 +261,7 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                     ),
                     Expanded(
                       child: TextField(
-                        key: const Key('new-chat-search'),
+                        key: const Key('create-group-search'),
                         controller: _searchController,
                         cursorColor: AppColors.accent,
                         style: AppTextStyles.monoSmall.copyWith(
@@ -157,7 +269,7 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                           fontSize: 13,
                         ),
                         decoration: InputDecoration(
-                          hintText: 'Search by name or email…',
+                          hintText: 'Search teammates…',
                           hintStyle: AppTextStyles.monoSmall.copyWith(
                             color: AppColors.textTertiary,
                             fontSize: 13,
@@ -186,21 +298,20 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             if (_query.trim().isEmpty)
               Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 child: Text(
-                  'Start typing to find teammates in your organization.',
+                  'Search and tap teammates to add them.',
                   style: AppTextStyles.bodySmall
                       .copyWith(color: AppColors.textTertiary),
                 ),
               )
             else if (!_searching && _results.isEmpty)
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
                   'No matches.',
                   style: AppTextStyles.bodySmall
@@ -212,12 +323,10 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final c in _results) ...[
-                    _ContactRow(
-                      name: c.name,
-                      email: c.email,
-                      avatarUrl: c.avatarUrl,
-                      onTap:
-                          _creating ? null : () => _createDirect(c.email),
+                    _SelectableRow(
+                      contact: c,
+                      selected: _selected.containsKey(c.id),
+                      onTap: () => _toggleSelect(c),
                     ),
                     const Divider(color: AppColors.border, height: 1),
                   ],
@@ -229,64 +338,21 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('OR ENTER AN ADDRESS',
-                      style: AppTextStyles.sectionLabel),
-                  const SizedBox(height: 10),
-                  Container(
-                    decoration: const BoxDecoration(
-                      color: AppColors.surface,
-                      border: Border.fromBorderSide(
-                        BorderSide(color: AppColors.border, width: 1),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.only(left: 14, right: 8),
-                          child: Icon(Icons.alternate_email,
-                              size: 16, color: AppColors.textTertiary),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            key: const Key('new-chat-email'),
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            cursorColor: AppColors.accent,
-                            style: AppTextStyles.monoSmall.copyWith(
-                              color: AppColors.textPrimary,
-                              fontSize: 13,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: 'colleague@wistfare.com',
-                              hintStyle: AppTextStyles.monoSmall.copyWith(
-                                color: AppColors.textTertiary,
-                                fontSize: 13,
-                              ),
-                              border: InputBorder.none,
-                              isCollapsed: true,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            onSubmitted: (_) => _createDirect(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                   if (_error != null) ...[
-                    const SizedBox(height: 12),
                     Text(
                       _error!,
                       style: AppTextStyles.bodySmall
                           .copyWith(color: AppColors.danger),
                     ),
+                    const SizedBox(height: 12),
                   ],
-                  const SizedBox(height: 16),
                   WmPrimaryButton(
-                    key: const Key('new-chat-submit'),
-                    label: _creating ? 'Creating…' : 'Start chat',
+                    key: const Key('create-group-submit'),
+                    label: _creating
+                        ? 'Creating…'
+                        : 'Create group${selectedList.isNotEmpty ? ' (${selectedList.length})' : ''}',
                     loading: _creating,
-                    onPressed: _createDirect,
+                    onPressed: _createGroup,
                   ),
                 ],
               ),
@@ -299,56 +365,15 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   }
 }
 
-class _GroupChatTile extends StatelessWidget {
-  const _GroupChatTile({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                color: AppColors.accentDim,
-                alignment: Alignment.center,
-                child: const Icon(Icons.group_outlined,
-                    color: AppColors.accent, size: 18),
-              ),
-              const SizedBox(width: 14),
-              Text(
-                'Create Group Chat',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.accent,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ContactRow extends StatelessWidget {
-  const _ContactRow({
-    required this.name,
-    required this.email,
-    required this.avatarUrl,
+class _SelectableRow extends StatelessWidget {
+  const _SelectableRow({
+    required this.contact,
+    required this.selected,
     required this.onTap,
   });
-  final String name;
-  final String email;
-  final String? avatarUrl;
-  final VoidCallback? onTap;
+  final Contact contact;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -361,22 +386,37 @@ class _ContactRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Row(
             children: [
-              WmAvatar(name: name, size: 36),
+              WmAvatar(name: contact.name, size: 36),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name,
+                    Text(contact.name,
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: AppColors.textPrimary,
                         )),
                     const SizedBox(height: 2),
-                    Text(email, style: AppTextStyles.monoSmall),
+                    Text(contact.email, style: AppTextStyles.monoSmall),
                   ],
                 ),
+              ),
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? AppColors.accent : AppColors.surface,
+                  border: Border.all(
+                    color: selected ? AppColors.accent : AppColors.border,
+                  ),
+                ),
+                child: selected
+                    ? const Icon(Icons.check,
+                        size: 14, color: Colors.black)
+                    : null,
               ),
             ],
           ),

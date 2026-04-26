@@ -18,7 +18,10 @@ class ChatListScreen extends ConsumerWidget {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          _TopBar(onSearch: () {}, onNew: () => context.push('/chat/new')),
+          _TopBar(
+            onSearch: () => context.push('/chat/search'),
+            onNew: () => context.push('/chat/new'),
+          ),
           Expanded(child: _Body(chat: chat)),
         ],
       ),
