@@ -27,6 +27,10 @@ export interface EmailListItem {
   id: string
   mailboxId: string
   fromAddress: string
+  /// Display name from the RFC-5322 From header. Null when the
+  /// sender's MTA didn't set one. Mobile inbox row uses this if
+  /// present, otherwise the local-part of fromAddress.
+  fromName: string | null
   toAddresses: string[]
   cc: string[]
   subject: string
@@ -203,6 +207,7 @@ export class EmailService {
           id: emails.id,
           mailboxId: emails.mailboxId,
           fromAddress: emails.fromAddress,
+          fromName: emails.fromName,
           toAddresses: emails.toAddresses,
           cc: emails.cc,
           subject: emails.subject,
@@ -235,6 +240,7 @@ export class EmailService {
       id: r.id,
       mailboxId: r.mailboxId,
       fromAddress: r.fromAddress,
+      fromName: r.fromName,
       toAddresses: r.toAddresses,
       cc: r.cc,
       subject: r.subject,
@@ -329,6 +335,7 @@ export class EmailService {
         id: emails.id,
         mailboxId: emails.mailboxId,
         fromAddress: emails.fromAddress,
+        fromName: emails.fromName,
         toAddresses: emails.toAddresses,
         cc: emails.cc,
         subject: emails.subject,
@@ -363,6 +370,7 @@ export class EmailService {
       id: r.id,
       mailboxId: r.mailboxId,
       fromAddress: r.fromAddress,
+      fromName: r.fromName,
       toAddresses: r.toAddresses,
       cc: r.cc,
       subject: r.subject,
@@ -476,6 +484,7 @@ export class EmailService {
         id: emails.id,
         mailboxId: emails.mailboxId,
         fromAddress: emails.fromAddress,
+        fromName: emails.fromName,
         toAddresses: emails.toAddresses,
         cc: emails.cc,
         subject: emails.subject,
@@ -503,6 +512,7 @@ export class EmailService {
       id: r.id,
       mailboxId: r.mailboxId,
       fromAddress: r.fromAddress,
+      fromName: r.fromName,
       toAddresses: r.toAddresses,
       cc: r.cc,
       subject: r.subject,

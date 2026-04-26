@@ -26,6 +26,7 @@ class Email {
   Email({
     required this.id,
     required this.fromAddress,
+    this.fromName,
     required this.toAddresses,
     this.cc = const [],
     this.bcc = const [],
@@ -48,14 +49,27 @@ class Email {
     this.labels = const [],
     this.threadId,
   }) : updatedAt = updatedAt ?? createdAt,
-       senderName = _extractSenderName(fromAddress),
+       // Prefer the RFC-5322 display name straight from the From
+       // header. Only fall back to the local-part heuristic when the
+       // sender's MTA didn't include one.
+       senderName = (fromName != null && fromName.trim().isNotEmpty)
+           ? fromName.trim()
+           : _extractSenderName(fromAddress),
        senderEmail = _extractSenderEmail(fromAddress),
-       senderInitials = _initialsFor(_extractSenderName(fromAddress)),
+       senderInitials = _initialsFor(
+         (fromName != null && fromName.trim().isNotEmpty)
+             ? fromName.trim()
+             : _extractSenderName(fromAddress),
+       ),
        senderAvatarColor = _colorFor(fromAddress),
        preview = _buildPreview(snippet, textBody);
 
   final String id;
   final String fromAddress;
+  /// Display name from the RFC-5322 From header. Null when the
+  /// sender's MTA didn't supply one. The constructor uses this if
+  /// non-empty; otherwise falls back to the local-part of fromAddress.
+  final String? fromName;
   final List<String> toAddresses;
   final List<String> cc;
   final List<String> bcc;
@@ -106,6 +120,7 @@ class Email {
     return Email(
       id: json['id'] as String,
       fromAddress: (json['fromAddress'] as String?) ?? '',
+      fromName: json['fromName'] as String?,
       toAddresses: _asStringList(json['toAddresses']),
       cc: _asStringList(json['cc']),
       bcc: _asStringList(json['bcc']),
@@ -146,6 +161,7 @@ class Email {
   }) => Email(
     id: id,
     fromAddress: fromAddress,
+    fromName: fromName,
     toAddresses: toAddresses,
     cc: cc,
     bcc: bcc,
@@ -179,6 +195,7 @@ class Email {
   }) => Email(
     id: id,
     fromAddress: fromAddress,
+    fromName: fromName,
     toAddresses: toAddresses,
     cc: cc,
     bcc: bcc,

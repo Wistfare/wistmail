@@ -42,6 +42,7 @@ class TodayNeedsReplyItem {
     required this.emailId,
     required this.subject,
     required this.fromAddress,
+    this.fromName,
     required this.createdAt,
     this.reason,
   });
@@ -49,14 +50,27 @@ class TodayNeedsReplyItem {
   final String emailId;
   final String subject;
   final String fromAddress;
+  /// Display name from the From header, when the sender's MTA set
+  /// one. Renderer falls back to the local-part of fromAddress if null.
+  final String? fromName;
   final DateTime createdAt;
   final String? reason;
+
+  /// Renderer-friendly display: prefer fromName, fall back to the
+  /// local-part of the address (everything before the `@`).
+  String get displayName {
+    final n = fromName?.trim();
+    if (n != null && n.isNotEmpty) return n;
+    final at = fromAddress.indexOf('@');
+    return at > 0 ? fromAddress.substring(0, at) : fromAddress;
+  }
 
   factory TodayNeedsReplyItem.fromJson(Map<String, dynamic> json) {
     return TodayNeedsReplyItem(
       emailId: json['id'] as String,
       subject: (json['subject'] as String?) ?? '(no subject)',
       fromAddress: json['fromAddress'] as String,
+      fromName: json['fromName'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       reason: json['needsReplyReason'] as String?,
     );

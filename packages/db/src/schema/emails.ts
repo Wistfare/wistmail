@@ -26,6 +26,12 @@ export const emails = pgTable(
     id: varchar('id', { length: 64 }).primaryKey(),
     messageId: varchar('message_id', { length: 512 }).notNull(),
     fromAddress: varchar('from_address', { length: 255 }).notNull(),
+    /// Display name from the RFC-5322 From header (e.g. "Sarah Kim"
+    /// from `From: "Sarah Kim" <sarah@x.com>`). Null when the
+    /// sender's MTA didn't include one — most automated bots and
+    /// older SMTP scripts. The UI prefers fromName, falls back to
+    /// the local-part of fromAddress.
+    fromName: varchar('from_name', { length: 255 }),
     toAddresses: jsonb('to_addresses').$type<string[]>().notNull().default([]),
     cc: jsonb('cc').$type<string[]>().notNull().default([]),
     bcc: jsonb('bcc').$type<string[]>().notNull().default([]),

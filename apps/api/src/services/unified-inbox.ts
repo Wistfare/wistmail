@@ -82,6 +82,7 @@ export async function unifiedInbox(
               id: emails.id,
               subject: emails.subject,
               fromAddress: emails.fromAddress,
+              fromName: emails.fromName,
               textBody: emails.textBody,
               isRead: emails.isRead,
               threadId: emails.threadId,
@@ -94,7 +95,10 @@ export async function unifiedInbox(
             .limit(perSource)
 
           return rows.map((r): UnifiedItem => {
-            const senderName = extractDisplayName(r.fromAddress)
+            // Prefer the From header's display name; fall back to the
+            // local-part heuristic only when the sender's MTA didn't
+            // provide one.
+            const senderName = r.fromName ?? extractDisplayName(r.fromAddress)
             const snippet = (r.textBody || '').trim().slice(0, 140)
             return {
               source: 'mail',

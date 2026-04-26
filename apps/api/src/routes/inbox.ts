@@ -139,6 +139,7 @@ inboxRoutes.get('/emails/:id/thread', async (c) => {
     messages: messages.map((m) => ({
       id: m.id,
       fromAddress: m.fromAddress,
+      fromName: m.fromName,
       toAddresses: m.toAddresses,
       cc: m.cc,
       subject: m.subject,

@@ -26,6 +26,10 @@ export interface EmailNewEvent {
   mailboxId: string
   folder: string
   fromAddress: string
+  /// Display name from the RFC-5322 From header. Null when the
+  /// sender's MTA didn't include one — most automated bots and
+  /// older SMTP scripts. UI prefers this over the bare address.
+  fromName: string | null
   toAddresses: string[]
   cc: string[]
   subject: string
