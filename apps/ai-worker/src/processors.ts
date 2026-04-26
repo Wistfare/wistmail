@@ -124,8 +124,88 @@ export async function processClassifyNeedsReply(
     .update(emails)
     .set({ needsReply: result.needsReply, needsReplyReason: result.reason })
     .where(eq(emails.id, ctx.email.id))
+
+  // Intra-day priority merge. If the email is urgent enough, splice
+  // it into today's existing digest priorities by urgency. We never
+  // re-run the heavier today-digest job for new email — the morning
+  // run picked the briefing + focus blocks from the morning state,
+  // and only the priorities list needs to react to the day's traffic.
+  let mergeResult: 'merged' | 'skipped-no-digest' | 'skipped-low-urgency' | 'skipped-not-needed' =
+    'skipped-low-urgency'
+  if (result.needsReply && result.urgency >= 0.6) {
+    mergeResult = await mergeEmailIntoDigest(deps, {
+      userId: ctx.userId,
+      emailId: ctx.email.id,
+      reason: result.reason,
+      urgency: result.urgency,
+    })
+  } else if (!result.needsReply) {
+    mergeResult = 'skipped-not-needed'
+  }
+
   await bust(deps, ctx.userId, 'today')
-  return { needsReply: result.needsReply }
+  return { needsReply: result.needsReply, urgency: result.urgency, merge: mergeResult }
+}
+
+/**
+ * Splice a single new email into the user's existing today_digests row,
+ * sorted by urgency, capped at 5. No-op if the user has no digest yet
+ * (they'll see the email in the live "needs reply" list anyway).
+ *
+ * Cheap: one SELECT, optional one UPSERT, no model call. Replaces the
+ * earlier "re-run the full digest on every email.new" idea — that was
+ * 30s+ of CPU per active email and lost the briefing/focus blocks the
+ * morning run already curated.
+ */
+async function mergeEmailIntoDigest(
+  deps: ProcessorDeps,
+  email: { userId: string; emailId: string; reason: string; urgency: number },
+): Promise<'merged' | 'skipped-no-digest' | 'skipped-not-needed'> {
+  const rows = await deps.db
+    .select({ content: todayDigests.content, generatedAt: todayDigests.generatedAt })
+    .from(todayDigests)
+    .where(eq(todayDigests.userId, email.userId))
+    .limit(1)
+  const existing = rows[0]
+  if (!existing) return 'skipped-no-digest'
+
+  // Existing digests written before urgency landed have no urgency
+  // field on their priorities — backfill 0.5 so the sort doesn't NaN
+  // them off the list. Tomorrow morning's digest will produce real
+  // scores, so this only matters today.
+  const current = (existing.content.priorities ?? []).map((p) => ({
+    ...p,
+    urgency: typeof p.urgency === 'number' ? p.urgency : 0.5,
+  }))
+  // De-dupe by id+kind in case classify ran more than once on the
+  // same email (re-ingest, manual force, etc.).
+  const without = current.filter((p) => !(p.kind === 'email' && p.id === email.emailId))
+  const next = [
+    ...without,
+    { kind: 'email' as const, id: email.emailId, reason: email.reason, urgency: email.urgency },
+  ]
+    .sort((a, b) => b.urgency - a.urgency)
+    .slice(0, 5)
+
+  // Skip the write when the merge result is identical to current — saves a
+  // pointless cache bust + WS broadcast.
+  if (
+    next.length === current.length &&
+    next.every(
+      (p, i) =>
+        p.kind === current[i]!.kind &&
+        p.id === current[i]!.id &&
+        p.urgency === current[i]!.urgency,
+    )
+  ) {
+    return 'skipped-not-needed'
+  }
+
+  await deps.db
+    .update(todayDigests)
+    .set({ content: { ...existing.content, priorities: next } })
+    .where(eq(todayDigests.userId, email.userId))
+  return 'merged'
 }
 
 export async function processSummarize(deps: ProcessorDeps, job: Job<SummarizeJob>) {

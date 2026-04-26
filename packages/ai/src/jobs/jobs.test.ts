@@ -16,20 +16,43 @@ function fake(out: unknown): AiProvider {
 }
 
 describe('classifyNeedsReply', () => {
-  it('returns the model decision and clamps reason length', async () => {
+  it('returns the model decision, clamps reason, clamps urgency to [0,1]', async () => {
     const r = await classifyNeedsReply(
-      fake({ needsReply: true, reason: 'a'.repeat(120) }),
+      fake({ needsReply: true, reason: 'a'.repeat(120), urgency: 1.5 }),
       'm',
       { fromAddress: 'a@b.com', subject: 's', body: 'b' },
     )
     expect(r.needsReply).toBe(true)
     expect(r.reason.length).toBe(80)
+    expect(r.urgency).toBe(1)
+  })
+
+  it('caps urgency at 0.2 when needsReply is false (model contract enforcement)', async () => {
+    // The prompt says "when needsReply is false, urgency must be ≤ 0.2".
+    // If the model violates that, the wrapper clamps it — otherwise a
+    // chatty newsletter could still float into priorities.
+    const r = await classifyNeedsReply(
+      fake({ needsReply: false, reason: 'newsletter', urgency: 0.9 }),
+      'm',
+      { fromAddress: 'a@b.com', subject: 's', body: 'b' },
+    )
+    expect(r.urgency).toBe(0.2)
   })
 
   it('throws on malformed output', async () => {
     await expect(
       classifyNeedsReply(
-        fake({ needsReply: 'yes', reason: 1 }),
+        fake({ needsReply: 'yes', reason: 1, urgency: 0.5 }),
+        'm',
+        { fromAddress: 'a@b.com', subject: 's', body: 'b' },
+      ),
+    ).rejects.toThrow(/invalid model output/)
+  })
+
+  it('throws when urgency is missing', async () => {
+    await expect(
+      classifyNeedsReply(
+        fake({ needsReply: true, reason: 'r' }),
         'm',
         { fromAddress: 'a@b.com', subject: 's', body: 'b' },
       ),
@@ -98,10 +121,17 @@ describe('draftReply', () => {
 })
 
 describe('todayDigest', () => {
-  it('passes through structured digest fields', async () => {
+  it('sorts priorities by urgency descending and trims to 5', async () => {
     const out = {
       briefing: 'Two reviews, then deep work after lunch.',
-      priorities: [{ kind: 'email', id: 'e1', reason: 'awaiting your sign-off' }],
+      priorities: [
+        { kind: 'email', id: 'e1', reason: 'low', urgency: 0.2 },
+        { kind: 'email', id: 'e2', reason: 'block', urgency: 0.9 },
+        { kind: 'task', id: 't1', reason: 'mid', urgency: 0.5 },
+        { kind: 'event', id: 'v1', reason: 'mtg', urgency: 0.7 },
+        { kind: 'email', id: 'e3', reason: 'note', urgency: 0.1 },
+        { kind: 'email', id: 'e4', reason: 'noise', urgency: 0.05 },
+      ],
       focusBlocks: [{ startAt: '14:00', endAt: '16:00', label: 'Deep work' }],
     }
     const r = await todayDigest(fake(out), 'm', {
@@ -110,6 +140,25 @@ describe('todayDigest', () => {
       todayEvents: [],
       openTasks: [],
     })
-    expect(r).toEqual(out)
+    expect(r.priorities.map((p) => p.id)).toEqual(['e2', 'v1', 't1', 'e1', 'e3'])
+    expect(r.priorities).toHaveLength(5)
+  })
+
+  it('clamps a missing or out-of-range urgency to a sane value', async () => {
+    const r = await todayDigest(
+      fake({
+        briefing: 'b',
+        priorities: [
+          { kind: 'email', id: 'e1', reason: 'r', urgency: 2 },
+          { kind: 'email', id: 'e2', reason: 'r' }, // missing urgency
+        ],
+        focusBlocks: [],
+      }),
+      'm',
+      { userDisplayName: 'V', pendingEmails: [], todayEvents: [], openTasks: [] },
+    )
+    expect(r.priorities[0]!.urgency).toBe(1)
+    // Missing urgency defaults to 0.5 — moderate, not at top, not at bottom.
+    expect(r.priorities[1]!.urgency).toBe(0.5)
   })
 })

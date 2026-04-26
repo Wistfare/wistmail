@@ -62,6 +62,10 @@ export interface TodayDigestContent {
     kind: 'email' | 'task' | 'event'
     id: string
     reason: string
+    /// 0..1 — list is sorted by this descending. Intra-day inserts
+    /// (urgent inbound email) splice in by score without re-running
+    /// the full digest model.
+    urgency: number
   }>
   focusBlocks: Array<{
     startAt: string

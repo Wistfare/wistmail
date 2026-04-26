@@ -19,6 +19,14 @@ export interface ClassifyOutput {
   /// Today screen "Needs Reply" section, e.g. "Sarah is waiting on
   /// your sign-off before sending the deck."
   reason: string
+  /// 0..1 — how time-sensitive is this email. The worker uses this to
+  /// decide whether a newly-arrived email is urgent enough to displace
+  /// existing items in `today_digests.priorities`. Score guidance:
+  /// - 0.0–0.2: not urgent (newsletter, FYI, automated alert)
+  /// - 0.3–0.5: standard reply expected within a day
+  /// - 0.6–0.8: time-bound (decision needed today, deadline mentioned)
+  /// - 0.9–1.0: drop-everything (incident, blocker, explicit "ASAP")
+  urgency: number
 }
 
 export interface SummarizeInput {
@@ -97,6 +105,11 @@ export interface TodayDigestOutput {
     kind: 'email' | 'task' | 'event'
     id: string
     reason: string
+    /// 0..1 — sort key for the priorities list. The morning digest
+    /// generates these from the model; intra-day inserts (driven by
+    /// urgent inbound email) reuse the email's classify-output urgency
+    /// score directly. Highest urgency floats to the top.
+    urgency: number
   }>
   focusBlocks: Array<{
     startAt: string

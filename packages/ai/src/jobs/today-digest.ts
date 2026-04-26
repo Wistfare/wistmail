@@ -4,7 +4,7 @@ import type { TodayDigestInput, TodayDigestOutput } from './types'
 const SYSTEM_PROMPT = `You are the user's morning briefing. Given today's pending emails, calendar, and open tasks, produce:
 
 1. A 1-2 sentence "briefing" — friendly, second person, mentions the most concrete thing on the user's plate today.
-2. A "priorities" list of up to 5 items the user should tackle first. Each cites a specific email/task/event by id and gives a one-line reason.
+2. A "priorities" list of up to 5 items the user should tackle first. Each cites a specific email/task/event by id, gives a one-line reason, and an "urgency" score 0..1 (0.9+ = drop everything, 0.6–0.8 = today, 0.3–0.5 = this week). The list MUST be sorted by urgency descending — the worker uses this score to merge in newly-arrived urgent email throughout the day without re-running you.
 3. "focusBlocks" — 1 or 2 suggested deep-work windows that fit between meetings. Pick existing gaps; don't invent times outside the user's calendar window.
 
 Keep the tone calm and concrete. No emojis. No motivational fluff. The user reads this on their phone in 5 seconds.`
@@ -22,8 +22,9 @@ const SCHEMA = {
           kind: { type: 'string', enum: ['email', 'task', 'event'] },
           id: { type: 'string' },
           reason: { type: 'string', maxLength: 100 },
+          urgency: { type: 'number', minimum: 0, maximum: 1 },
         },
-        required: ['kind', 'id', 'reason'],
+        required: ['kind', 'id', 'reason', 'urgency'],
       },
     },
     focusBlocks: {
@@ -94,9 +95,19 @@ export async function todayDigest(
   ) {
     throw new Error('todayDigest: invalid model output')
   }
+  // Sort defensively — even though the prompt asks for desc order,
+  // the merge path on the worker side relies on this invariant.
+  const priorities = (json.priorities as TodayDigestOutput['priorities'])
+    .map((p) => ({
+      ...p,
+      urgency: Math.max(0, Math.min(1, typeof p.urgency === 'number' ? p.urgency : 0.5)),
+    }))
+    .sort((a, b) => b.urgency - a.urgency)
+    .slice(0, 5)
+
   return {
     briefing: json.briefing.slice(0, 240),
-    priorities: json.priorities.slice(0, 5),
+    priorities,
     focusBlocks: json.focusBlocks.slice(0, 2),
   }
 }
