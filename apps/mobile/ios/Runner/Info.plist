@@ -4,6 +4,10 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- Notification action callbacks POST here. Override per-build
+	     via xcconfig if you need to point at staging / dev. -->
+	<key>WistmailApiBaseUrl</key>
+	<string>https://api.wistfare.com</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

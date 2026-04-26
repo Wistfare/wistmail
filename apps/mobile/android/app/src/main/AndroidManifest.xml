@@ -1,8 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required by FCM on Android 13+ so the system shows our
+         notifications. PushClient (Dart) requests this at runtime
+         on first sign-in via FirebaseMessaging.requestPermission(). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Required for the reply RemoteInput action to call our API
+         from the BroadcastReceiver. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
-        android:label="Wistmail"
-        android:name="${applicationName}"
+        android:label="Wimail"
+        android:name=".WistmailApplication"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- Override the API base URL via gradle/manifest replacements
+             for dev/staging builds. Default points at production. -->
+        <meta-data
+            android:name="wistmail_api_base_url"
+            android:value="https://api.wistfare.com" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -61,6 +75,25 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- FCM message receiver. Replaces the default flutter_fcm
+             handler so we can attach inline-reply + mark-read action
+             buttons + apply AI suggestion chips on follow-up pushes.
+             See WistmailFcmService.kt for the payload contract. -->
+        <service
+            android:name=".WistmailFcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- BroadcastReceiver that handles taps on the Reply, Mark
+             Read, and AI suggestion chips. Authenticates via the
+             short-lived bearer token shipped in each FCM payload. -->
+        <receiver
+            android:name=".WistmailReplyReceiver"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

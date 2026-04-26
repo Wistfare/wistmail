@@ -72,3 +72,13 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Required by WistmailFcmService.kt + WistmailReplyReceiver.kt for
+    // NotificationCompat, RemoteInput, NotificationManagerCompat. The
+    // firebase_messaging plugin transitively provides
+    // firebase-messaging itself, but androidx.core-ktx is what the
+    // notification builder + RemoteInput primitives live in, and is
+    // not pulled in transitively reliably across Flutter versions.
+    implementation("androidx.core:core-ktx:1.13.1")
+}

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Notification action chips. Used by WistmailFcmService.kt
+         when building rich notifications with Reply (RemoteInput) +
+         Mark read action buttons. Add a `values-{lang}/strings.xml`
+         file alongside this one to localize. -->
+    <string name="notif_action_reply">Reply</string>
+    <string name="notif_action_reply_label">Reply</string>
+    <string name="notif_action_mark_read">Mark read</string>
+    <string name="notif_action_open_app_to_reply">Open app to reply</string>
+
+    <!-- Channel display names + descriptions. Surface in the
+         system Settings → Apps → Wistmail → Notifications panel. -->
+    <string name="notif_channel_mail_default">New mail</string>
+    <string name="notif_channel_mail_default_desc">New email arrivals.</string>
+    <string name="notif_channel_mail_focus_pierce">Mail updates (silent)</string>
+    <string name="notif_channel_mail_focus_pierce_desc">AI reply suggestions arriving for an email already shown.</string>
+    <string name="notif_channel_chat_default">Chat messages</string>
+    <string name="notif_channel_chat_default_desc">New chat messages.</string>
+    <string name="notif_channel_calendar_default">Calendar reminders</string>
+    <string name="notif_channel_calendar_default_desc">Upcoming meetings and event reminders.</string>
+</resources>

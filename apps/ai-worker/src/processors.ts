@@ -56,6 +56,10 @@ export interface ProcessorDeps {
 }
 
 const CACHE_BUST_CHANNEL = 'wm:cache-bust'
+/// Mirror the constant in `apps/api/src/lib/notification-update-bus.ts`.
+/// We publish here; the API subscribes there and converts it to a
+/// follow-up FCM push.
+const NOTIFICATION_UPDATE_CHANNEL = 'wm:notification-update'
 
 async function bust(deps: ProcessorDeps, userId: string, scope?: string): Promise<void> {
   try {
@@ -270,23 +274,57 @@ export async function processDraftReply(deps: ProcessorDeps, job: Job<DraftReply
   })
   const drafts = result.drafts.filter((d) => d.score >= 0.4)
 
+  // Capture the inserted rows so the follow-up notification push
+  // below carries the same ids the in-app `ReplySuggestionStrip`
+  // uses — tapping a chip in the notification then deep-links to
+  // a compose pre-populated from the same suggestion record.
+  const insertedRows: Array<{ id: string; tone: string; body: string }> = []
   await deps.db.transaction(async (tx) => {
     await tx.delete(emailReplySuggestions).where(eq(emailReplySuggestions.emailId, ctx.email.id))
     if (drafts.length > 0) {
-      await tx.insert(emailReplySuggestions).values(
-        drafts.map((d) => ({
-          id: makeId(),
-          emailId: ctx.email.id,
-          tone: d.tone,
-          body: d.body,
-          score: d.score,
-        })),
-      )
+      const values = drafts.map((d) => ({
+        id: makeId(),
+        emailId: ctx.email.id,
+        tone: d.tone,
+        body: d.body,
+        score: d.score,
+      }))
+      await tx.insert(emailReplySuggestions).values(values)
+      for (const v of values) {
+        insertedRows.push({ id: v.id, tone: v.tone, body: v.body })
+      }
     }
   })
-  // No today/inbox cache uses suggestions — only the thread fetch does
-  // and that's not cached. Skip the bust to spare a Redis publish.
-  void userIdForEmail
+
+  // Tell the API to fire a follow-up FCM push so the device's email
+  // notification gets the suggestion chips. Best-effort and detached:
+  // if Redis or FCM is down, the in-app strip still shows the
+  // suggestions on next thread open, just not in the notification.
+  if (insertedRows.length > 0) {
+    const ownerId = await userIdForEmail(deps, ctx.email.id)
+    if (ownerId) {
+      try {
+        await deps.publisher.publish(
+          NOTIFICATION_UPDATE_CHANNEL,
+          JSON.stringify({
+            type: 'email.suggestions.ready',
+            userId: ownerId,
+            emailId: ctx.email.id,
+            // Cap to top 3 — matches the in-app strip + keeps the
+            // FCM data payload comfortably under the 4KB limit even
+            // for chatty drafts.
+            suggestions: insertedRows.slice(0, 3),
+          }),
+        )
+      } catch (err) {
+        console.warn(
+          '[ai-worker] notification-update publish failed:',
+          (err as Error).message,
+        )
+      }
+    }
+  }
+
   return { drafts: drafts.length }
 }
 
