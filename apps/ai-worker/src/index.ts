@@ -14,6 +14,7 @@ import {
   processClassifyNeedsReply,
   processDeriveDisplayName,
   processDraftReply,
+  processExtractMeeting,
   processIngestEmail,
   processSummarize,
   processTodayDigest,
@@ -41,7 +42,14 @@ async function main() {
   // Dedicated publisher connection so the worker's cache-bust messages
   // never block on the BullMQ blocking-fetch socket.
   const publisher = connection.duplicate()
-  const deps: ProcessorDeps = { db, provider, model: config.model, queue, publisher }
+  const deps: ProcessorDeps = {
+    db,
+    provider,
+    model: config.model,
+    queue,
+    publisher,
+    useToolCalling: config.useToolCalling,
+  }
 
   const worker = new Worker(
     AI_QUEUE,
@@ -61,6 +69,8 @@ async function main() {
           return processTodayDigest(deps, job as Job)
         case JOB_NAMES.deriveDisplayName:
           return processDeriveDisplayName(deps, job as Job)
+        case JOB_NAMES.extractMeeting:
+          return processExtractMeeting(deps, job as Job)
         default:
           throw new Error(`Unknown job name: ${job.name}`)
       }

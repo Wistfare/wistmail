@@ -6,6 +6,7 @@ import { autoLabel } from './auto-label'
 import { draftReply } from './draft-reply'
 import { todayDigest } from './today-digest'
 import { deriveDisplayName } from './derive-display-name'
+import { extractMeeting } from './extract-meeting'
 
 function fake(out: unknown): AiProvider {
   return {
@@ -194,5 +195,68 @@ describe('deriveDisplayName', () => {
         { localPart: 'a', domain: 'b' },
       ),
     ).rejects.toThrow(/invalid model output/)
+  })
+})
+
+describe('extractMeeting', () => {
+  const baseInput = {
+    fromName: 'Sarah Kim',
+    fromAddress: 'sarah@x.com',
+    subject: 'Sync',
+    body: 'see you tomorrow at 11',
+    sentAtIso: '2026-04-26T09:00:00Z',
+    recipientTimezone: 'Africa/Kigali',
+  }
+
+  it('passes through a confident model output', async () => {
+    const r = await extractMeeting(
+      fake({
+        hasMeeting: true,
+        title: 'Sync',
+        startAt: '2026-04-27T11:00:00+02:00',
+        endAt: '2026-04-27T12:00:00+02:00',
+        location: 'Zoom',
+        attendees: ['joel@x.com'],
+        confidence: 0.9,
+      }),
+      'm',
+      baseInput,
+    )
+    expect(r.hasMeeting).toBe(true)
+    expect(r.startAt).toBe('2026-04-27T11:00:00+02:00')
+    expect(r.confidence).toBe(0.9)
+  })
+
+  it('returns hasMeeting=false when the model says no', async () => {
+    const r = await extractMeeting(
+      fake({ hasMeeting: false, confidence: 0.05 }),
+      'm',
+      baseInput,
+    )
+    expect(r.hasMeeting).toBe(false)
+    expect(r.confidence).toBe(0.05)
+  })
+
+  it('clamps confidence and trims long fields', async () => {
+    const r = await extractMeeting(
+      fake({
+        hasMeeting: true,
+        title: 'A'.repeat(500),
+        location: 'L'.repeat(1000),
+        confidence: 7,
+        attendees: Array.from({ length: 100 }, (_, i) => `u${i}@x.com`),
+      }),
+      'm',
+      baseInput,
+    )
+    expect(r.title!.length).toBeLessThanOrEqual(200)
+    expect(r.location!.length).toBeLessThanOrEqual(500)
+    expect(r.attendees!.length).toBe(20)
+    expect(r.confidence).toBe(1)
+  })
+
+  it('returns a safe default on garbage model output', async () => {
+    const r = await extractMeeting(fake({}), 'm', baseInput)
+    expect(r).toEqual({ hasMeeting: false, confidence: 0 })
   })
 })
