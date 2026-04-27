@@ -118,13 +118,11 @@ export class EmailSender {
           ),
         ),
       )
-      .returning({
-        id: emails.id,
-        userId: mailboxes.userId,
-      })
-      // The returning() above can't reach `mailboxes` without a join —
-      // we re-query to surface the userId for the WS publish below.
+      .returning({ id: emails.id })
     if (claimed.length === 0) return false
+
+    // userId lives on `mailboxes`, not `emails`, so re-query via join
+    // to surface it for the WS publish below.
 
     const userResult = await this.db
       .select({ userId: mailboxes.userId })
