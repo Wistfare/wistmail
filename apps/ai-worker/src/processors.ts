@@ -471,17 +471,19 @@ export async function processDraftReply(deps: ProcessorDeps, job: Job<DraftReply
 export async function processTodayDigest(deps: ProcessorDeps, job: Job<TodayDigestJob>) {
   const userId = job.data.userId
   const now = new Date()
-  const dayStart = new Date(now)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart)
-  dayEnd.setDate(dayEnd.getDate() + 1)
 
   const userRow = await deps.db
-    .select({ name: users.name })
+    .select({ name: users.name, timezone: users.timezone })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1)
   if (!userRow[0]) return { skipped: 'user-not-found' }
+
+  // Day window in the user's timezone, not the server's. The mobile
+  // client sends X-Client-Timezone on every request and the API
+  // persists it to users.timezone — fall back to UTC if unset.
+  const tz = userRow[0].timezone || 'UTC'
+  const { dayStart, dayEnd } = userLocalDayBounds(now, tz)
 
   const userMailboxes = await deps.db
     .select({ id: mailboxes.id })
@@ -548,35 +550,70 @@ export async function processTodayDigest(deps: ProcessorDeps, job: Job<TodayDige
       .limit(15),
   ])
 
+  // No work to summarise — DON'T call the model. An empty input was
+  // the trigger for the model to invent a fictional CEO morning
+  // ("10 AM marketing meeting", "Q3 strategy memo") with fabricated
+  // ids. Store an empty digest so the API serves null and the UI
+  // hides the briefing card cleanly.
+  if (pendingEmails.length === 0 && todayEvents.length === 0 && openTasks.length === 0) {
+    const empty = { briefing: '', priorities: [], focusBlocks: [] }
+    await deps.db
+      .insert(todayDigests)
+      .values({ userId, content: empty, generatedAt: now })
+      .onConflictDoUpdate({
+        target: todayDigests.userId,
+        set: { content: empty, generatedAt: now },
+      })
+    await bust(deps, userId, 'today')
+    return { skipped: 'no-input' }
+  }
+
+  const inputEmails = pendingEmails.map((e) => ({
+    id: e.id,
+    fromAddress: e.fromAddress,
+    subject: e.subject,
+    snippet: (e.snippet ?? '').slice(0, 200),
+    needsReply: e.needsReply,
+  }))
+  const inputEvents = todayEvents.map((e) => ({
+    id: e.id,
+    title: e.title,
+    startAt: e.startAt.toISOString(),
+    endAt: e.endAt.toISOString(),
+  }))
+  const inputTasks = openTasks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    projectName: t.projectName,
+    status: t.status,
+  }))
+
   const result = await todayDigest(deps.provider, deps.model, {
     userDisplayName: userRow[0].name,
-    pendingEmails: pendingEmails.map((e) => ({
-      id: e.id,
-      fromAddress: e.fromAddress,
-      subject: e.subject,
-      snippet: (e.snippet ?? '').slice(0, 200),
-      needsReply: e.needsReply,
-    })),
-    todayEvents: todayEvents.map((e) => ({
-      id: e.id,
-      title: e.title,
-      startAt: e.startAt.toISOString(),
-      endAt: e.endAt.toISOString(),
-    })),
-    openTasks: openTasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      projectName: t.projectName,
-      status: t.status,
-    })),
+    pendingEmails: inputEmails,
+    todayEvents: inputEvents,
+    openTasks: inputTasks,
   })
+
+  // Drop priority entries whose id wasn't in the prompt — those are
+  // textbook hallucinations (the model invents a sentence-like
+  // string and crams it into the id slot).
+  const validIds = new Set<string>([
+    ...inputEmails.map((e) => `email:${e.id}`),
+    ...inputEvents.map((e) => `event:${e.id}`),
+    ...inputTasks.map((t) => `task:${t.id}`),
+  ])
+  const groundedPriorities = result.priorities.filter((p) =>
+    validIds.has(`${p.kind}:${p.id}`),
+  )
+  const grounded = { ...result, priorities: groundedPriorities }
 
   await deps.db
     .insert(todayDigests)
-    .values({ userId, content: result, generatedAt: new Date() })
+    .values({ userId, content: grounded, generatedAt: now })
     .onConflictDoUpdate({
       target: todayDigests.userId,
-      set: { content: result, generatedAt: new Date() },
+      set: { content: grounded, generatedAt: now },
     })
   await bust(deps, userId, 'today')
   return { priorities: result.priorities.length }
@@ -605,6 +642,84 @@ function makeId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
+}
+
+/// Day boundaries (00:00:00.000 → next 00:00) in the user's IANA
+/// timezone, returned as UTC Date objects suitable for direct
+/// comparison against timestamptz columns.
+///
+/// Without this the digest used the worker container's local time
+/// (UTC), so a user in Africa/Kigali (UTC+2) opening their app at
+/// 09:00 local would see "today's events" filtered to UTC's day
+/// window — missing anything scheduled between 22:00–24:00 Kigali
+/// the previous evening, etc. Falls back to UTC bounds on a malformed
+/// IANA string so a bad row never crashes the digest.
+export function userLocalDayBounds(
+  now: Date,
+  timezone: string,
+): { dayStart: Date; dayEnd: Date } {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+    const parts = fmt.formatToParts(now)
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '00'
+    // Build "YYYY-MM-DD" of the user's local date, then re-anchor at
+    // midnight in their tz. Trick: format a known-UTC midnight in the
+    // target tz and subtract the offset to find the matching UTC
+    // instant.
+    const dateStr = `${get('year')}-${get('month')}-${get('day')}`
+    const dayStart = zonedMidnightToUtc(dateStr, timezone)
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+    return { dayStart, dayEnd }
+  } catch {
+    const dayStart = new Date(now)
+    dayStart.setUTCHours(0, 0, 0, 0)
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+    return { dayStart, dayEnd }
+  }
+}
+
+/// Return the UTC Date that corresponds to `YYYY-MM-DD 00:00` in the
+/// given IANA zone. Done by introspecting the offset that Intl
+/// reports for that wall time and subtracting it.
+function zonedMidnightToUtc(yyyyMmDd: string, timezone: string): Date {
+  // Probe: ask Intl what the formatted date would be for an epoch
+  // anchored at the candidate UTC midnight. Adjust until they match.
+  // Two passes is enough for any IANA zone (covers DST edges).
+  let probe = new Date(`${yyyyMmDd}T00:00:00Z`)
+  for (let i = 0; i < 2; i++) {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    const parts = fmt.formatToParts(probe)
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '00'
+    const localDate = `${get('year')}-${get('month')}-${get('day')}`
+    const localHour = parseInt(get('hour'), 10)
+    const localMin = parseInt(get('minute'), 10)
+    // Difference between desired (yyyyMmDd 00:00) and what probe
+    // currently lands on, in minutes.
+    const desiredEpoch = new Date(`${yyyyMmDd}T00:00:00Z`).getTime()
+    const probedEpoch = new Date(`${localDate}T00:00:00Z`).getTime()
+    const dayDelta = (desiredEpoch - probedEpoch) / 60000
+    const minutesDelta = dayDelta - (localHour * 60 + localMin)
+    if (minutesDelta === 0) return probe
+    probe = new Date(probe.getTime() + minutesDelta * 60000)
+  }
+  return probe
 }
 
 // Imports referenced only by the digest path; suppress lint by touching here.
