@@ -18,6 +18,10 @@ export const JOB_NAMES = {
   /// From header lacked one. Cached in `sender_names` so subsequent
   /// emails from the same address are zero-cost.
   deriveDisplayName: 'derive-display-name',
+  /// Pulls a meeting out of an email and (above the auto-create
+  /// confidence band) writes it to calendar_events with a back-link
+  /// to the source email.
+  extractMeeting: 'extract-meeting',
   /// Fans out per-email jobs after a new email arrives. The worker
   /// expands this into the four per-email jobs so the API only
   /// publishes one event.
@@ -60,4 +64,11 @@ export interface DeriveDisplayNameJob {
   /// back to this email row. Skipped when null (used by the
   /// "warm the cache" backfill path).
   emailId: string | null
+}
+
+export interface ExtractMeetingJob {
+  emailId: string
+  /// Skip the meeting_extracted_at idempotency check. Used by the
+  /// "re-run extraction after we changed the prompt" backfill path.
+  force?: boolean
 }

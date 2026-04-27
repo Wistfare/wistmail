@@ -408,6 +408,12 @@ async function ensureSchema() {
       updated_at timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS sender_names_source_idx ON sender_names(source)`,
+    // ── Meeting extraction → auto-created calendar events.
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS meeting_extracted_at timestamptz`,
+    `ALTER TABLE emails ADD COLUMN IF NOT EXISTS meeting_event_id varchar(64)`,
+    `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS source varchar(8) NOT NULL DEFAULT 'user'`,
+    `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS source_email_id varchar(64)`,
+    `CREATE INDEX IF NOT EXISTS calendar_events_source_email_idx ON calendar_events(source_email_id) WHERE source_email_id IS NOT NULL`,
     // ── AI worker outputs.
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS auto_summary text`,
     `ALTER TABLE emails ADD COLUMN IF NOT EXISTS ai_processed_at timestamptz`,

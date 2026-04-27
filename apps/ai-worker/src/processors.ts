@@ -17,6 +17,7 @@ import {
   deriveDisplayName,
   deriveLocalPartName,
   draftReply,
+  extractMeeting,
   summarizeEmail,
   todayDigest,
   type AiProvider,
@@ -42,6 +43,7 @@ import {
   type ClassifyNeedsReplyJob,
   type DeriveDisplayNameJob,
   type DraftReplyJob,
+  type ExtractMeetingJob,
   type IngestEmailJob,
   type SummarizeJob,
   type TodayDigestJob,
@@ -104,6 +106,12 @@ export async function processIngestEmail(
     JOB_NAMES.summarize,
     JOB_NAMES.autoLabel,
     JOB_NAMES.draftReply,
+    // Meeting extraction runs on every inbound — the model returns
+    // hasMeeting=false cheaply for non-meeting emails. The cost of a
+    // single classify-style call here is the cost of getting "meeting
+    // tomorrow at 11" auto-added to the calendar without the user
+    // having to do anything.
+    JOB_NAMES.extractMeeting,
   ]
   for (const name of names) {
     await deps.queue.add(name, { emailId }, opts)
@@ -400,6 +408,169 @@ export async function processAutoLabel(deps: ProcessorDeps, job: Job<AutoLabelJo
     }
   })
   return { applied: picks.length }
+}
+
+/**
+ * Try to lift a meeting out of the email and (when confident enough)
+ * auto-create a calendar_events row linked back to the source email.
+ * Confidence bands:
+ *   ≥ 0.85 — auto-create. The user wakes up to find the meeting
+ *            already on their Today screen.
+ *   0.60–0.85 — record the extraction (meeting_extracted_at) but
+ *            don't write a calendar row. Mobile UI shows an
+ *            "Add to calendar?" chip on the email (future work).
+ *   < 0.60 — silent. Marker recorded so we never re-run on this row.
+ */
+export async function processExtractMeeting(
+  deps: ProcessorDeps,
+  job: Job<ExtractMeetingJob>,
+): Promise<{
+  hasMeeting: boolean
+  confidence: number
+  eventId?: string
+  reason?: string
+}> {
+  const { emailId, force } = job.data
+
+  // Idempotency: skip rows we've already extracted from unless the
+  // operator forces a re-run.
+  const existing = await deps.db
+    .select({
+      meetingExtractedAt: emails.meetingExtractedAt,
+      meetingEventId: emails.meetingEventId,
+      fromAddress: emails.fromAddress,
+      fromName: emails.fromName,
+      subject: emails.subject,
+      textBody: emails.textBody,
+      htmlBody: emails.htmlBody,
+      mailboxId: emails.mailboxId,
+      createdAt: emails.createdAt,
+    })
+    .from(emails)
+    .where(eq(emails.id, emailId))
+    .limit(1)
+  const erow = existing[0]
+  if (!erow) return { hasMeeting: false, confidence: 0, reason: 'email-deleted' }
+  if (!force && erow.meetingExtractedAt) {
+    return {
+      hasMeeting: false,
+      confidence: 0,
+      eventId: erow.meetingEventId ?? undefined,
+      reason: 'already-extracted',
+    }
+  }
+
+  // Resolve the user (we need their timezone for the model and the
+  // user_id for the calendar insert).
+  const owner = await deps.db
+    .select({ userId: mailboxes.userId, tz: users.timezone })
+    .from(mailboxes)
+    .innerJoin(users, eq(users.id, mailboxes.userId))
+    .where(eq(mailboxes.id, erow.mailboxId))
+    .limit(1)
+  if (!owner[0]) {
+    return { hasMeeting: false, confidence: 0, reason: 'no-owner' }
+  }
+
+  const body = stripQuotedAndTrim(erow.textBody, erow.htmlBody)
+  if (!body || body.length < 10) {
+    // Empty body — definitely no meeting. Mark and skip.
+    await deps.db
+      .update(emails)
+      .set({ meetingExtractedAt: new Date() })
+      .where(eq(emails.id, emailId))
+    return { hasMeeting: false, confidence: 0, reason: 'empty-body' }
+  }
+
+  const result = await extractMeeting(deps.provider, deps.model, {
+    fromName: erow.fromName,
+    fromAddress: erow.fromAddress,
+    subject: erow.subject,
+    body,
+    sentAtIso: erow.createdAt.toISOString(),
+    recipientTimezone: owner[0].tz || 'UTC',
+  })
+
+  // Record that we ran, regardless of outcome — keeps re-runs cheap.
+  if (!result.hasMeeting || result.confidence < 0.85) {
+    await deps.db
+      .update(emails)
+      .set({ meetingExtractedAt: new Date() })
+      .where(eq(emails.id, emailId))
+    return {
+      hasMeeting: result.hasMeeting,
+      confidence: result.confidence,
+      reason: result.confidence >= 0.6 ? 'awaiting-confirmation' : 'low-confidence',
+    }
+  }
+
+  // ≥ 0.85: auto-create. Validate startAt parses to a real Date — if
+  // the model returned a malformed string, drop to the chip band.
+  const start = result.startAt ? new Date(result.startAt) : null
+  if (!start || Number.isNaN(start.getTime())) {
+    await deps.db
+      .update(emails)
+      .set({ meetingExtractedAt: new Date() })
+      .where(eq(emails.id, emailId))
+    return { hasMeeting: true, confidence: result.confidence, reason: 'unparseable-startAt' }
+  }
+  // Default end = start + 1h. Validate too.
+  let end: Date
+  if (result.endAt) {
+    const parsed = new Date(result.endAt)
+    end = Number.isNaN(parsed.getTime()) ? new Date(start.getTime() + 60 * 60 * 1000) : parsed
+  } else {
+    end = new Date(start.getTime() + 60 * 60 * 1000)
+  }
+
+  const eventId = `evt_${makeId()}`
+  await deps.db.transaction(async (tx) => {
+    await tx.insert(calendarEvents).values({
+      id: eventId,
+      userId: owner[0]!.userId,
+      title: result.title || erow.subject || 'Meeting',
+      description: null,
+      location: result.location ?? null,
+      attendees: result.attendees ?? [],
+      startAt: start,
+      endAt: end,
+      // Sparkle accent for AI-sourced events — UI uses the source
+      // column to render a different chip.
+      color: '#C5F135',
+      meetingLink: null,
+      hasWaitingRoom: false,
+      reminderMinutes: [15],
+      notes: null,
+      source: 'ai',
+      sourceEmailId: emailId,
+    })
+    await tx
+      .update(emails)
+      .set({ meetingExtractedAt: new Date(), meetingEventId: eventId })
+      .where(eq(emails.id, emailId))
+  })
+
+  // Bust the user's Today cache so the new event shows on next pull.
+  await bust(deps, owner[0].userId, 'today')
+
+  return { hasMeeting: true, confidence: result.confidence, eventId }
+}
+
+/// Strip quoted reply blocks (lines starting with `>`) and email-client
+/// "On … wrote:" preambles before handing the body to the model. The
+/// extractor's prompt explicitly forbids pulling dates from quoted
+/// history, but pre-trimming reduces token count + removes the
+/// temptation entirely.
+function stripQuotedAndTrim(text: string | null, html: string | null): string {
+  let body = text ?? ''
+  if (!body && html) {
+    body = html.replace(/<[^>]+>/g, ' ')
+  }
+  const lines = body
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*>/.test(l))
+    .filter((l) => !/^On .{1,80}wrote:\s*$/i.test(l))
+  return lines.join('\n').replace(/\s+/g, ' ').trim().slice(0, 4000)
 }
 
 export async function processDraftReply(deps: ProcessorDeps, job: Job<DraftReplyJob>) {

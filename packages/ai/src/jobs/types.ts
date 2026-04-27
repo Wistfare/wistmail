@@ -73,6 +73,37 @@ export interface DraftReplyOutput {
   }>
 }
 
+export interface ExtractMeetingInput {
+  fromName: string | null
+  fromAddress: string
+  subject: string
+  body: string
+  /// ISO 8601 of when the email was sent — anchors relative phrases
+  /// like "tomorrow" / "this Friday" the model resolves into absolute
+  /// dates.
+  sentAtIso: string
+  /// Recipient's IANA timezone (Africa/Kigali, America/New_York…).
+  /// The model uses it only as a fallback for ambiguous wall-clock
+  /// times — explicit zones in the email always win.
+  recipientTimezone: string
+}
+
+export interface ExtractMeetingOutput {
+  hasMeeting: boolean
+  title?: string | null
+  /// ISO 8601 with offset. Caller validates parseability before
+  /// committing to a calendar row.
+  startAt?: string | null
+  endAt?: string | null
+  location?: string | null
+  attendees?: string[]
+  /// 0..1. Caller decides what to do per band:
+  ///   ≥ 0.85 — auto-create a calendar event linked to the email
+  ///   0.60–0.85 — surface "Add to calendar?" chip in the UI
+  ///   < 0.60 — store the extraction silently for analytics, no UI
+  confidence: number
+}
+
 export interface TodayDigestInput {
   userDisplayName: string
   /// Pre-fetched context — the worker reads DB once and hands the model
