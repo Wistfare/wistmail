@@ -12,6 +12,7 @@ import '../widgets/today_activity_row.dart';
 import '../widgets/today_briefing_card.dart';
 import '../widgets/today_needs_reply_row.dart';
 import '../widgets/today_next_up_card.dart';
+import '../widgets/today_priority_row.dart';
 import '../widgets/today_schedule_row.dart';
 
 /// MobileV3 Today — exact values from `design.lib.pen` node m2vKd.
@@ -207,6 +208,19 @@ class _Content extends StatelessWidget {
         ],
         if (summary.digest != null) ...[
           TodayBriefingCard(digest: summary.digest!),
+          const SizedBox(height: 14),
+        ],
+        if ((summary.digest?.priorities ?? const []).isNotEmpty) ...[
+          _SectionHeader(
+            label: 'PRIORITIES · ${summary.digest!.priorities.length}',
+            trailing: const _MutedLabel('AI-PICKED'),
+          ),
+          const SizedBox(height: 10),
+          for (int i = 0; i < summary.digest!.priorities.length; i++) ...[
+            TodayPriorityRow(priority: summary.digest!.priorities[i]),
+            if (i < summary.digest!.priorities.length - 1)
+              const SizedBox(height: 8),
+          ],
           const SizedBox(height: 14),
         ],
         if (summary.needsReply.isNotEmpty) ...[

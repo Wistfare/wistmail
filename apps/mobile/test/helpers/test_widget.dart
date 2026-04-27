@@ -310,6 +310,16 @@ class FakeMailRepository implements MailRepository {
 
   @override
   Future<List<ReplySuggestion>> getReplySuggestions(String emailId) async => const [];
+
+  @override
+  Future<Map<String, dynamic>?> getMeetingExtraction(String emailId) async => null;
+
+  @override
+  Future<Map<String, dynamic>> acceptMeetingExtraction(String emailId) async =>
+      const <String, dynamic>{};
+
+  @override
+  Future<void> dismissMeetingExtraction(String emailId) async {}
 }
 
 User sampleUser({String id = 'u_1'}) => User(

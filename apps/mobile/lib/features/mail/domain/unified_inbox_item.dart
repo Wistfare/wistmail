@@ -39,6 +39,22 @@ class UnifiedInboxItem {
   final String? conversationId;
   final String? chatKind; // 'direct' | 'group'
 
+  UnifiedInboxItem copyWith({bool? isUnread}) => UnifiedInboxItem(
+        source: source,
+        id: id,
+        occurredAt: occurredAt,
+        senderName: senderName,
+        senderKey: senderKey,
+        preview: preview,
+        subtitle: subtitle,
+        isUnread: isUnread ?? this.isUnread,
+        emailId: emailId,
+        threadId: threadId,
+        needsReply: needsReply,
+        conversationId: conversationId,
+        chatKind: chatKind,
+      );
+
   factory UnifiedInboxItem.fromJson(Map<String, dynamic> json) {
     final sourceRaw = json['source'] as String;
     final source =

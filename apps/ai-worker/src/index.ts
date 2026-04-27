@@ -14,6 +14,7 @@ import {
   processClassifyNeedsReply,
   processDeriveDisplayName,
   processDraftReply,
+  processExtractMeeting,
   processIngestEmail,
   processSummarize,
   processTodayDigest,
@@ -61,6 +62,8 @@ async function main() {
           return processTodayDigest(deps, job as Job)
         case JOB_NAMES.deriveDisplayName:
           return processDeriveDisplayName(deps, job as Job)
+        case JOB_NAMES.extractMeeting:
+          return processExtractMeeting(deps, job as Job)
         default:
           throw new Error(`Unknown job name: ${job.name}`)
       }

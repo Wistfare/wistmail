@@ -7,6 +7,8 @@ import '../../data/mail_remote_data_source.dart';
 import '../../data/mail_repository.dart';
 import '../../domain/email.dart';
 import '../../domain/reply_suggestion.dart';
+import '../../domain/unified_inbox_item.dart';
+import 'unified_inbox_providers.dart';
 
 const int kInboxPageSize = 50;
 
@@ -360,9 +362,24 @@ final emailDetailProvider = FutureProvider.autoDispose.family<Email, String>((
     unawaited(() async {
       try {
         await repo.markRead(id);
+        // Three places hold "is this email unread" state — keep them in
+        // sync without a full refetch:
+        //   1. legacy inboxControllerProvider (still used by the v2
+        //      inbox screen and a few list widgets)
+        //   2. unifiedInboxControllerProvider — the v3 inbox row needs
+        //      to drop its bold styling
+        //   3. mailUnreadCountsProvider — the header chip "1 UNREAD"
+        //      reads from here; without invalidation it stays stale
         ref
             .read(inboxControllerProvider.notifier)
             .applyLocal(email.copyWith(isRead: true));
+        for (final f in UnifiedFilter.values) {
+          final notifier = ref.read(
+            unifiedInboxControllerProvider(f).notifier,
+          );
+          notifier.markEmailLocallyRead(id);
+        }
+        ref.invalidate(mailUnreadCountsProvider);
       } catch (_) {}
     }());
   }
@@ -371,8 +388,9 @@ final emailDetailProvider = FutureProvider.autoDispose.family<Email, String>((
 
 /// AI reply suggestions for an open email. The ai-worker produces these
 /// out-of-band, so the provider may resolve to an empty list shortly
-/// after the email arrives — the Thread screen handles that by simply
-/// not rendering the suggestion strip.
+/// after the email arrives. ReplySuggestionStrip handles that by
+/// invalidating this provider on a timer until non-empty (or the
+/// retry budget is exhausted).
 final replySuggestionsProvider =
     FutureProvider.autoDispose.family<List<ReplySuggestion>, String>((
   ref,
@@ -380,6 +398,29 @@ final replySuggestionsProvider =
 ) async {
   final repo = await ref.watch(mailRepositoryProvider.future);
   return repo.getReplySuggestions(emailId);
+});
+
+/// Thread messages for an open email — used by ReplySuggestionStrip to
+/// hide the chips once the user has any outbound message in the thread,
+/// and could later feed an in-detail thread strip.
+final threadMessagesProvider =
+    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((
+  ref,
+  emailId,
+) async {
+  final repo = await ref.watch(mailRepositoryProvider.future);
+  return repo.getThread(emailId);
+});
+
+/// AI-extracted meeting metadata for an open email. Null when the worker
+/// hasn't run yet — the chip widget renders nothing in that case.
+final meetingExtractionProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((
+  ref,
+  emailId,
+) async {
+  final repo = await ref.watch(mailRepositoryProvider.future);
+  return repo.getMeetingExtraction(emailId);
 });
 
 /// Mailboxes change rarely (only when the user adds/removes a domain) so

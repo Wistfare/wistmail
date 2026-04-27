@@ -103,6 +103,23 @@ class UnifiedInboxController extends StateNotifier<UnifiedInboxState> {
           isLoadingMore: false, errorMessage: e.toString());
     }
   }
+
+  /// Optimistic local mutation: flip a row's `isUnread` flag without
+  /// refetching. Called when the user reads an email — the row should
+  /// drop bold immediately, and the screen-level unread count needs to
+  /// reflect it. The mail_providers `emailDetailProvider` calls this
+  /// alongside the server `markRead` mutation.
+  void markEmailLocallyRead(String emailId) {
+    final updated = state.items.map((item) {
+      if (item.source == UnifiedSource.mail &&
+          item.emailId == emailId &&
+          item.isUnread) {
+        return item.copyWith(isUnread: false);
+      }
+      return item;
+    }).toList(growable: false);
+    state = state.copyWith(items: updated);
+  }
 }
 
 final unifiedInboxControllerProvider = StateNotifierProvider.autoDispose
