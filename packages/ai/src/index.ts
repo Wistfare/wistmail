@@ -40,6 +40,12 @@ export { deriveLocalPartName } from './jobs/local-part-heuristic'
 export type { HeuristicResult } from './jobs/local-part-heuristic'
 export { extractMeeting } from './jobs/extract-meeting'
 export type { ExtractMeetingInput, ExtractMeetingOutput } from './jobs/types'
+export { agenticIngest } from './jobs/agentic-ingest'
+export type {
+  AgenticIngestInput,
+  AgenticIngestOutput,
+  ToolCall,
+} from './jobs/agentic-ingest'
 export type {
   ClassifyInput,
   ClassifyOutput,

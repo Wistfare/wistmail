@@ -12,6 +12,7 @@
 import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
 import { Queue, type Job } from 'bullmq'
 import {
+  agenticIngest,
   autoLabel,
   classifyNeedsReply,
   deriveDisplayName,
@@ -21,6 +22,7 @@ import {
   summarizeEmail,
   todayDigest,
   type AiProvider,
+  type ToolCall,
 } from '@wistmail/ai'
 import {
   calendarEvents,
@@ -54,8 +56,13 @@ export interface ProcessorDeps {
   provider: AiProvider
   model: string
   /// The same queue the worker is consuming from — used by ingest-email
-  /// to enqueue the per-job fan-out.
+  /// to enqueue the per-job fan-out (when tool-calling is disabled)
+  /// and for follow-on derive-display-name jobs.
   queue: Queue
+  /// When true, the inbound ingest path runs ONE agentic model call
+  /// that emits tool calls. When false, falls back to enqueueing one
+  /// job per AI task (classify, summarize, label, draft, extract).
+  useToolCalling: boolean
   /// Redis publisher for cache-bust messages. The API subscribes and
   /// invalidates the user's hot reads when our writes land.
   publisher: IORedis
@@ -88,7 +95,7 @@ async function userIdForEmail(deps: ProcessorDeps, emailId: string): Promise<str
 export async function processIngestEmail(
   deps: ProcessorDeps,
   job: Job<IngestEmailJob>,
-): Promise<{ scheduled: string[] }> {
+): Promise<{ scheduled: string[]; mode?: string }> {
   const { emailId, force } = job.data
   if (!force) {
     const row = await deps.db
@@ -101,6 +108,27 @@ export async function processIngestEmail(
     }
   }
   const opts = { removeOnComplete: 100, removeOnFail: 200, attempts: 2 }
+
+  // Agentic path: ONE model call emits per-task tool calls. Falls
+  // through to the per-job fan-out below if disabled, or if the
+  // agentic call itself fails (the model returns no tool calls or
+  // unparseable output). Backfill scripts always go through the
+  // per-job processors directly so this branch is only the inbound
+  // hot path.
+  if (deps.useToolCalling) {
+    const result = await processAgenticIngest(deps, emailId).catch((err) => {
+      console.warn(
+        `[ai-worker] agentic ingest failed for ${emailId}, falling back to per-job: ${(err as Error).message}`,
+      )
+      return null
+    })
+    if (result && result.toolCalls > 0) {
+      await maybeEnqueueDeriveName(deps, emailId, opts)
+      return { scheduled: ['agentic'], mode: 'agentic' }
+    }
+    // Fall through to per-job below.
+  }
+
   const names: string[] = [
     JOB_NAMES.classifyNeedsReply,
     JOB_NAMES.summarize,
@@ -117,28 +145,11 @@ export async function processIngestEmail(
     await deps.queue.add(name, { emailId }, opts)
   }
 
-  // If the inbound row didn't get a from_name from the header, also
-  // enqueue a derive-display-name job. Dedup by address so multiple
-  // emails from the same nameless sender collapse to one job.
-  const emailRow = await deps.db
-    .select({ fromName: emails.fromName, fromAddress: emails.fromAddress })
-    .from(emails)
-    .where(eq(emails.id, emailId))
-    .limit(1)
-  const row = emailRow[0]
-  if (row && (row.fromName === null || row.fromName === '') && row.fromAddress) {
-    const addr = row.fromAddress.toLowerCase()
-    await deps.queue.add(
-      JOB_NAMES.deriveDisplayName,
-      { address: addr, emailId },
-      {
-        ...opts,
-        // Per-address dedup — 4 emails from the same unknown sender
-        // arriving in a burst collapse to one model call.
-        // BullMQ rejects ':' in custom jobIds. Use '-' as separator.
-        jobId: `derive-${addr}`,
-      },
-    )
+  await maybeEnqueueDeriveName(deps, emailId, opts)
+  if (
+    !names.includes(JOB_NAMES.deriveDisplayName) &&
+    (await emailNeedsDerivedName(deps, emailId))
+  ) {
     names.push(JOB_NAMES.deriveDisplayName)
   }
 
@@ -146,8 +157,363 @@ export async function processIngestEmail(
     .update(emails)
     .set({ aiProcessedAt: new Date() })
     .where(eq(emails.id, emailId))
-  return { scheduled: names }
+  return { scheduled: names, mode: 'per-job' }
 }
+
+async function emailNeedsDerivedName(
+  deps: ProcessorDeps,
+  emailId: string,
+): Promise<boolean> {
+  const rows = await deps.db
+    .select({ fromName: emails.fromName, fromAddress: emails.fromAddress })
+    .from(emails)
+    .where(eq(emails.id, emailId))
+    .limit(1)
+  const r = rows[0]
+  return !!r && (r.fromName === null || r.fromName === '') && !!r.fromAddress
+}
+
+async function maybeEnqueueDeriveName(
+  deps: ProcessorDeps,
+  emailId: string,
+  opts: { removeOnComplete: number; removeOnFail: number; attempts: number },
+): Promise<void> {
+  const rows = await deps.db
+    .select({ fromName: emails.fromName, fromAddress: emails.fromAddress })
+    .from(emails)
+    .where(eq(emails.id, emailId))
+    .limit(1)
+  const row = rows[0]
+  if (!row || !row.fromAddress) return
+  if (row.fromName !== null && row.fromName !== '') return
+
+  const addr = row.fromAddress.toLowerCase()
+  await deps.queue.add(
+    JOB_NAMES.deriveDisplayName,
+    { address: addr, emailId },
+    {
+      ...opts,
+      // Per-address dedup — 4 emails from the same unknown sender
+      // arriving in a burst collapse to one model call.
+      // BullMQ rejects ':' in custom jobIds. Use '-' as separator.
+      jobId: `derive-${addr}`,
+    },
+  )
+}
+
+/**
+ * Single-call agentic ingest. Pulls the email + label catalog +
+ * user context, makes ONE tool-calling model call, dispatches each
+ * tool result to the matching DB write. Returns the count of tool
+ * calls executed so the caller knows whether to fall back.
+ *
+ * On the happy path this replaces the 5–6 per-job model calls with
+ * one. The model self-selects which tools are relevant — newsletters
+ * end up with just `summarize`, real asks add `flag_needs_reply` +
+ * `draft_replies`, meeting confirmations add `create_meeting`.
+ */
+export async function processAgenticIngest(
+  deps: ProcessorDeps,
+  emailId: string,
+): Promise<{ toolCalls: number; executed: string[]; skipped: string[] }> {
+  const ctx = await loadEmailContext(deps.db, emailId)
+  if (!ctx) return { toolCalls: 0, executed: [], skipped: ['email-deleted'] }
+
+  // We need the email's createdAt + the user's tz on top of the
+  // standard email-context fields the per-job processors use.
+  const [extra] = await deps.db
+    .select({
+      createdAt: emails.createdAt,
+      tz: users.timezone,
+    })
+    .from(emails)
+    .innerJoin(mailboxes, eq(mailboxes.id, emails.mailboxId))
+    .innerJoin(users, eq(users.id, mailboxes.userId))
+    .where(eq(emails.id, emailId))
+    .limit(1)
+  if (!extra) return { toolCalls: 0, executed: [], skipped: ['no-owner'] }
+
+  const result = await agenticIngest(deps.provider, deps.model, {
+    fromName: null, // backfill: header name lookup runs separately
+    fromAddress: ctx.email.fromAddress,
+    subject: ctx.email.subject,
+    body: ctx.email.body,
+    sentAtIso: extra.createdAt.toISOString(),
+    recipientTimezone: extra.tz || 'UTC',
+    userDisplayName: ctx.userDisplayName,
+    availableLabels: ctx.availableLabels,
+  })
+
+  const executed: string[] = []
+  const skipped: string[] = []
+  let needsReplyArgs: { reason: string; urgency: number } | null = null
+  let summaryWritten = false
+
+  // First pass: extract flag_needs_reply args so apply_labels /
+  // draft_replies can use the urgency for the digest merge.
+  for (const c of result.toolCalls) {
+    if (c.name === 'flag_needs_reply') {
+      const reason = typeof c.arguments.reason === 'string' ? c.arguments.reason.slice(0, 80) : ''
+      const urgency =
+        typeof c.arguments.urgency === 'number'
+          ? Math.max(0, Math.min(1, c.arguments.urgency))
+          : 0
+      if (reason) needsReplyArgs = { reason, urgency }
+    }
+  }
+
+  for (const c of result.toolCalls) {
+    try {
+      switch (c.name) {
+        case 'summarize': {
+          const s = c.arguments.summary
+          if (typeof s !== 'string' || s.length === 0) {
+            skipped.push(`${c.name}:no-summary`)
+            break
+          }
+          await deps.db
+            .update(emails)
+            .set({ autoSummary: s.slice(0, 280) })
+            .where(eq(emails.id, ctx.email.id))
+          summaryWritten = true
+          executed.push(c.name)
+          break
+        }
+        case 'flag_needs_reply': {
+          if (!needsReplyArgs) {
+            skipped.push(`${c.name}:invalid-args`)
+            break
+          }
+          await deps.db
+            .update(emails)
+            .set({
+              needsReply: true,
+              needsReplyReason: needsReplyArgs.reason,
+            })
+            .where(eq(emails.id, ctx.email.id))
+          // Splice into today_digests.priorities if urgent — same
+          // logic the per-job classifier uses.
+          if (needsReplyArgs.urgency >= 0.6) {
+            await mergeEmailIntoDigest(deps, {
+              userId: ctx.userId,
+              emailId: ctx.email.id,
+              reason: needsReplyArgs.reason,
+              urgency: needsReplyArgs.urgency,
+            })
+          }
+          executed.push(c.name)
+          break
+        }
+        case 'apply_labels': {
+          const raw = c.arguments.labels
+          if (!Array.isArray(raw)) {
+            skipped.push(`${c.name}:no-labels-array`)
+            break
+          }
+          const validIds = new Set(ctx.availableLabels.map((l) => l.id))
+          const picks = raw
+            .filter(
+              (r): r is { id: string; confidence: number } =>
+                !!r &&
+                typeof (r as { id?: unknown }).id === 'string' &&
+                typeof (r as { confidence?: unknown }).confidence === 'number' &&
+                validIds.has((r as { id: string }).id) &&
+                (r as { confidence: number }).confidence >= 0.6,
+            )
+            .map((r) => ({
+              id: r.id,
+              confidence: Math.max(0, Math.min(1, r.confidence)),
+            }))
+          if (picks.length === 0) {
+            skipped.push(`${c.name}:none-met-floor`)
+            break
+          }
+          await deps.db.transaction(async (tx) => {
+            await tx
+              .delete(emailLabels)
+              .where(
+                and(
+                  eq(emailLabels.emailId, ctx.email.id),
+                  eq(emailLabels.source, 'ai'),
+                ),
+              )
+            await tx
+              .insert(emailLabels)
+              .values(
+                picks.map((p) => ({
+                  emailId: ctx.email.id,
+                  labelId: p.id,
+                  source: 'ai',
+                  confidence: p.confidence,
+                })),
+              )
+              .onConflictDoNothing()
+          })
+          executed.push(`${c.name}(${picks.length})`)
+          break
+        }
+        case 'draft_replies': {
+          const raw = c.arguments.drafts
+          if (!Array.isArray(raw)) {
+            skipped.push(`${c.name}:no-drafts-array`)
+            break
+          }
+          const drafts: Array<{
+            tone: 'concise' | 'warm' | 'decline'
+            body: string
+            score: number
+          }> = []
+          for (const d of raw) {
+            if (
+              !d ||
+              typeof d !== 'object' ||
+              typeof (d as { tone?: unknown }).tone !== 'string' ||
+              typeof (d as { body?: unknown }).body !== 'string' ||
+              typeof (d as { score?: unknown }).score !== 'number'
+            ) {
+              continue
+            }
+            const tone = (d as { tone: string }).tone as
+              | 'concise'
+              | 'warm'
+              | 'decline'
+            if (tone !== 'concise' && tone !== 'warm' && tone !== 'decline') continue
+            const score = Math.max(
+              0,
+              Math.min(1, (d as { score: number }).score),
+            )
+            if (score < 0.4) continue
+            drafts.push({
+              tone,
+              body: (d as { body: string }).body.slice(0, 1200),
+              score,
+            })
+          }
+          if (drafts.length === 0) {
+            skipped.push(`${c.name}:none-met-floor`)
+            break
+          }
+          await deps.db.transaction(async (tx) => {
+            await tx
+              .delete(emailReplySuggestions)
+              .where(eq(emailReplySuggestions.emailId, ctx.email.id))
+            await tx.insert(emailReplySuggestions).values(
+              drafts.map((d) => ({
+                id: makeId(),
+                emailId: ctx.email.id,
+                tone: d.tone,
+                body: d.body,
+                score: d.score,
+              })),
+            )
+          })
+          executed.push(`${c.name}(${drafts.length})`)
+          break
+        }
+        case 'create_meeting': {
+          const conf =
+            typeof c.arguments.confidence === 'number'
+              ? c.arguments.confidence
+              : 0
+          if (conf < 0.85) {
+            // Below auto-create floor — still record we ran, so the
+            // backfill path doesn't keep retrying.
+            await deps.db
+              .update(emails)
+              .set({ meetingExtractedAt: new Date() })
+              .where(eq(emails.id, ctx.email.id))
+            skipped.push(`${c.name}:low-confidence(${conf})`)
+            break
+          }
+          const startStr = c.arguments.startAt
+          const start = typeof startStr === 'string' ? new Date(startStr) : null
+          if (!start || Number.isNaN(start.getTime())) {
+            await deps.db
+              .update(emails)
+              .set({ meetingExtractedAt: new Date() })
+              .where(eq(emails.id, ctx.email.id))
+            skipped.push(`${c.name}:unparseable-start`)
+            break
+          }
+          let end = new Date(start.getTime() + 60 * 60 * 1000)
+          if (typeof c.arguments.endAt === 'string') {
+            const parsed = new Date(c.arguments.endAt)
+            if (!Number.isNaN(parsed.getTime())) end = parsed
+          }
+          const title =
+            typeof c.arguments.title === 'string' && c.arguments.title.length > 0
+              ? c.arguments.title.slice(0, 200)
+              : ctx.email.subject || 'Meeting'
+          const location =
+            typeof c.arguments.location === 'string'
+              ? c.arguments.location.slice(0, 500)
+              : null
+          const attendees = Array.isArray(c.arguments.attendees)
+            ? (c.arguments.attendees as unknown[])
+                .filter((a): a is string => typeof a === 'string')
+                .slice(0, 20)
+            : []
+
+          const eventId = `evt_${makeId()}`
+          await deps.db.transaction(async (tx) => {
+            await tx.insert(calendarEvents).values({
+              id: eventId,
+              userId: ctx.userId,
+              title,
+              description: null,
+              location,
+              attendees,
+              startAt: start,
+              endAt: end,
+              color: '#C5F135',
+              meetingLink: null,
+              hasWaitingRoom: false,
+              reminderMinutes: [15],
+              notes: null,
+              source: 'ai',
+              sourceEmailId: ctx.email.id,
+            })
+            await tx
+              .update(emails)
+              .set({
+                meetingExtractedAt: new Date(),
+                meetingEventId: eventId,
+              })
+              .where(eq(emails.id, ctx.email.id))
+          })
+          executed.push(`${c.name}(${conf})`)
+          break
+        }
+        default:
+          skipped.push(`${c.name}:unknown-tool`)
+      }
+    } catch (err) {
+      console.warn(`[ai-worker] tool ${c.name} dispatch failed:`, (err as Error).message)
+      skipped.push(`${c.name}:dispatch-error`)
+    }
+  }
+
+  // If the model didn't call extract-meeting at all, still mark the
+  // row so backfills know we processed it.
+  if (!result.toolCalls.find((c) => c.name === 'create_meeting')) {
+    await deps.db
+      .update(emails)
+      .set({ meetingExtractedAt: new Date() })
+      .where(eq(emails.id, ctx.email.id))
+  }
+
+  // Flush cache busts based on what we wrote.
+  if (summaryWritten || needsReplyArgs) {
+    await bust(deps, ctx.userId, 'today')
+    await bust(deps, ctx.userId, 'unified-inbox')
+  }
+
+  return { toolCalls: result.toolCalls.length, executed, skipped }
+}
+// `ToolCall` is referenced for typing inside the function above; keep
+// the import surface from drifting if a future edit removes the local
+// usage.
+void (null as unknown as ToolCall)
 
 /**
  * Resolve a display name for a sender address. Three-tier cascade:

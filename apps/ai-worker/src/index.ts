@@ -42,7 +42,14 @@ async function main() {
   // Dedicated publisher connection so the worker's cache-bust messages
   // never block on the BullMQ blocking-fetch socket.
   const publisher = connection.duplicate()
-  const deps: ProcessorDeps = { db, provider, model: config.model, queue, publisher }
+  const deps: ProcessorDeps = {
+    db,
+    provider,
+    model: config.model,
+    queue,
+    publisher,
+    useToolCalling: config.useToolCalling,
+  }
 
   const worker = new Worker(
     AI_QUEUE,
