@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../../../core/fcm/push_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../domain/compose_args.dart';
@@ -21,57 +20,36 @@ import '../providers/mail_providers.dart';
 ///    user, hide. The chips are reply STARTERS — they're noise once
 ///    the user has already replied.
 ///
-///  - If suggestions come back empty on first open, the worker is
-///    still generating. Invalidate on a timer (5s × 6 attempts) until
-///    non-empty or the retry budget runs out. Without this the user
-///    has to back out and reopen to see suggestions, which is the
-///    bug-report symptom from the live device.
-class ReplySuggestionStrip extends ConsumerStatefulWidget {
+///  - When suggestions come back empty, the AI worker hasn't finished.
+///    The native FCM service receives an `email.new.update` push the
+///    moment they're written; we mirror that on the foreground stream
+///    (`fcmForegroundEventsProvider`) and invalidate the suggestions
+///    query when an event matches our emailId. Replaces the prior
+///    poll-while-empty timer.
+class ReplySuggestionStrip extends ConsumerWidget {
   const ReplySuggestionStrip({super.key, required this.email});
 
   final Email email;
 
   @override
-  ConsumerState<ReplySuggestionStrip> createState() =>
-      _ReplySuggestionStripState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Invalidate on the FCM event for this email. listen() instead of
+    // watch() so we don't rebuild on every event — only refetch.
+    ref.listen<AsyncValue<Map<String, String>>>(
+      fcmForegroundEventsProvider,
+      (_, next) {
+        next.whenData((data) {
+          if (data['emailId'] != email.id) return;
+          final t = data['type'];
+          if (t == 'email.new.update' || t == 'email.suggestions.ready') {
+            ref.invalidate(replySuggestionsProvider(email.id));
+          }
+        });
+      },
+    );
 
-class _ReplySuggestionStripState extends ConsumerState<ReplySuggestionStrip> {
-  Timer? _pollTimer;
-  int _pollAttempts = 0;
-  static const int _maxPollAttempts = 6;
-  static const Duration _pollInterval = Duration(seconds: 5);
-
-  void _ensurePolling(bool empty) {
-    if (!empty) {
-      _pollTimer?.cancel();
-      _pollTimer = null;
-      return;
-    }
-    if (_pollTimer != null) return;
-    if (_pollAttempts >= _maxPollAttempts) return;
-    _pollTimer = Timer.periodic(_pollInterval, (_) {
-      _pollAttempts++;
-      if (!mounted) return;
-      ref.invalidate(replySuggestionsProvider(widget.email.id));
-      if (_pollAttempts >= _maxPollAttempts) {
-        _pollTimer?.cancel();
-        _pollTimer = null;
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _pollTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final asyncSuggestions =
-        ref.watch(replySuggestionsProvider(widget.email.id));
-    final asyncThread = ref.watch(threadMessagesProvider(widget.email.id));
+    final asyncSuggestions = ref.watch(replySuggestionsProvider(email.id));
+    final asyncThread = ref.watch(threadMessagesProvider(email.id));
     final me = ref.watch(authControllerProvider).user?.email.toLowerCase();
 
     // Dismiss rule: any outbound message from me in this thread → hide.
@@ -92,13 +70,6 @@ class _ReplySuggestionStripState extends ConsumerState<ReplySuggestionStrip> {
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
       data: (suggestions) {
-        // Side-effect: kick polling on/off based on whether we have
-        // results yet. Done in build because invalidating the provider
-        // would otherwise need an extra notifier layer.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _ensurePolling(suggestions.isEmpty);
-        });
         if (suggestions.isEmpty) return const SizedBox.shrink();
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
@@ -136,7 +107,7 @@ class _ReplySuggestionStripState extends ConsumerState<ReplySuggestionStrip> {
                       onTap: () => context.push(
                         '/compose',
                         extra: ComposeFromEmail.replyWithBody(
-                          widget.email,
+                          email,
                           userEmail: me,
                           prefilledBody: s.body,
                         ),

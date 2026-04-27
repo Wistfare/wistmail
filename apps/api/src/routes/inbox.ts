@@ -193,6 +193,141 @@ inboxRoutes.get('/emails/:id/meeting-extraction', async (c) => {
 })
 
 /**
+ * POST /api/v1/inbox/emails/:id/meeting-extraction/accept
+ *
+ * Accept a mid-confidence (outcome=1) meeting suggestion: create the
+ * calendar event from the stored extraction, link it back via
+ * source_email_id, and flip the extraction's outcome to 2 +
+ * createdEventId. Idempotent — calling it on an already-accepted
+ * extraction returns the existing event.
+ */
+inboxRoutes.post('/emails/:id/meeting-extraction/accept', async (c) => {
+  const emailId = c.req.param('id')
+  const userId = c.get('userId')
+  const db = getDb()
+
+  const rows = await db
+    .select({
+      id: emailEventExtractions.id,
+      hasMeeting: emailEventExtractions.hasMeeting,
+      title: emailEventExtractions.title,
+      startAt: emailEventExtractions.startAt,
+      endAt: emailEventExtractions.endAt,
+      location: emailEventExtractions.location,
+      attendees: emailEventExtractions.attendees,
+      outcome: emailEventExtractions.outcome,
+      createdEventId: emailEventExtractions.createdEventId,
+      mailboxUserId: mailboxes.userId,
+      emailSubject: emails.subject,
+    })
+    .from(emailEventExtractions)
+    .innerJoin(emails, eq(emails.id, emailEventExtractions.emailId))
+    .innerJoin(mailboxes, eq(mailboxes.id, emails.mailboxId))
+    .where(eq(emailEventExtractions.emailId, emailId))
+    .limit(1)
+  const row = rows[0]
+  if (!row || row.mailboxUserId !== userId) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'Extraction not found' } },
+      404,
+    )
+  }
+
+  // Already accepted — return the existing event so callers can
+  // treat the action as idempotent.
+  if (row.outcome === 2 && row.createdEventId) {
+    const ev = (
+      await db
+        .select()
+        .from(calendarEvents)
+        .where(eq(calendarEvents.id, row.createdEventId))
+        .limit(1)
+    )[0]
+    return c.json({ extraction: row, event: ev ?? null, alreadyAccepted: true })
+  }
+
+  if (!row.hasMeeting || !row.startAt) {
+    return c.json(
+      {
+        error: {
+          code: 'NO_MEETING',
+          message: 'Extraction has no usable meeting time',
+        },
+      },
+      400,
+    )
+  }
+
+  const eventId = generateEventId()
+  const startAt = row.startAt
+  const endAt =
+    row.endAt ?? new Date(startAt.getTime() + 60 * 60 * 1000)
+
+  const [ev] = await db
+    .insert(calendarEvents)
+    .values({
+      id: eventId,
+      userId,
+      title: row.title ?? row.emailSubject ?? 'Meeting',
+      location: row.location ?? null,
+      attendees: (row.attendees as unknown[]) ?? [],
+      startAt,
+      endAt,
+      sourceEmailId: emailId,
+    })
+    .returning()
+
+  await db
+    .update(emailEventExtractions)
+    .set({ outcome: 2, createdEventId: eventId })
+    .where(eq(emailEventExtractions.id, row.id))
+
+  return c.json({ extraction: { ...row, outcome: 2, createdEventId: eventId }, event: ev })
+})
+
+/**
+ * POST /api/v1/inbox/emails/:id/meeting-extraction/dismiss
+ *
+ * User declined the "Add to calendar?" suggestion. Flip outcome to -1
+ * so the chip doesn't reappear on reopen. The extraction row stays
+ * (we still want the precision/recall data point) — we just stop
+ * surfacing it.
+ */
+inboxRoutes.post('/emails/:id/meeting-extraction/dismiss', async (c) => {
+  const emailId = c.req.param('id')
+  const userId = c.get('userId')
+  const db = getDb()
+
+  // Ownership check via the email's mailbox.
+  const owned = await db
+    .select({ id: emails.id })
+    .from(emails)
+    .innerJoin(mailboxes, eq(emails.mailboxId, mailboxes.id))
+    .where(and(eq(emails.id, emailId), eq(mailboxes.userId, userId)))
+    .limit(1)
+  if (owned.length === 0) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'Email not found' } },
+      404,
+    )
+  }
+
+  await db
+    .update(emailEventExtractions)
+    .set({ outcome: -1 })
+    .where(eq(emailEventExtractions.emailId, emailId))
+
+  return c.json({ ok: true })
+})
+
+/// 16-byte url-safe id, same shape the worker uses for makeId().
+function generateEventId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+/**
  * GET /api/v1/inbox/emails/:id/thread
  *
  * Return every email in the same thread as `:id`, oldest first,

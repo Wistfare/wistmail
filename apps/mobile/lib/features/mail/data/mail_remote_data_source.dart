@@ -156,6 +156,24 @@ class MailRemoteDataSource {
     }
   }
 
+  /// Accept a mid-confidence meeting suggestion. Server creates a
+  /// linked calendar event and flips the extraction to outcome=2 so
+  /// the chip switches to "ADDED TO CALENDAR" without a refetch.
+  Future<Map<String, dynamic>> acceptMeetingExtraction(String emailId) async {
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/meeting-extraction/accept',
+    );
+    return response.data ?? const <String, dynamic>{};
+  }
+
+  /// Decline the meeting suggestion. Server flips outcome to -1 so
+  /// the chip doesn't reappear on reopen.
+  Future<void> dismissMeetingExtraction(String emailId) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/meeting-extraction/dismiss',
+    );
+  }
+
   /// Run one action against many emails in a single round-trip.
   /// `action` is one of 'read' | 'unread' | 'star' | 'unstar' |
   /// 'archive' | 'delete' | 'purge' | 'move' | 'label-add' |

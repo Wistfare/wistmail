@@ -33,6 +33,12 @@ abstract class MailRepository {
   /// AI-extracted meeting metadata + linked calendar event (when one
   /// was auto-created). Null when the worker hasn't produced one yet.
   Future<Map<String, dynamic>?> getMeetingExtraction(String emailId);
+  /// Accept a mid-confidence meeting suggestion — server creates the
+  /// event + flips the extraction to outcome=2.
+  Future<Map<String, dynamic>> acceptMeetingExtraction(String emailId);
+  /// Decline the suggestion — extraction flipped to outcome=-1 so the
+  /// chip won't reappear.
+  Future<void> dismissMeetingExtraction(String emailId);
   /// Bulk mutation helper. Returns the number of affected rows.
   Future<int> batchAction({
     required List<String> ids,
@@ -115,6 +121,14 @@ class MailRepositoryImpl implements MailRepository {
   @override
   Future<Map<String, dynamic>?> getMeetingExtraction(String emailId) =>
       _remote.getMeetingExtraction(emailId);
+
+  @override
+  Future<Map<String, dynamic>> acceptMeetingExtraction(String emailId) =>
+      _remote.acceptMeetingExtraction(emailId);
+
+  @override
+  Future<void> dismissMeetingExtraction(String emailId) =>
+      _remote.dismissMeetingExtraction(emailId);
 
   @override
   Future<int> batchAction({
