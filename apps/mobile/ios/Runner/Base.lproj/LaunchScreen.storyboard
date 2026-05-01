@@ -18,11 +18,20 @@
                         <subviews>
                             <imageView opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" image="LaunchImage" translatesAutoresizingMaskIntoConstraints="NO" id="YRO-k0-Ey4">
                             </imageView>
+                            <!-- "Wistfare Mail" wordmark pinned to the bottom — same role as "from Meta" on the WhatsApp splash. BrandWordmarkColor is a Color Asset with light=#589B4C (brand accent) and dark=#FFFFFF, mirroring the LaunchImage's luminosity variants. -->
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Wistfare Mail" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="WMb-ra-ndt">
+                                <fontDescription key="fontDescription" type="system" pointSize="13"/>
+                                <color key="textColor" name="BrandWordmarkColor"/>
+                                <nil key="highlightedColor"/>
+                            </label>
                         </subviews>
-                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <!-- systemBackgroundColor adapts: white in light mode, black in dark mode. Pairs with the LaunchImage asset's light/dark appearance variants. -->
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                         <constraints>
                             <constraint firstItem="YRO-k0-Ey4" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="1a2-6s-vTC"/>
                             <constraint firstItem="YRO-k0-Ey4" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="4X2-HB-R7a"/>
+                            <constraint firstItem="WMb-ra-ndt" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="WMb-cx-001"/>
+                            <constraint firstAttribute="bottom" secondItem="WMb-ra-ndt" secondAttribute="bottom" constant="48" id="WMb-bt-001"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -33,5 +42,11 @@
     </scenes>
     <resources>
         <image name="LaunchImage" width="168" height="185"/>
+        <namedColor name="BrandWordmarkColor">
+            <color red="0.34509803921568627" green="0.6078431372549019" blue="0.2980392156862745" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+        </namedColor>
+        <systemColor name="systemBackgroundColor">
+            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
     </resources>
 </document>

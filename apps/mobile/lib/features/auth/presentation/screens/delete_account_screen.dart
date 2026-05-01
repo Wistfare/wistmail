@@ -92,11 +92,12 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             ),
             const SizedBox(height: 10),
             Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppColors.surface,
-                border: Border.fromBorderSide(
+                border: const Border.fromBorderSide(
                   BorderSide(color: AppColors.border),
                 ),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: TextField(
                 key: const Key('delete-confirm'),
@@ -157,11 +158,12 @@ class _WarningBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.dangerSubtle,
-        border: Border.fromBorderSide(
+        border: const Border.fromBorderSide(
           BorderSide(color: AppColors.danger, width: 1),
         ),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

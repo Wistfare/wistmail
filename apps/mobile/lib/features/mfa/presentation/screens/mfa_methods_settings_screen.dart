@@ -277,7 +277,10 @@ class _MethodRow extends StatelessWidget {
               Container(
                 width: 36,
                 height: 36,
-                color: iconBg,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 alignment: Alignment.center,
                 child: Icon(icon, size: 18, color: iconColor),
               ),
@@ -334,11 +337,12 @@ class _BackupCodesRow extends StatelessWidget {
           Container(
             width: 36,
             height: 36,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.surface,
-              border: Border.fromBorderSide(
+              border: const Border.fromBorderSide(
                 BorderSide(color: AppColors.border, width: 1),
               ),
+              borderRadius: BorderRadius.circular(8),
             ),
             alignment: Alignment.center,
             child: const Icon(Icons.vpn_key_outlined,

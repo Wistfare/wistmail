@@ -31,8 +31,8 @@ export function buildMfaCodeEmail(params: {
       .email-heading { color: #E5E5E5 !important; }
       .email-text { color: #999999 !important; }
       .email-strong { color: #E5E5E5 !important; }
-      .email-code-box { background-color: #1A2A08 !important; border-color: #BFFF00 !important; }
-      .email-code-text { color: #BFFF00 !important; }
+      .email-code-box { background-color: #10220D !important; border-color: #589B4C !important; }
+      .email-code-text { color: #589B4C !important; }
       .email-hint { color: #666666 !important; }
       .email-footer { border-color: #222222 !important; }
       .email-footer-text { color: #444444 !important; }
@@ -46,7 +46,7 @@ export function buildMfaCodeEmail(params: {
         <table width="560" cellpadding="0" cellspacing="0" class="email-card" style="background-color:#FFFFFF;border:1px solid #E5E5E5;">
           <tr>
             <td class="email-header" style="padding:28px 36px 24px;border-bottom:1px solid #E5E5E5;">
-              <div style="display:inline-block;background-color:#BFFF00;width:36px;height:36px;text-align:center;line-height:36px;font-weight:700;font-size:16px;color:#0A0A0A;">W</div>
+              <div style="display:inline-block;background-color:#589B4C;width:36px;height:36px;text-align:center;line-height:36px;font-weight:700;font-size:16px;color:#FFFFFF;">W</div>
               <span class="email-heading" style="margin-left:12px;font-size:18px;font-weight:600;color:#111111;vertical-align:middle;">Wistfare Mail</span>
             </td>
           </tr>
@@ -55,7 +55,7 @@ export function buildMfaCodeEmail(params: {
               <h1 class="email-heading" style="margin:0 0 8px;font-size:22px;font-weight:600;color:#111111;">${heading}</h1>
               <p class="email-text" style="margin:0 0 24px;font-size:14px;color:#555555;line-height:1.6;">${intro}</p>
 
-              <table width="100%" cellpadding="0" cellspacing="0" class="email-code-box" style="background-color:#F5FFC9;border:1px solid #BFFF00;margin-bottom:24px;">
+              <table width="100%" cellpadding="0" cellspacing="0" class="email-code-box" style="background-color:#E5F2DA;border:1px solid #589B4C;margin-bottom:24px;">
                 <tr>
                   <td align="center" style="padding:24px;">
                     <div class="email-code-text" style="font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:700;color:#0A0A0A;letter-spacing:8px;">${code}</div>

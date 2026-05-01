@@ -62,11 +62,12 @@ class _MfaBackupCodeScreenState extends ConsumerState<MfaBackupCodeScreen> {
               Container(
                 width: double.infinity,
                 height: 56,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppColors.surface,
-                  border: Border.fromBorderSide(
+                  border: const Border.fromBorderSide(
                     BorderSide(color: AppColors.accent, width: 1),
                   ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
                 child: TextField(
@@ -156,7 +157,10 @@ class _Glyph extends StatelessWidget {
     return Container(
       width: 64,
       height: 64,
-      color: AppColors.accentDim,
+      decoration: BoxDecoration(
+        color: AppColors.accentDim,
+        borderRadius: BorderRadius.circular(14),
+      ),
       alignment: Alignment.center,
       child: const Icon(
         Icons.vpn_key_outlined,

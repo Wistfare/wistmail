@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_colors.dart';
 
-/// Primary CTA button — solid lime square block with black text.
+/// Primary CTA button — solid green block with black text. 12px radius
+/// keeps it in the same family as the V3 inbox/today cards.
 /// Matches Mobile/SignIn "Sign In", Mobile/ForgotPassword "Send Reset Link",
 /// Mobile/JoinMeeting "Join Meeting", Mobile/Compose "Send".
 class WmPrimaryButton extends StatelessWidget {
@@ -53,8 +54,10 @@ class WmPrimaryButton extends StatelessWidget {
 
     return Material(
       color: AppColors.accent,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: loading ? null : onPressed,
+        borderRadius: BorderRadius.circular(12),
         splashColor: AppColors.background.withValues(alpha: 0.06),
         highlightColor: AppColors.background.withValues(alpha: 0.04),
         child: SizedBox(
@@ -67,7 +70,7 @@ class WmPrimaryButton extends StatelessWidget {
   }
 }
 
-/// Secondary outlined block — gray border on dark surface.
+/// Secondary outlined block — gray border on dark surface, 12px radius.
 class WmSecondaryButton extends StatelessWidget {
   const WmSecondaryButton({
     super.key,
@@ -94,17 +97,18 @@ class WmSecondaryButton extends StatelessWidget {
 
     return Material(
       color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
         splashColor: AppColors.textPrimary.withValues(alpha: 0.04),
         highlightColor: AppColors.textPrimary.withValues(alpha: 0.02),
         child: Container(
           height: height,
           width: isFullWidth ? double.infinity : null,
-          decoration: const BoxDecoration(
-            border: Border.fromBorderSide(
-              BorderSide(color: AppColors.border, width: 1),
-            ),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.border, width: 1),
+            borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,
           child: icon != null
@@ -123,7 +127,7 @@ class WmSecondaryButton extends StatelessWidget {
   }
 }
 
-/// Danger button — solid red block. Used by DeleteAccount, "End call".
+/// Danger button — solid red block, 12px radius. Used by DeleteAccount, "End call".
 class WmDangerButton extends StatelessWidget {
   const WmDangerButton({
     super.key,
@@ -150,8 +154,10 @@ class WmDangerButton extends StatelessWidget {
 
     return Material(
       color: AppColors.danger,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
         child: SizedBox(
           height: height,
           width: isFullWidth ? double.infinity : null,

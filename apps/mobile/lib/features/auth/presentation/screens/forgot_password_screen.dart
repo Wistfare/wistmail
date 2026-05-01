@@ -196,6 +196,7 @@ class _PasteTokenCta extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surface,
           border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
@@ -244,7 +245,10 @@ class _MailGlyph extends StatelessWidget {
     return Container(
       width: 64,
       height: 64,
-      color: AppColors.accentDim,
+      decoration: BoxDecoration(
+        color: AppColors.accentDim,
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: const Icon(
         Icons.mail_outline,
         color: AppColors.accent,

@@ -16,9 +16,9 @@ abstract final class AppColors {
   static const Color borderStrong = Color(0xFF222222);
 
   // Accent — wm-accent / wm-accent-dim (pen-defined exactly).
-  static const Color accent = Color(0xFFBFFF00);
-  static const Color accentSubtle = Color(0xFF2A3A12);
-  static const Color accentDim = Color(0xFF1A2200);
+  static const Color accent = Color(0xFF589B4C);
+  static const Color accentSubtle = Color(0xFF1F3D1B);
+  static const Color accentDim = Color(0xFF10220D);
 
   // Text — pen variables wm-text-*.
   static const Color textPrimary = Color(0xFFFFFFFF);
@@ -29,7 +29,7 @@ abstract final class AppColors {
   // Status / system — wm-error / wm-success / wm-warning.
   static const Color danger = Color(0xFFFF4444);
   static const Color dangerSubtle = Color(0xFF2A0E0E);
-  static const Color success = Color(0xFFBFFF00);
+  static const Color success = Color(0xFF589B4C);
 
   // Drawer
   static const Color drawerBackground = Color(0xFF111111);
@@ -37,7 +37,7 @@ abstract final class AppColors {
 
   // Chat bubbles
   static const Color receivedBubble = Color(0xFF1A1A1A);
-  static const Color sentBubble = Color(0xFF2A3A12);
+  static const Color sentBubble = Color(0xFF1F3D1B);
 
   // Aliases kept for backward compat with existing screens
   static const Color unreadDot = accent;
