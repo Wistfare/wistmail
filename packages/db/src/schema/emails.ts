@@ -94,6 +94,14 @@ export const emails = pgTable(
     // for idempotency — workers skip emails with this set unless the
     // job specifies force=true.
     aiProcessedAt: timestamp('ai_processed_at', { withTimezone: true }),
+    // Set when the meeting-extraction job ran on this email. Idempotency
+    // marker: don't re-run unless the operator passes force=true.
+    meetingExtractedAt: timestamp('meeting_extracted_at', { withTimezone: true }),
+    // FK back to the calendar_events row the AI created from this
+    // email (≥ 0.85 confidence band). NULL when no meeting was
+    // extracted, or when the result fell into the lower bands the
+    // UI surfaces as a chip rather than committing.
+    meetingEventId: varchar('meeting_event_id', { length: 64 }),
   },
   (table) => [
     // Inbox list query — covers WHERE mailbox_id = ? AND folder = ? ORDER BY created_at DESC.

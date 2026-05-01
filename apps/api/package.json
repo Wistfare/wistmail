@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "backfill-from-name": "tsx src/scripts/backfill-from-name.ts",
     "backfill-derive-display-name": "tsx src/scripts/backfill-derive-display-name.ts",
+    "backfill-extract-meeting": "tsx src/scripts/backfill-extract-meeting.ts",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest",
