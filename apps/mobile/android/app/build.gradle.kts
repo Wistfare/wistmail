@@ -74,11 +74,16 @@ flutter {
 }
 
 dependencies {
-    // Required by WistmailFcmService.kt + WistmailReplyReceiver.kt for
-    // NotificationCompat, RemoteInput, NotificationManagerCompat. The
-    // firebase_messaging plugin transitively provides
-    // firebase-messaging itself, but androidx.core-ktx is what the
-    // notification builder + RemoteInput primitives live in, and is
-    // not pulled in transitively reliably across Flutter versions.
+    // androidx.core-ktx — NotificationCompat, NotificationManagerCompat,
+    // RemoteInput. Not pulled in transitively by the Flutter plugins.
     implementation("androidx.core:core-ktx:1.13.1")
+
+    // Pin firebase-messaging directly. The firebase_messaging Flutter
+    // plugin's transitive dependency wasn't reaching :app's Kotlin
+    // compile classpath under the current Gradle/AGP combo, so
+    // WistmailFcmService.kt's import of FirebaseMessagingService /
+    // RemoteMessage failed to resolve. Version chosen to track
+    // firebase_messaging ^16.2.0 (FlutterFire 16.x → BOM 33.x →
+    // firebase-messaging 24.1.x).
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
 }

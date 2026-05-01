@@ -335,8 +335,28 @@ async function ensureSchema() {
       has_waiting_room boolean NOT NULL DEFAULT false,
       reminder_minutes jsonb NOT NULL DEFAULT '[15]',
       notes text,
+      source_email_id varchar(64) REFERENCES emails(id) ON DELETE SET NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS source_email_id varchar(64) REFERENCES emails(id) ON DELETE SET NULL`,
+    `CREATE INDEX IF NOT EXISTS calendar_events_source_email_id_idx ON calendar_events(source_email_id)`,
+    // Per-email AI extraction of meeting metadata. The worker writes
+    // here regardless of confidence; UI consults the row to decide
+    // whether to surface an "Add to calendar?" chip.
+    `CREATE TABLE IF NOT EXISTS email_event_extractions (
+      id varchar(64) PRIMARY KEY,
+      email_id varchar(64) NOT NULL UNIQUE REFERENCES emails(id) ON DELETE CASCADE,
+      has_meeting boolean NOT NULL,
+      title varchar(255),
+      start_at timestamptz,
+      end_at timestamptz,
+      location varchar(500),
+      attendees jsonb NOT NULL DEFAULT '[]',
+      confidence real NOT NULL,
+      outcome integer NOT NULL DEFAULT 0,
+      created_event_id varchar(64) REFERENCES calendar_events(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE TABLE IF NOT EXISTS projects (
       id varchar(64) PRIMARY KEY,

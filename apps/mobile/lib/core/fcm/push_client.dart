@@ -10,7 +10,9 @@ import '../network/providers.dart';
 ///   1. Ask the user for notification permission.
 ///   2. Fetch the current FCM token and register it with the backend.
 ///   3. Listen for token refreshes and re-register.
-///   4. On logout, unregister the token and stop listeners.
+///   4. Forward foreground data messages to a public stream so feature
+///      providers can invalidate their queries without polling.
+///   5. On logout, unregister the token and stop listeners.
 ///
 /// The client is tolerant: if Firebase is unavailable (e.g. web in tests,
 /// emulators without Google Play Services), register/unregister become no-ops.
@@ -23,7 +25,20 @@ class PushClient {
   final ApiClient apiClient;
   final FirebaseMessaging? _messaging;
   StreamSubscription<String>? _tokenSub;
+  StreamSubscription<RemoteMessage>? _msgSub;
+  final StreamController<Map<String, String>> _foregroundDataCtrl =
+      StreamController<Map<String, String>>.broadcast();
   String? _currentToken;
+
+  /// Foreground FCM data-message stream. Each event is the message's
+  /// `data` map (string-to-string). Feature providers subscribe and
+  /// invalidate their queries when the event's `type` matches.
+  ///
+  /// Background messages still flow through the native service that
+  /// builds the system notification; those don't appear here because
+  /// the user isn't in the app.
+  Stream<Map<String, String>> get foregroundData =>
+      _foregroundDataCtrl.stream;
 
   /// Request notification permission, fetch the token, and register it with
   /// the backend. Safe to call repeatedly (idempotent server-side).
@@ -45,6 +60,16 @@ class PushClient {
         _currentToken = newToken;
         await _postToken(newToken);
       });
+
+      // Foreground data-message bridge. The native FCM service handles
+      // notification rendering regardless; this listener exists so the
+      // open screen can react to events like `email.new.update` (drops
+      // suggestions polling), `email.meeting.created`, etc.
+      _msgSub?.cancel();
+      _msgSub = FirebaseMessaging.onMessage.listen((msg) {
+        if (msg.data.isEmpty) return;
+        _foregroundDataCtrl.add(Map<String, String>.from(msg.data));
+      });
     } catch (err) {
       // Don't block login if push fails to initialize.
       // ignore: avoid_print
@@ -61,7 +86,9 @@ class PushClient {
   Future<void> unregister() async {
     final token = _currentToken;
     await _tokenSub?.cancel();
+    await _msgSub?.cancel();
     _tokenSub = null;
+    _msgSub = null;
     _currentToken = null;
     if (token == null) return;
     // Order matters: delete server-side first so the backend stops
@@ -120,4 +147,17 @@ class PushClient {
 final pushClientProvider = FutureProvider<PushClient>((ref) async {
   final apiClient = await ref.watch(apiClientProvider.future);
   return PushClient(apiClient: apiClient);
+});
+
+/// Foreground data-message stream as a Riverpod source. Feature widgets
+/// (suggestion strip, meeting chip, today screen, …) watch this and
+/// invalidate their queries when the event matches their resource.
+///
+/// The stream is broadcast and never closes — it tracks the lifetime
+/// of the PushClient instance, which is itself a singleton across the
+/// app session.
+final fcmForegroundEventsProvider =
+    StreamProvider<Map<String, String>>((ref) async* {
+  final client = await ref.watch(pushClientProvider.future);
+  yield* client.foregroundData;
 });

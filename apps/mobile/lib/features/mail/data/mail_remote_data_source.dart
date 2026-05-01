@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/email.dart';
 import '../domain/reply_suggestion.dart';
@@ -138,6 +139,39 @@ class MailRemoteDataSource {
     );
     final raw = response.data?['messages'] as List<dynamic>? ?? const [];
     return raw.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  /// Returns the AI's meeting extraction for an email plus the linked
+  /// calendar event when one was auto-created. Null when the worker
+  /// hasn't run yet for this email — the UI then renders nothing.
+  Future<Map<String, dynamic>?> getMeetingExtraction(String emailId) async {
+    try {
+      final response = await _client.dio.get<Map<String, dynamic>>(
+        '/api/v1/inbox/emails/$emailId/meeting-extraction',
+      );
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Accept a mid-confidence meeting suggestion. Server creates a
+  /// linked calendar event and flips the extraction to outcome=2 so
+  /// the chip switches to "ADDED TO CALENDAR" without a refetch.
+  Future<Map<String, dynamic>> acceptMeetingExtraction(String emailId) async {
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/meeting-extraction/accept',
+    );
+    return response.data ?? const <String, dynamic>{};
+  }
+
+  /// Decline the meeting suggestion. Server flips outcome to -1 so
+  /// the chip doesn't reappear on reopen.
+  Future<void> dismissMeetingExtraction(String emailId) async {
+    await _client.dio.post<Map<String, dynamic>>(
+      '/api/v1/inbox/emails/$emailId/meeting-extraction/dismiss',
+    );
   }
 
   /// Run one action against many emails in a single round-trip.

@@ -13,6 +13,7 @@ import '../../domain/compose_args.dart';
 import '../../domain/email.dart';
 import '../providers/mail_providers.dart';
 import '../widgets/email_body.dart';
+import '../widgets/meeting_extraction_chip.dart';
 import '../widgets/reply_suggestion_strip.dart';
 
 /// MobileV3 Thread (email detail) — pen node `NoPsV`.
@@ -93,6 +94,9 @@ class _ThreadContent extends ConsumerWidget {
         SliverToBoxAdapter(child: _SubjectBlock(email: email)),
         SliverToBoxAdapter(
           child: _SenderCard(email: email, me: me),
+        ),
+        SliverToBoxAdapter(
+          child: MeetingExtractionChip(emailId: email.id),
         ),
         SliverToBoxAdapter(child: ReplySuggestionStrip(email: email)),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
@@ -590,10 +594,11 @@ class _SenderAvatar extends StatelessWidget {
   final Email email;
   @override
   Widget build(BuildContext context) {
-    // Design sAv: 44×44 cornerRadius 22 (fill varies), 14/700 mono white.
+    // 40×40 to match the web `wdAvatar` node (PpYjY). Was 44×44 — the
+    // mobile design comment cited a stale spec.
     return Container(
-      width: 44,
-      height: 44,
+      width: 40,
+      height: 40,
       decoration: BoxDecoration(
         color: email.senderAvatarColor,
         shape: BoxShape.circle,

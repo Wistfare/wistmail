@@ -18,9 +18,15 @@ export const JOB_NAMES = {
   /// From header lacked one. Cached in `sender_names` so subsequent
   /// emails from the same address are zero-cost.
   deriveDisplayName: 'derive-display-name',
+  /// Pulls a structured `{startAt, endAt, location, attendees}` out
+  /// of inbound emails that propose or confirm a meeting. The worker
+  /// auto-creates a calendar event when confidence ≥ 0.85, or stores
+  /// the extraction for the UI to surface a "Add to calendar?" chip
+  /// at lower confidence.
+  extractMeeting: 'extract-meeting',
   /// Fans out per-email jobs after a new email arrives. The worker
-  /// expands this into the four per-email jobs so the API only
-  /// publishes one event.
+  /// expands this into the per-email jobs so the API only publishes
+  /// one event.
   ingestEmail: 'ingest-email',
 } as const
 
@@ -60,4 +66,8 @@ export interface DeriveDisplayNameJob {
   /// back to this email row. Skipped when null (used by the
   /// "warm the cache" backfill path).
   emailId: string | null
+}
+
+export interface ExtractMeetingJob {
+  emailId: string
 }

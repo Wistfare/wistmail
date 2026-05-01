@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../../../core/fcm/push_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../domain/compose_args.dart';
@@ -11,13 +12,20 @@ import '../providers/mail_providers.dart';
 
 /// Horizontal strip of AI-generated reply suggestion chips. Sits below
 /// the sender card in the Thread screen and above the floating action
-/// area. Renders nothing while the worker is still producing drafts
-/// (or if it produced none) — the floor of zero rows == zero pixels
-/// keeps the screen unchanged for emails the AI hasn't reached yet.
+/// area.
 ///
-/// Tapping a chip routes to /compose with the body pre-filled. The
-/// user always edits before sending — chips are starting points, not
-/// auto-replies.
+/// Two visibility rules beyond the obvious "API returned non-empty":
+///
+///  - If the thread already has any outbound message from the current
+///    user, hide. The chips are reply STARTERS — they're noise once
+///    the user has already replied.
+///
+///  - When suggestions come back empty, the AI worker hasn't finished.
+///    The native FCM service receives an `email.new.update` push the
+///    moment they're written; we mirror that on the foreground stream
+///    (`fcmForegroundEventsProvider`) and invalidate the suggestions
+///    query when an event matches our emailId. Replaces the prior
+///    poll-while-empty timer.
 class ReplySuggestionStrip extends ConsumerWidget {
   const ReplySuggestionStrip({super.key, required this.email});
 
@@ -25,8 +33,38 @@ class ReplySuggestionStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Invalidate on the FCM event for this email. listen() instead of
+    // watch() so we don't rebuild on every event — only refetch.
+    ref.listen<AsyncValue<Map<String, String>>>(
+      fcmForegroundEventsProvider,
+      (_, next) {
+        next.whenData((data) {
+          if (data['emailId'] != email.id) return;
+          final t = data['type'];
+          if (t == 'email.new.update' || t == 'email.suggestions.ready') {
+            ref.invalidate(replySuggestionsProvider(email.id));
+          }
+        });
+      },
+    );
+
     final asyncSuggestions = ref.watch(replySuggestionsProvider(email.id));
-    final me = ref.watch(authControllerProvider).user?.email;
+    final asyncThread = ref.watch(threadMessagesProvider(email.id));
+    final me = ref.watch(authControllerProvider).user?.email.toLowerCase();
+
+    // Dismiss rule: any outbound message from me in this thread → hide.
+    final userHasReplied = asyncThread.maybeWhen(
+      data: (messages) {
+        if (me == null) return false;
+        for (final m in messages) {
+          final from = (m['fromAddress'] as String?)?.toLowerCase();
+          if (from == me) return true;
+        }
+        return false;
+      },
+      orElse: () => false,
+    );
+    if (userHasReplied) return const SizedBox.shrink();
 
     return asyncSuggestions.when(
       loading: () => const SizedBox.shrink(),
@@ -40,7 +78,8 @@ class ReplySuggestionStrip extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  const Icon(LucideIcons.sparkles, size: 12, color: AppColors.accent),
+                  const Icon(LucideIcons.sparkles,
+                      size: 12, color: AppColors.accent),
                   const SizedBox(width: 6),
                   Text(
                     'SUGGESTED REPLIES',

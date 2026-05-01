@@ -10,6 +10,7 @@ export {
   type DraftReplyJob,
   type TodayDigestJob,
   type DeriveDisplayNameJob,
+  type ExtractMeetingJob,
 } from './queues'
 export { OllamaProvider } from './ollama'
 export { OpenAIProvider } from './openai'
@@ -33,6 +34,7 @@ export { summarizeEmail } from './jobs/summarize'
 export { autoLabel } from './jobs/auto-label'
 export { draftReply } from './jobs/draft-reply'
 export { todayDigest } from './jobs/today-digest'
+export { extractMeeting } from './jobs/extract-meeting'
 export { deriveDisplayName } from './jobs/derive-display-name'
 export type { DeriveInput, DeriveOutput } from './jobs/derive-display-name'
 export { deriveLocalPartName } from './jobs/local-part-heuristic'
@@ -48,4 +50,6 @@ export type {
   DraftReplyOutput,
   TodayDigestInput,
   TodayDigestOutput,
+  ExtractMeetingInput,
+  ExtractMeetingOutput,
 } from './jobs/types'

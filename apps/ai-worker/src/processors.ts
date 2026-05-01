@@ -17,12 +17,14 @@ import {
   deriveDisplayName,
   deriveLocalPartName,
   draftReply,
+  extractMeeting,
   summarizeEmail,
   todayDigest,
   type AiProvider,
 } from '@wistmail/ai'
 import {
   calendarEvents,
+  emailEventExtractions,
   emailLabels,
   emailReplySuggestions,
   emails,
@@ -42,6 +44,7 @@ import {
   type ClassifyNeedsReplyJob,
   type DeriveDisplayNameJob,
   type DraftReplyJob,
+  type ExtractMeetingJob,
   type IngestEmailJob,
   type SummarizeJob,
   type TodayDigestJob,
@@ -104,6 +107,7 @@ export async function processIngestEmail(
     JOB_NAMES.summarize,
     JOB_NAMES.autoLabel,
     JOB_NAMES.draftReply,
+    JOB_NAMES.extractMeeting,
   ]
   for (const name of names) {
     await deps.queue.add(name, { emailId }, opts)
@@ -597,6 +601,161 @@ export async function enqueueAllDigests(deps: ProcessorDeps): Promise<number> {
     })
   }
   return rows.length
+}
+
+/**
+ * Pull a structured `{startAt, endsAt, location, attendees}` out of an
+ * inbound email body and decide what to do with it:
+ *
+ *   confidence ≥ AUTO_THRESHOLD  → create a calendar event linked to
+ *                                  the email; outcome=2.
+ *   confidence ≥ CHIP_THRESHOLD  → store the extraction so the mobile
+ *                                  thread can show "Add to calendar?";
+ *                                  outcome=1.
+ *   else                         → store at outcome=0 for analytics
+ *                                  and to skip on re-runs.
+ *
+ * Idempotent: the unique constraint on email_event_extractions.email_id
+ * means re-running the job for the same email is a no-op (the second
+ * insert is dropped). Re-extraction requires deleting the row first.
+ */
+const EXTRACT_AUTO_THRESHOLD = 0.85
+const EXTRACT_CHIP_THRESHOLD = 0.6
+
+export async function processExtractMeeting(
+  deps: ProcessorDeps,
+  job: Job<ExtractMeetingJob>,
+): Promise<{ outcome: number; createdEventId: string | null; confidence: number }> {
+  const { emailId } = job.data
+
+  // Skip if we already extracted from this email — the unique
+  // constraint would catch it but we save a model call.
+  const existing = await deps.db
+    .select({ id: emailEventExtractions.id })
+    .from(emailEventExtractions)
+    .where(eq(emailEventExtractions.emailId, emailId))
+    .limit(1)
+  if (existing[0]) {
+    return { outcome: -1, createdEventId: null, confidence: 0 }
+  }
+
+  const ctx = await loadEmailContext(deps.db, emailId)
+  if (!ctx) return { outcome: 0, createdEventId: null, confidence: 0 }
+
+  const senderRow = await deps.db
+    .select({
+      fromName: emails.fromName,
+      sentAt: emails.createdAt,
+    })
+    .from(emails)
+    .where(eq(emails.id, emailId))
+    .limit(1)
+  const fromName = senderRow[0]?.fromName ?? null
+  const sentAt = senderRow[0]?.sentAt ?? new Date()
+
+  const tzRow = await deps.db
+    .select({ tz: users.timezone })
+    .from(users)
+    .where(eq(users.id, ctx.userId))
+    .limit(1)
+  const recipientTimezone = tzRow[0]?.tz ?? 'UTC'
+
+  const result = await extractMeeting(deps.provider, deps.model, {
+    fromName,
+    fromAddress: ctx.email.fromAddress,
+    subject: ctx.email.subject,
+    body: ctx.email.body,
+    sentAtIso: sentAt.toISOString(),
+    recipientTimezone,
+  })
+
+  // Below the chip threshold → store-only outcome 0. Lets us measure
+  // recall later by sampling false negatives.
+  if (!result.hasMeeting || result.confidence < EXTRACT_CHIP_THRESHOLD) {
+    await deps.db
+      .insert(emailEventExtractions)
+      .values({
+        id: makeId(),
+        emailId,
+        hasMeeting: result.hasMeeting,
+        confidence: result.confidence,
+        outcome: 0,
+      })
+      .onConflictDoNothing()
+    return {
+      outcome: 0,
+      createdEventId: null,
+      confidence: result.confidence,
+    }
+  }
+
+  // Validate parseable times — model can hand back garbage strings.
+  const startAt = result.startAt ? safeParseDate(result.startAt) : null
+  const endAt = result.endAt
+    ? safeParseDate(result.endAt)
+    : startAt
+      ? new Date(startAt.getTime() + 60 * 60 * 1000)
+      : null
+  if (!startAt) {
+    // Has-meeting + high confidence but no usable time = log and bail.
+    await deps.db
+      .insert(emailEventExtractions)
+      .values({
+        id: makeId(),
+        emailId,
+        hasMeeting: true,
+        title: result.title ?? null,
+        location: result.location ?? null,
+        attendees: result.attendees ?? [],
+        confidence: result.confidence,
+        outcome: 0,
+      })
+      .onConflictDoNothing()
+    return { outcome: 0, createdEventId: null, confidence: result.confidence }
+  }
+
+  // Auto-create vs surface-chip decision.
+  let createdEventId: string | null = null
+  let outcome = 1
+  if (result.confidence >= EXTRACT_AUTO_THRESHOLD) {
+    createdEventId = makeId()
+    outcome = 2
+    await deps.db.insert(calendarEvents).values({
+      id: createdEventId,
+      userId: ctx.userId,
+      title: result.title ?? ctx.email.subject ?? 'Meeting',
+      location: result.location ?? null,
+      attendees: result.attendees ?? [],
+      startAt,
+      endAt: endAt ?? new Date(startAt.getTime() + 60 * 60 * 1000),
+      sourceEmailId: emailId,
+    })
+    await bust(deps, ctx.userId, 'today')
+  }
+
+  await deps.db
+    .insert(emailEventExtractions)
+    .values({
+      id: makeId(),
+      emailId,
+      hasMeeting: true,
+      title: result.title ?? null,
+      startAt,
+      endAt: endAt ?? null,
+      location: result.location ?? null,
+      attendees: result.attendees ?? [],
+      confidence: result.confidence,
+      outcome,
+      createdEventId,
+    })
+    .onConflictDoNothing()
+
+  return { outcome, createdEventId, confidence: result.confidence }
+}
+
+function safeParseDate(s: string): Date | null {
+  const d = new Date(s)
+  return Number.isNaN(d.getTime()) ? null : d
 }
 
 /// 16-byte url-safe id. Collision odds are well below the rate of email
