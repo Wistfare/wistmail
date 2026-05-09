@@ -38,6 +38,9 @@ import {
   EmailReadingSkeleton,
 } from '@/components/email/feed-skeletons'
 import { ChatThreadView } from '@/components/chat/chat-thread-view'
+import { ChatInfoPanel } from '@/components/chat/chat-info-panel'
+import { ChatInfoPanelSkeleton } from '@/components/chat/chat-skeletons'
+import { useConversations } from '@/lib/chat-queries'
 import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
 import {
   rangeForWeek,
@@ -216,11 +219,20 @@ export default function InboxPage() {
     return pages[pages.length - 1].unreadCount
   }, [list.data])
 
-  /// Today's events feeding the right-hand `TodayPanel` (Pencil
-  /// `InboxV3.TodayRail`). Only show on the actual `inbox` folder; the
-  /// other folders (sent / drafts / trash etc) keep the 2-column layout
-  /// from before.
-  const showTodayRail = folderParam === 'inbox'
+  /// Right rail decides what to show based on what's selected:
+  ///   - chat row → ChatInfoPanel (Pencil `gFZ2m`) profile + media
+  ///   - email row / nothing → TodayPanel (Pencil `InboxV3.TodayRail`)
+  /// We always feed the today data regardless of selection so
+  /// switching back to email/empty doesn't refetch.
+  const showRightRail = folderParam === 'inbox'
+  /// Hydrate the selected chat's summary from the cached
+  /// useConversations() list — same pattern ChatThreadView uses so
+  /// no extra fetch fires when the right rail mounts.
+  const conversationsQ = useConversations()
+  const selectedConversation = useMemo(() => {
+    if (!selectedChatId || !conversationsQ.data) return null
+    return conversationsQ.data.find((c) => c.id === selectedChatId) ?? null
+  }, [selectedChatId, conversationsQ.data])
   const todayRange = useMemo(() => rangeForWeek(new Date()), [])
   const todayEvents = useEventsInRange(todayRange.from, todayRange.to)
   const todayPanelEvents = useMemo<TodayEvent[]>(() => {
@@ -569,10 +581,28 @@ export default function InboxPage() {
   ///   [All · 23] [Mail] [Chats]   [🔍]
   /// All three modes stay on /inbox — clicking CHATS just toggles
   /// the `kind` filter on the unified feed query, the same way ALL
-  /// and MAIL do.
+  /// and MAIL do.  We mirror the choice into the URL (?kind=) so the
+  /// filter is shareable, survives reload, and the browser back/
+  /// forward buttons step through filter changes naturally.
   function onContentTypeChange(next: FeedKind) {
     setContentType(next)
+    const params = new URLSearchParams(searchParams.toString())
+    if (next === 'all') {
+      params.delete('kind')
+    } else {
+      params.set('kind', next)
+    }
+    const qs = params.toString()
+    router.replace(qs.length > 0 ? `/inbox?${qs}` : '/inbox')
   }
+
+  // Sync URL → state when the back/forward buttons or an external
+  // link changes ?kind= without re-mounting the page.
+  useEffect(() => {
+    const next: FeedKind =
+      kindParam === 'mail' || kindParam === 'chats' ? kindParam : 'all'
+    setContentType((cur) => (cur === next ? cur : next))
+  }, [kindParam])
 
   return (
     <div className="flex h-full">
@@ -1120,21 +1150,57 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* ── Right rail: Today panel ── only on the inbox folder. */}
-      {showTodayRail && (
-        <TodayPanel
-          events={todayPanelEvents}
-          comingUp={comingUpEvents}
-          onAddTask={() => router.push('/work')}
-          onJoinMeeting={(ev) => {
-            if (ev.meetingUrl) {
-              window.open(ev.meetingUrl, '_blank', 'noopener,noreferrer')
-            } else {
-              router.push('/calendar')
+      {/* ── Right rail ──
+          Visible only on the main inbox folder.  The content
+          switches based on what the user has selected:
+          - chat selected → ChatInfoPanel (Pencil InfoPanel `gFZ2m`)
+            shows the profile, quick actions, pinned items, shared
+            media, and files for the conversation.
+          - email or nothing selected → TodayPanel (Pencil
+            `InboxV3.TodayRail`) shows the day's agenda + add-task. */}
+      {showRightRail &&
+        (selectedChatId && conversationsQ.isPending ? (
+          // The user clicked a chat row before the conversations
+          // query hydrated; show a profile-shaped placeholder so the
+          // right rail doesn't snap back to the TodayPanel for a
+          // frame.
+          <ChatInfoPanelSkeleton />
+        ) : selectedChatId && selectedConversation ? (
+          <ChatInfoPanel
+            kind={selectedConversation.kind === 'group' ? 'group' : 'direct'}
+            title={
+              selectedConversation.title ??
+              selectedConversation.otherParticipants[0]?.name ??
+              selectedConversation.otherParticipants[0]?.email ??
+              'Conversation'
             }
-          }}
-        />
-      )}
+            avatarUrl={selectedConversation.otherParticipants[0]?.avatarUrl}
+            subtitle={
+              selectedConversation.kind === 'group'
+                ? `${(selectedConversation.otherParticipants.length ?? 0) + 1} members`
+                : selectedConversation.otherParticipants[0]?.email
+            }
+            presence={undefined}
+            members={
+              selectedConversation.kind === 'group'
+                ? selectedConversation.otherParticipants
+                : []
+            }
+          />
+        ) : (
+          <TodayPanel
+            events={todayPanelEvents}
+            comingUp={comingUpEvents}
+            onAddTask={() => router.push('/work')}
+            onJoinMeeting={(ev) => {
+              if (ev.meetingUrl) {
+                window.open(ev.meetingUrl, '_blank', 'noopener,noreferrer')
+              } else {
+                router.push('/calendar')
+              }
+            }}
+          />
+        ))}
 
       <style jsx global>{`
         .email-body blockquote {

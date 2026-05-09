@@ -184,11 +184,14 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
             back-arrow before cHL so the user has a one-click way to
             clear the inline selection; standalone /chat/[id] use
             keeps the same affordance but routes back to /inbox. */}
+        {/* Header — Pencil's latest pass drops the bottom border so
+            the conversation surface flows continuously from the
+            header into the message stack.  The 14-px vertical
+            padding alone provides the visual rhythm. */}
         <header
           className="flex w-full items-center justify-between"
           style={{
             padding: '14px 24px',
-            borderBottom: '1px solid var(--color-wm-border)',
           }}
         >
           {/* Pencil ChatViewV3.cHd does NOT include a back arrow.
