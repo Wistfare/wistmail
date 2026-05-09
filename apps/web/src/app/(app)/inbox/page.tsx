@@ -48,6 +48,7 @@ import {
   type CalendarEvent,
 } from '@/lib/event-queries'
 import { api } from '@/lib/api-client'
+import { getMailboxes } from '@/lib/mailboxes-cache'
 import { useToast } from '@/components/ui/toast'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import {
@@ -549,8 +550,20 @@ export default function InboxPage() {
       closeComposer()
       return
     }
+    /// `/api/v1/inbox/compose` requires both `fromAddress` and
+    /// `mailboxId` — the server validates that the address belongs
+    /// to one of the caller's mailboxes before queuing.  We resolve
+    /// the user's primary mailbox here (cached, so it's free after
+    /// the first compose).  No selection UI yet because Pencil V3
+    /// inline composer doesn't expose a "From" picker on replies.
+    const boxes = await getMailboxes()
+    const primary = boxes[0]
+    if (!primary) {
+      throw new Error('No mailbox configured for this account.')
+    }
     await api.post('/api/v1/inbox/compose', {
-      fromAddress: undefined, // server picks the user's primary mailbox
+      fromAddress: primary.address,
+      mailboxId: primary.id,
       toAddresses: input.to.map((c) => c.email),
       cc: input.cc?.map((c) => c.email),
       bcc: input.bcc?.map((c) => c.email),
