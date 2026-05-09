@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowLeft,
   Check,
   Download,
   File as FileIcon,
@@ -192,16 +191,11 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
             borderBottom: '1px solid var(--color-wm-border)',
           }}
         >
+          {/* Pencil ChatViewV3.cHd does NOT include a back arrow.
+              The conversation lives inline in the inbox right pane,
+              so navigation away happens via clicking another row in
+              the list — no in-pane back affordance. */}
           <div className="flex min-w-0 items-center" style={{ gap: 12 }}>
-            <button
-              type="button"
-              onClick={() => (onBack ? onBack() : router.push('/inbox'))}
-              className="flex shrink-0 cursor-pointer items-center justify-center text-wm-text-muted transition-colors hover:text-wm-text-primary"
-              aria-label="Back to inbox"
-              style={{ width: 24, height: 24 }}
-            >
-              <ArrowLeft style={{ width: 14, height: 14 }} />
-            </button>
             {isGroup ? (
               <span
                 aria-hidden
@@ -328,33 +322,47 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
                 sessionUser.id,
                 conversation,
               )
-              return msgs.map((m, idx) => (
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  isMine={m.senderId === sessionUser.id}
-                  isGroup={isGroup}
-                  conversation={conversation}
-                  sessionUserId={sessionUser.id}
-                  sessionUserName={sessionUser.name}
-                  sessionUserAvatar={sessionUser.avatarUrl}
-                  showReadAvatars={idx === lastMineIdx}
-                  readBy={readsByMessage.get(m.id) ?? []}
-                  onEdit={async (content) => {
-                    await editMessage.mutateAsync({
-                      messageId: m.id,
-                      content,
-                    })
-                  }}
-                  onDelete={async () => {
-                    if (
-                      confirm('Delete this message? It can’t be undone.')
-                    ) {
-                      await deleteMessage.mutateAsync(m.id)
-                    }
-                  }}
-                />
-              ))
+              return msgs.map((m, idx) => {
+                // Pencil ChatViewV3 groups consecutive messages from
+                // the same sender — the second/third/… message in a
+                // run hides the avatar + name to keep the column
+                // tight.  We skip the header when the previous
+                // (non-deleted) message is from the same sender.
+                let prev: typeof m | undefined
+                for (let i = idx - 1; i >= 0; i--) {
+                  prev = msgs[i]
+                  break
+                }
+                const showAvatar = !prev || prev.senderId !== m.senderId
+                return (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    isMine={m.senderId === sessionUser.id}
+                    isGroup={isGroup}
+                    conversation={conversation}
+                    sessionUserId={sessionUser.id}
+                    sessionUserName={sessionUser.name}
+                    sessionUserAvatar={sessionUser.avatarUrl}
+                    showAvatar={showAvatar}
+                    showReadAvatars={idx === lastMineIdx}
+                    readBy={readsByMessage.get(m.id) ?? []}
+                    onEdit={async (content) => {
+                      await editMessage.mutateAsync({
+                        messageId: m.id,
+                        content,
+                      })
+                    }}
+                    onDelete={async () => {
+                      if (
+                        confirm('Delete this message? It can’t be undone.')
+                      ) {
+                        await deleteMessage.mutateAsync(m.id)
+                      }
+                    }}
+                  />
+                )
+              })
             })()}
           </div>
         </div>
@@ -364,12 +372,15 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
             gap 8.  Left: 32 round paperclip.  Middle: input.  Right:
             32 sparkles (lime), 32 smile, 32 mic, 36×36 round LIME
             send button. */}
+        {/* composer wrapper — Pencil `kPc6V` declares a stroke top
+            with no fill so the separator isn't visible.  The cmpBox
+            inside (radius 24, 1px #1A1A1A border) carries the only
+            border treatment in this region. */}
         <div
           className="flex w-full flex-col"
           style={{
             padding: '12px 20px 16px 20px',
             gap: 10,
-            borderTop: '1px solid var(--color-wm-border)',
           }}
         >
           {typers.length > 0 && (
@@ -541,6 +552,7 @@ function MessageBubble({
   sessionUserId,
   sessionUserName,
   sessionUserAvatar,
+  showAvatar,
   showReadAvatars,
   readBy,
   onEdit,
@@ -553,6 +565,10 @@ function MessageBubble({
   sessionUserId: string
   sessionUserName: string
   sessionUserAvatar: string | null
+  /// `true` for the first message in a run from this sender.  When
+  /// false, the avatar slot renders as an empty 32-px spacer so the
+  /// column stays aligned but no duplicate avatar shows up.
+  showAvatar: boolean
   showReadAvatars: boolean
   readBy: ReadByEntry[]
   onEdit: (content: string) => Promise<void>
@@ -612,14 +628,23 @@ function MessageBubble({
         isMine ? 'flex-row-reverse' : 'flex-row',
       )}
     >
-      <Avatar name={senderName} src={senderAvatar} size="sm" />
+      {/* Avatar slot — Pencil omits the avatar (and the sender name
+          row above the bubble) on the second / third / … message in
+          a same-sender run, so messages stack tightly. We render an
+          empty 32-px spacer in that case so every message in the run
+          stays in the same column. */}
+      {showAvatar ? (
+        <Avatar name={senderName} src={senderAvatar} size="sm" />
+      ) : (
+        <span aria-hidden className="shrink-0" style={{ width: 32, height: 32 }} />
+      )}
       <div
         className={cn(
           'max-w-[70%] flex flex-col gap-0.5',
           isMine ? 'items-end' : 'items-start',
         )}
       >
-        {isGroup && !isMine && !isDeleted && (
+        {isGroup && !isMine && !isDeleted && showAvatar && (
           <span className="font-mono text-[10px] font-semibold text-wm-text-secondary">
             {senderName}
           </span>

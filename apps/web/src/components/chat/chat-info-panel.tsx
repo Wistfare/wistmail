@@ -210,10 +210,10 @@ export function ChatInfoPanel({
         )}
       </div>
 
-      <span
-        aria-hidden
-        style={{ height: 1, background: 'var(--color-wm-border)' }}
-      />
+      {/* Pencil's latest InfoPanel pass drops the dividers between
+          sections — section padding alone provides enough breathing
+          room.  The previous 1-px hairlines made the panel feel
+          chopped up against the dark surface. */}
 
       {/* Members section — group only. Lives between qaRow and Pinned in
           Pencil GroupChatV3; we leave the 6-member preview here. */}
@@ -383,11 +383,6 @@ export function ChatInfoPanel({
           </div>
         </Section>
       )}
-
-      <span
-        aria-hidden
-        style={{ height: 1, background: 'var(--color-wm-border)' }}
-      />
 
       {/* FILES section */}
       {files.length > 0 && (

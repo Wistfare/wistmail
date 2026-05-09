@@ -1,6 +1,6 @@
 'use client'
 
-import { Star } from 'lucide-react'
+import { Hash, Mail, MessageCircle, Star, UsersRound } from 'lucide-react'
 import { cn, getInitials, stringToColor } from '@/lib/utils'
 import { AttachmentBadge } from './attachments-strip'
 
@@ -11,25 +11,30 @@ import { AttachmentBadge } from './attachments-strip'
  *     active: bg #1A2200, 3-px lime LEFT stroke
  *     hover:  bg #1A1A1A
  *     idle:   transparent
- *   avatar: 40×40 round, deterministic colour, initials 13/700 white
- *           — for channel rows the avatar is a hash icon on a purple bg,
- *             but the row component is generic so the parent supplies
- *             `tag` ('CHAT' | 'CHANNEL' | 'BYTE' …) and we derive the
- *             default styling. (Channel-specific rendering is left to
- *             the parent if needed.)
+ *
+ *   avatar: 40×40 round
+ *     mail / direct chat → deterministic colour fill, initials 13/700
+ *     group              → fill #6D4AD4, hash icon 18 white
+ *
+ *   kindBadge (`zV8Vt` etc) — 20×20 circle pinned to the avatar's
+ *     bottom-right (Pencil position x=23, y=23 inside the 40×40
+ *     avatar frame). Fill #111111, 2px outside #000 stroke (so it
+ *     reads as a "cut-out" against the row background).  Centered
+ *     12-px lucide icon white:
+ *       MAIL    → mail
+ *       CHAT    → message-circle
+ *       CHANNEL → users-round
+ *
  *   col (gap 3 vertical):
  *     header (justify between):
- *       hL (gap 6): name 13/600 white + tag chip
+ *       name 13/600 white truncate
  *       time 11 #6e6e6e
- *     subject 13/600 white (only for MAIL kind, omitted for CHAT)
+ *     subject 13/600 white (only for MAIL kind, omitted for chat rows)
  *     snippet 12/normal #999999
  *
- * Tag chip palette (Pencil exact):
- *     MAIL on active → bg lime, text black (small chip "MAIL" 9/700)
- *     MAIL on others → bg #1A2A4A, text #3B82F6
- *     CHAT           → bg #1A2A4A, text #3B82F6
- *     CHANNEL        → bg #2A1A4A, text #A07AFF
- *     BYTE           → bg #2A1A1A, text #FFA07A
+ * The text "MAIL" / "CHAT" / "CHANNEL" chip that used to sit next to
+ * the name is gone — Pencil's latest pass surfaces the kind on the
+ * avatar via the badge so the name line stays clean.
  */
 export type EmailRowV3Tag = 'MAIL' | 'CHAT' | 'CHANNEL' | 'BYTE'
 
@@ -72,6 +77,7 @@ export function EmailRowV3({
   const bg = stringToColor(display)
   const tag = email.tag ?? 'MAIL'
   const isMail = tag === 'MAIL'
+  const isGroup = tag === 'CHANNEL'
 
   return (
     <button
@@ -91,33 +97,45 @@ export function EmailRowV3({
           : '3px solid transparent',
       }}
     >
-      {/* Avatar — Pencil V3 doesn't ship row-level multi-select, so we
-          render the 40×40 deterministic-colour avatar with no hover
-          swap to a checkbox. The selection-related props on this
-          component (selectionMode, isChecked, onToggleCheck) are kept
-          for forward-compat but currently no-op visually. */}
+      {/* Avatar + kindBadge — Pencil overlays a 20×20 badge on the
+          avatar's bottom-right corner.  We position the badge with
+          absolute coordinates inside a relatively positioned wrapper
+          so the badge cleanly overlaps the avatar's edge. */}
       <span
         aria-hidden
-        className="flex shrink-0 items-center justify-center rounded-full font-mono font-bold text-white"
-        style={{ width: 40, height: 40, fontSize: 13, backgroundColor: bg }}
+        className="relative shrink-0"
+        style={{ width: 40, height: 40 }}
       >
-        {initials || '?'}
+        {isGroup ? (
+          <span
+            className="flex items-center justify-center rounded-full text-white"
+            style={{ width: 40, height: 40, background: '#6D4AD4' }}
+          >
+            <Hash style={{ width: 18, height: 18 }} />
+          </span>
+        ) : (
+          <span
+            className="flex items-center justify-center rounded-full font-mono font-bold text-white"
+            style={{ width: 40, height: 40, fontSize: 13, backgroundColor: bg }}
+          >
+            {initials || '?'}
+          </span>
+        )}
+        {/* kindBadge — Pencil position x:23 y:23 inside the avatar frame. */}
+        <KindBadge tag={tag} />
       </span>
 
       <span
         className="flex min-w-0 flex-1 flex-col"
         style={{ gap: 3 }}
       >
-        {/* header: name + tag + time */}
+        {/* header: name + time (no kind chip — surfaced on the avatar) */}
         <span className="flex w-full items-center justify-between" style={{ gap: 8 }}>
-          <span className="flex min-w-0 items-center" style={{ gap: 6 }}>
-            <span
-              className="min-w-0 truncate font-mono font-semibold text-wm-text-primary"
-              style={{ fontSize: 13 }}
-            >
-              {display}
-            </span>
-            <TagChip tag={tag} active={selected} />
+          <span
+            className="min-w-0 truncate font-mono font-semibold text-wm-text-primary"
+            style={{ fontSize: 13 }}
+          >
+            {display}
           </span>
           <span
             className="shrink-0 font-mono"
@@ -178,63 +196,61 @@ export function EmailRowV3({
         )}
       </span>
 
-      {/* star — pinned to right edge */}
-      <span
-        role="button"
-        tabIndex={-1}
-        aria-label={email.isStarred ? 'Unstar' : 'Star'}
-        onClick={(e) => {
-          e.stopPropagation()
-          onToggleStar?.()
-        }}
-        className={cn(
-          'shrink-0 cursor-pointer transition-colors',
-          email.isStarred ? 'text-wm-accent' : 'text-wm-text-muted hover:text-wm-text-secondary',
-        )}
-        style={{ paddingTop: 2 }}
-      >
-        <Star
-          className={cn(email.isStarred && 'fill-wm-accent')}
-          style={{ width: 14, height: 14 }}
-        />
-      </span>
+      {/* star — pinned to right edge.  Only meaningful on mail rows;
+          chat rows don't have a star concept yet, so we hide it. */}
+      {isMail && (
+        <span
+          role="button"
+          tabIndex={-1}
+          aria-label={email.isStarred ? 'Unstar' : 'Star'}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleStar?.()
+          }}
+          className={cn(
+            'shrink-0 cursor-pointer transition-colors',
+            email.isStarred ? 'text-wm-accent' : 'text-wm-text-muted hover:text-wm-text-secondary',
+          )}
+          style={{ paddingTop: 2 }}
+        >
+          <Star
+            className={cn(email.isStarred && 'fill-wm-accent')}
+            style={{ width: 14, height: 14 }}
+          />
+        </span>
+      )}
     </button>
   )
 }
 
-const TAG_PALETTE: Record<EmailRowV3Tag, { bg: string; fg: string }> = {
-  MAIL: { bg: '#1A2A4A', fg: '#3B82F6' },
-  CHAT: { bg: '#1A2A4A', fg: '#3B82F6' },
-  CHANNEL: { bg: '#2A1A4A', fg: '#A07AFF' },
-  BYTE: { bg: '#2A1A1A', fg: '#FFA07A' },
-}
+/**
+ * Kind badge — Pencil `kindBadge` (`zV8Vt`/`UDMI1`/`A5NM6` etc).
+ * 20×20 round-square pinned to the avatar's bottom-right (Pencil
+ * coords x=23,y=23 inside a 40×40 frame). Fill #111111 with a 2-px
+ * outside black stroke so the badge "cuts out" cleanly against the
+ * row background regardless of hover/active tint.  The icon is
+ * always white at 12 px.
+ */
+function KindBadge({ tag }: { tag: EmailRowV3Tag }) {
+  let Icon = Mail
+  if (tag === 'CHAT') Icon = MessageCircle
+  else if (tag === 'CHANNEL') Icon = UsersRound
 
-function TagChip({
-  tag,
-  active,
-}: {
-  tag: EmailRowV3Tag
-  active?: boolean
-}) {
-  const palette = TAG_PALETTE[tag]
-  // Pencil row1 (active) gets the "MAIL" chip in lime fill + black text;
-  // every other row uses the muted palette.
-  const styles =
-    active && tag === 'MAIL'
-      ? { background: 'var(--color-wm-accent)', color: '#000000' }
-      : { background: palette.bg, color: palette.fg }
   return (
     <span
-      className="inline-flex items-center font-mono font-bold uppercase"
+      aria-hidden
+      className="absolute flex items-center justify-center rounded-full"
       style={{
-        ...styles,
-        padding: '1px 5px',
-        fontSize: 9,
-        letterSpacing: 0.5,
-        borderRadius: 4,
+        // Pencil position inside the 40×40 avatar.
+        left: 23,
+        top: 23,
+        width: 20,
+        height: 20,
+        background: '#111111',
+        boxShadow: '0 0 0 2px #000000',
       }}
     >
-      {tag}
+      <Icon style={{ width: 12, height: 12, color: '#FFFFFF' }} />
     </span>
   )
 }
