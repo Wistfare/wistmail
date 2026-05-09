@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Search,
@@ -31,6 +30,7 @@ import { EmailRowV3 } from '@/components/email/email-row-v3'
 import { InboxSectionHeader } from '@/components/email/inbox-section-header'
 import { AIBrief } from '@/components/email/ai-brief'
 import { NewDropdown } from '@/components/email/new-dropdown'
+import { ReadingEmpty } from '@/components/email/reading-empty'
 import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
 import {
   rangeForWeek,
@@ -169,6 +169,32 @@ export default function InboxPage() {
         location: e.location ?? undefined,
         meetingUrl: e.meetingLink ?? undefined,
         isNext: idx === 0,
+      }))
+  }, [todayEvents.data])
+
+  /// "COMING UP" surfaces the next handful of events that fall AFTER
+  /// today, ordered chronologically. Pencil's empty TodayRail
+  /// (`Syj0y.eTrSec`) shows a single row but our data may produce
+  /// more — TodayPanel slices to 3.
+  const comingUpEvents = useMemo<TodayEvent[]>(() => {
+    if (!todayEvents.data) return []
+    const tomorrow = new Date()
+    tomorrow.setHours(0, 0, 0, 0)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return todayEvents.data
+      .filter((e: CalendarEvent) => new Date(e.startAt) >= tomorrow)
+      .sort(
+        (a: CalendarEvent, b: CalendarEvent) =>
+          new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
+      )
+      .slice(0, 3)
+      .map((e: CalendarEvent) => ({
+        id: e.id,
+        title: e.title,
+        startsAt: e.startAt,
+        endsAt: e.endAt,
+        location: e.location ?? undefined,
+        meetingUrl: e.meetingLink ?? undefined,
       }))
   }, [todayEvents.data])
 
@@ -631,26 +657,13 @@ export default function InboxPage() {
           with absolutely-positioned elements, etc.). */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {!selectedId ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3">
-            <div
-              className="relative overflow-hidden"
-              style={{ width: 56, height: 56, borderRadius: 14 }}
-            >
-              <Image
-                src="/wistfare_mail_logo.png"
-                alt=""
-                fill
-                sizes="56px"
-                className="object-contain"
-              />
-            </div>
-            <p className="text-base font-medium text-wm-text-primary">
-              {emails.length > 0 ? 'Select an email to read' : 'Your inbox is empty'}
-            </p>
-            <p className="font-mono text-xs text-wm-text-muted">
-              Emails will appear here when you receive them.
-            </p>
-          </div>
+          <ReadingEmpty
+            unreadCount={unreadCount}
+            onCompose={() => openCompose()}
+            onNewChat={() => router.push('/chat/new')}
+            onNewGroup={() => router.push('/chat/new?kind=group')}
+            onSearch={() => router.push('/search')}
+          />
         ) : !selectedFull ? (
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-wm-accent" />
@@ -955,6 +968,8 @@ export default function InboxPage() {
       {showTodayRail && (
         <TodayPanel
           events={todayPanelEvents}
+          comingUp={comingUpEvents}
+          onAddTask={() => router.push('/work')}
           onJoinMeeting={(ev) => {
             if (ev.meetingUrl) {
               window.open(ev.meetingUrl, '_blank', 'noopener,noreferrer')
