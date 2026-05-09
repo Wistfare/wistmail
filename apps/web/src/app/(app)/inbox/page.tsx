@@ -7,6 +7,7 @@ import {
   ArrowUpDown,
   SlidersHorizontal,
   Archive,
+  AlarmClock,
   Trash2,
   Tag,
   Reply,
@@ -15,19 +16,22 @@ import {
   Loader2,
   AlertTriangle,
   RefreshCw,
+  CalendarPlus,
   CheckSquare,
+  ChevronDown,
+  ListChecks,
   Square,
   MailOpen,
   Mail,
+  MessageSquare,
+  MoreHorizontal,
   Plus,
   FolderInput,
-  Clock,
   X,
 } from 'lucide-react'
 import { useLabels } from '@/lib/labels'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { IconButton } from '@/components/ui'
 import { useCompose } from '@/components/email/compose-provider'
 import { EmailBody } from '@/components/email/email-body'
 import { LabelAssignPopover } from '@/components/email/label-assign-popover'
@@ -640,46 +644,120 @@ export default function InboxPage() {
 
   return (
     <div className="flex h-full">
-      {/* ── Email list pane ── */}
-      <div className="flex w-[420px] shrink-0 flex-col border-r border-wm-border bg-wm-bg">
-        {/* V3 header: title + "+ NEW" CTA + UNREAD/MENTIONS subtitle */}
-        <header className="flex flex-col gap-1.5 px-5 pb-3 pt-5">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="font-sans text-2xl font-semibold text-wm-text-primary">
+      {/* ── Email list pane ──
+          Pencil InboxV3.InboxList (`JYmWQ`): width 420, fill #000000,
+          1px right hairline #1A1A1A. */}
+      <div
+        className="flex w-[420px] shrink-0 flex-col"
+        style={{
+          background: '#000000',
+          borderRight: '1px solid var(--color-wm-border)',
+        }}
+      >
+        {/* V3 header (`gDkMT`, padding [24, 20, 16, 20], gap 6 vertical):
+              hRow: "Inbox" 32/700 white  ↔  "+ NEW ▾" lime pill
+              "23 UNREAD · 2 MENTIONS" 10/500 #999999 tracking 1.5 */}
+        <header
+          className="flex flex-col"
+          style={{ gap: 6, padding: '24px 20px 16px 20px' }}
+        >
+          <div className="flex w-full items-center justify-between">
+            <h1
+              className="font-mono font-bold text-wm-text-primary"
+              style={{ fontSize: 32 }}
+            >
               {folderName}
             </h1>
             <button
               type="button"
               onClick={() => openCompose()}
-              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-wm-accent px-3 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
+              className="inline-flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover"
+              style={{
+                gap: 7,
+                padding: '8px 14px',
+                borderRadius: 19,
+                boxShadow: '0 4px 16px 0 rgba(191,255,0,0.25)',
+                color: '#000000',
+              }}
+              aria-label="New message"
             >
-              <Plus className="h-3.5 w-3.5" />
-              New
+              <Plus style={{ width: 14, height: 14 }} />
+              <span
+                className="font-mono font-bold uppercase"
+                style={{ fontSize: 11, letterSpacing: 1 }}
+              >
+                New
+              </span>
+              <ChevronDown style={{ width: 11, height: 11 }} />
             </button>
           </div>
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-[1.5px] text-wm-text-secondary">
+          <p
+            className="font-mono uppercase"
+            style={{
+              fontSize: 10,
+              fontWeight: 500,
+              letterSpacing: 1.5,
+              color: '#999999',
+            }}
+          >
             {unreadCount} unread · 0 mentions
           </p>
         </header>
 
-        {/* V3 content-type pill row + search button. */}
-        <div className="flex items-center gap-2 px-5 pb-3">
-          <FilterPills
-            value={contentType}
-            options={[
-              { id: 'all', label: 'All', count: unreadCount },
-              { id: 'mail', label: 'Mail' },
-              { id: 'chat', label: 'Chat' },
-            ]}
-            onChange={(v) => onContentTypeChange(v as ContentType)}
-          />
+        {/* segWrap (`e0hqd6`, padding [0, 20, 16, 20], gap 8):
+              ALL · count   lime fill 11/700 black tracking 1
+              MAIL          surface fill, mail icon 12 + "MAIL" 11/600
+              CHATS         surface fill, message-square icon 12 + "CHATS"
+              flex-1 spacer
+              searchBtn     34×34 round (radius 17), 1px #1A1A1A border */}
+        <div
+          className="flex w-full items-center"
+          style={{ gap: 8, padding: '0 20px 16px 20px' }}
+        >
+          <SegPill
+            active={contentType === 'all'}
+            onClick={() => onContentTypeChange('all')}
+          >
+            ALL
+            <span
+              className="font-mono font-bold"
+              style={{
+                fontSize: 11,
+                letterSpacing: 1,
+                opacity: contentType === 'all' ? 0.6 : 0.7,
+              }}
+            >
+              {unreadCount}
+            </span>
+          </SegPill>
+          <SegPill
+            active={contentType === 'mail'}
+            onClick={() => onContentTypeChange('mail')}
+            icon={<Mail style={{ width: 12, height: 12 }} />}
+          >
+            MAIL
+          </SegPill>
+          <SegPill
+            active={contentType === 'chat'}
+            onClick={() => onContentTypeChange('chat')}
+            icon={<MessageSquare style={{ width: 12, height: 12 }} />}
+          >
+            CHATS
+          </SegPill>
+          <span style={{ flex: 1 }} />
           <button
             type="button"
             onClick={() => searchInputRef.current?.focus()}
             aria-label="Search emails"
-            className="ml-auto inline-flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full border border-wm-border bg-wm-surface text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+            className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              border: '1px solid var(--color-wm-border)',
+            }}
           >
-            <Search className="h-4 w-4" />
+            <Search style={{ width: 14, height: 14 }} />
           </button>
         </div>
 
@@ -812,10 +890,11 @@ export default function InboxPage() {
                     displayName: getEmailDisplayName(email),
                     subject: email.subject,
                     snippet: email.snippet,
-                    createdAt: email.createdAt,
+                    timeLabel: formatRowTime(email.createdAt),
                     isRead: email.isRead,
                     isStarred: email.isStarred,
                     hasAttachments: email.hasAttachments,
+                    tag: 'MAIL',
                     labels: email.labels ?? [],
                   }}
                   selected={selectedId === email.id && !inSelectionMode}
@@ -862,124 +941,235 @@ export default function InboxPage() {
           </div>
         ) : (
           <>
-            {/* V3 reading-pane toolbar — Pencil `InboxV3.toolbar` (`u0CIwR`).
-                Subject + status pill on the left; round Surface IconButtons
-                on the right (archive / snooze / label / delete). */}
-            <div className="flex items-center gap-2 border-b border-wm-border px-7 py-3.5">
-              <h2 className="flex-1 truncate font-sans text-lg font-semibold text-wm-text-primary">
-                {selectedFull.subject || '(no subject)'}
-              </h2>
-              <SendStatusPill
-                status={selectedFull.status}
-                onRetry={() => handleRetrySend(selectedFull.id)}
-              />
-              <IconButton
-                aria-label="Archive"
-                variant="surface"
-                onClick={() => handleArchive(selectedFull.id)}
-              >
-                <Archive className="h-4 w-4" />
-              </IconButton>
-              <div className="relative">
-                <IconButton
-                  aria-label="Snooze"
-                  variant="surface"
-                  onClick={() => setSnoozeOpen((o) => !o)}
+            {/* V3 reading-pane toolbar — Pencil `InboxV3.toolbar` (`u0CIwR`):
+                  padding [16, 28], 1px bottom hairline #1A1A1A, justify between
+                tbL (gap 10):
+                  "INBOX"   10/700 #6e6e6e tracking 1.5
+                  "/"       10/600 #404040
+                  "<SUBJ>"  10/700 #999999 tracking 1.5  (uppercase, truncate)
+                tbR (gap 6):
+                  ic1..ic5 — 32×32 round (radius 8) #111111 surface
+                  archive · alarm-clock · tag · trash-2 · ellipsis
+                  icons 14 #999999 */}
+            <div
+              className="flex w-full items-center justify-between"
+              style={{
+                padding: '16px 28px',
+                borderBottom: '1px solid var(--color-wm-border)',
+              }}
+            >
+              <div className="flex min-w-0 items-center" style={{ gap: 10 }}>
+                <span
+                  className="font-mono font-bold uppercase"
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: 1.5,
+                    color: '#6e6e6e',
+                  }}
                 >
-                  <Clock className="h-4 w-4" />
-                </IconButton>
-                {snoozeOpen && (
-                  <SnoozeMenu
-                    onPick={(until) => {
-                      setSnoozeOpen(false)
-                      snooze.mutate({ id: selectedFull.id, until })
-                      setSelectedId(null)
-                      toast.show({
-                        message: until
-                          ? `Snoozed until ${new Date(until).toLocaleString()}.`
-                          : 'Unsnoozed.',
-                        undo: () =>
-                          api.post(
-                            `/api/v1/inbox/emails/${selectedFull.id}/snooze`,
-                            { until: null },
-                          ),
-                      })
-                    }}
-                    onDismiss={() => setSnoozeOpen(false)}
-                    currentlySnoozed={
-                      selectedFull.folder === 'inbox' &&
-                      Boolean(
-                        (selectedFull as unknown as { snoozeUntil?: string | null })
-                          .snoozeUntil,
-                      )
-                    }
-                  />
-                )}
+                  {folderName}
+                </span>
+                <span
+                  className="font-mono font-semibold"
+                  style={{ fontSize: 10, color: '#404040' }}
+                >
+                  /
+                </span>
+                <span
+                  className="min-w-0 truncate font-mono font-bold uppercase"
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: 1.5,
+                    color: '#999999',
+                  }}
+                >
+                  {selectedFull.subject || '(no subject)'}
+                </span>
+                <SendStatusPill
+                  status={selectedFull.status}
+                  onRetry={() => handleRetrySend(selectedFull.id)}
+                />
               </div>
-              <LabelAssignPopover
-                emailId={selectedFull.id}
-                trigger={
-                  <IconButton aria-label="Add label" variant="surface">
-                    <Tag className="h-4 w-4" />
-                  </IconButton>
-                }
-              />
-              {selectedFull.folder === 'trash' ? (
-                <button
-                  type="button"
-                  onClick={() => handlePermanentDelete(selectedFull.id)}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-wm-error/40 bg-wm-error/10 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[1.5px] text-wm-error transition-colors hover:bg-wm-error/20"
-                  title="Delete this email permanently — bypasses the 30-day trash window"
+              <div className="flex items-center" style={{ gap: 6 }}>
+                <ToolbarIc
+                  label="Archive"
+                  onClick={() => handleArchive(selectedFull.id)}
                 >
-                  <Trash2 className="h-3 w-3" />
-                  Delete forever
-                </button>
-              ) : (
-                <IconButton
-                  aria-label="Delete"
-                  variant="surface"
-                  onClick={() => handleDelete(selectedFull.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </IconButton>
-              )}
+                  <Archive style={{ width: 14, height: 14 }} />
+                </ToolbarIc>
+                <div className="relative">
+                  <ToolbarIc
+                    label="Snooze"
+                    onClick={() => setSnoozeOpen((o) => !o)}
+                  >
+                    <AlarmClock style={{ width: 14, height: 14 }} />
+                  </ToolbarIc>
+                  {snoozeOpen && (
+                    <SnoozeMenu
+                      onPick={(until) => {
+                        setSnoozeOpen(false)
+                        snooze.mutate({ id: selectedFull.id, until })
+                        setSelectedId(null)
+                        toast.show({
+                          message: until
+                            ? `Snoozed until ${new Date(until).toLocaleString()}.`
+                            : 'Unsnoozed.',
+                          undo: () =>
+                            api.post(
+                              `/api/v1/inbox/emails/${selectedFull.id}/snooze`,
+                              { until: null },
+                            ),
+                        })
+                      }}
+                      onDismiss={() => setSnoozeOpen(false)}
+                      currentlySnoozed={
+                        selectedFull.folder === 'inbox' &&
+                        Boolean(
+                          (selectedFull as unknown as { snoozeUntil?: string | null })
+                            .snoozeUntil,
+                        )
+                      }
+                    />
+                  )}
+                </div>
+                <LabelAssignPopover
+                  emailId={selectedFull.id}
+                  trigger={
+                    <ToolbarIc label="Add label">
+                      <Tag style={{ width: 14, height: 14 }} />
+                    </ToolbarIc>
+                  }
+                />
+                {selectedFull.folder === 'trash' ? (
+                  <ToolbarIc
+                    label="Delete forever"
+                    onClick={() => handlePermanentDelete(selectedFull.id)}
+                  >
+                    <Trash2
+                      style={{ width: 14, height: 14, color: 'var(--color-wm-error)' }}
+                    />
+                  </ToolbarIc>
+                ) : (
+                  <ToolbarIc
+                    label="Delete"
+                    onClick={() => handleDelete(selectedFull.id)}
+                  >
+                    <Trash2 style={{ width: 14, height: 14 }} />
+                  </ToolbarIc>
+                )}
+                <ToolbarIc label="More">
+                  <MoreHorizontal style={{ width: 14, height: 14 }} />
+                </ToolbarIc>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 border-b border-wm-border px-6 py-3">
-              <Avatar name={extractDisplayName(selectedFull.fromAddress)} size="md" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-wm-text-primary">
-                  {extractDisplayName(selectedFull.fromAddress)}
-                </p>
-                <p className="font-mono text-[10px] text-wm-text-muted">
-                  {selectedFull.fromAddress} · {new Date(selectedFull.createdAt).toLocaleString()}
-                </p>
+            {/* subjRow (Pencil `BTgy9`, gap 6):
+                  "WEDNESDAY · APR 23"   10/700 #6e6e6e tracking 1
+                  "<subject>"             26/700 white lineHeight 1.25
+                senderRow (`Ogz6Z`, gap 12):
+                  44×44 round avatar
+                  sCol: name 13/600 white + "from → to,cc" 11/normal #6e6e6e
+                  sActions (gap 8):
+                    REPLY pill (lime) — reply icon 13 + "REPLY" 11/700 black
+                    36×36 reply-all surface button (radius 18, 1px border)
+                Pencil scroll wrapper (`Vmhgr`): padding [24, 28], gap 20.
+                We render subjRow + senderRow inline at the top of the
+                scrolling container so they don't double up with the
+                toolbar above. */}
+            <div
+              className="flex flex-col"
+              style={{
+                gap: 20,
+                padding: '24px 28px 0 28px',
+              }}
+            >
+              <div className="flex flex-col" style={{ gap: 6 }}>
+                <span
+                  className="font-mono font-bold uppercase"
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: 1,
+                    color: '#6e6e6e',
+                  }}
+                >
+                  {formatSubjectDate(selectedFull.createdAt)}
+                </span>
+                <h2
+                  className="font-mono font-bold text-wm-text-primary"
+                  style={{ fontSize: 26, lineHeight: 1.25 }}
+                >
+                  {selectedFull.subject || '(no subject)'}
+                </h2>
               </div>
-              <div className="flex gap-1.5">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={<Reply className="h-3.5 w-3.5" />}
-                  onClick={handleReply}
-                >
-                  Reply
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={<ReplyAll className="h-3.5 w-3.5" />}
-                  onClick={handleReplyAll}
-                >
-                  Reply All
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={<Forward className="h-3.5 w-3.5" />}
-                  onClick={handleForward}
-                >
-                  Forward
-                </Button>
+              <div className="flex w-full items-center" style={{ gap: 12 }}>
+                <Avatar name={extractDisplayName(selectedFull.fromAddress)} size="lg" />
+                <div className="flex min-w-0 flex-1 flex-col" style={{ gap: 2 }}>
+                  <p
+                    className="truncate font-mono font-semibold text-wm-text-primary"
+                    style={{ fontSize: 13 }}
+                  >
+                    {extractDisplayName(selectedFull.fromAddress)}
+                  </p>
+                  <p
+                    className="truncate font-mono"
+                    style={{ fontSize: 11, color: '#6e6e6e' }}
+                  >
+                    {extractAddress(selectedFull.fromAddress)}
+                    {(selectedFull.toAddresses ?? []).length > 0 && (
+                      <>  →  {(selectedFull.toAddresses ?? []).map(extractAddress).join(', ')}</>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center" style={{ gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={handleReply}
+                    className="inline-flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover"
+                    style={{
+                      gap: 6,
+                      padding: '8px 14px',
+                      borderRadius: 18,
+                      color: '#000000',
+                    }}
+                    aria-label="Reply"
+                  >
+                    <Reply style={{ width: 13, height: 13 }} />
+                    <span
+                      className="font-mono font-bold uppercase"
+                      style={{ fontSize: 11, letterSpacing: 1 }}
+                    >
+                      Reply
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleReplyAll}
+                    className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-primary transition-colors hover:bg-wm-surface-hover"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      border: '1px solid var(--color-wm-border)',
+                    }}
+                    aria-label="Reply all"
+                  >
+                    <ReplyAll style={{ width: 14, height: 14 }} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleForward}
+                    className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-primary transition-colors hover:bg-wm-surface-hover"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      border: '1px solid var(--color-wm-border)',
+                    }}
+                    aria-label="Forward"
+                  >
+                    <Forward style={{ width: 14, height: 14 }} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -991,38 +1181,42 @@ export default function InboxPage() {
               anchorId={selectedFull.id}
               onPick={(id) => setSelectedId(id)}
             />
-            <div className="flex-1 overflow-y-auto px-6 py-6">
+            <div
+              className="flex-1 overflow-y-auto"
+              style={{ padding: '20px 28px 32px 28px' }}
+            >
               {/* V3 AI brief block — Pencil `InboxV3.aiBrief` (`Hyivo`).
                   Currently a deterministic placeholder; once the AI
                   pipeline emits per-thread summaries we'll switch to
-                  reading `selectedFull.aiBrief.points`. */}
+                  reading `selectedFull.aiBrief.summary` + `meta`. */}
               <AIBrief
                 className="mb-5"
-                points={[
-                  `Sender ${extractDisplayName(selectedFull.fromAddress)} sent this ${formatRelativeTime(new Date(selectedFull.createdAt))}.`,
-                  selectedFull.subject
-                    ? `Subject: ${selectedFull.subject}`
-                    : 'No subject — likely a quick follow-up.',
-                  (selectedFull.toAddresses ?? []).length > 1
-                    ? `Sent to ${(selectedFull.toAddresses ?? []).length} recipients — group thread.`
-                    : 'Direct thread to you.',
-                ]}
+                headline="AI BRIEF · 3 ACTION ITEMS"
+                meta="DUE FRI"
+                summary={summarize(selectedFull)}
                 actions={[
+                  {
+                    id: 'draft-reply',
+                    label: 'Draft reply',
+                    icon: <Reply style={{ width: 13, height: 13 }} />,
+                    onClick: handleReply,
+                  },
                   {
                     id: 'extract-tasks',
                     label: 'Extract tasks',
+                    icon: <ListChecks style={{ width: 13, height: 13 }} />,
                     onClick: () => {
                       toast.show({
-                        message: 'Task extraction queued — we’ll surface tasks in Work.',
+                        message:
+                          'Task extraction queued — we’ll surface tasks in Work.',
                       })
                     },
                   },
                   {
                     id: 'schedule-call',
                     label: 'Schedule call',
-                    onClick: () => {
-                      router.push('/calendar')
-                    },
+                    icon: <CalendarPlus style={{ width: 13, height: 13 }} />,
+                    onClick: () => router.push('/calendar'),
                   },
                 ]}
               />
@@ -1567,4 +1761,131 @@ function ThreadStrip({
       </div>
     </div>
   )
+}
+
+/**
+ * Pencil InboxV3 segmented-control pill (`Wi0OX`/`Rc1yj`/`C9UYRb`):
+ *   active   → bg lime, fg black, label 11/700 tracking 1
+ *   idle     → bg #111111, fg white, label 11/600 tracking 1
+ *   padding [8, 14], radius 18, gap 6 (icon + label).
+ */
+function SegPill({
+  active,
+  icon,
+  children,
+  onClick,
+}: {
+  active: boolean
+  icon?: React.ReactNode
+  children: React.ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'inline-flex cursor-pointer items-center font-mono uppercase transition-colors',
+        active
+          ? 'bg-wm-accent hover:bg-wm-accent-hover'
+          : 'bg-wm-surface hover:bg-wm-surface-hover',
+      )}
+      style={{
+        gap: 6,
+        padding: '8px 14px',
+        borderRadius: 18,
+        fontSize: 11,
+        fontWeight: active ? 700 : 600,
+        letterSpacing: 1,
+        color: active ? '#000000' : '#FFFFFF',
+      }}
+    >
+      {icon}
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Pencil InboxV3 reading-pane toolbar icon button (`agWvw` etc):
+ * 32×32 round-square (radius 8), surface fill #111111, 14-px lucide
+ * icon at #999999.
+ */
+function ToolbarIc({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick?: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+      style={{ width: 32, height: 32, borderRadius: 8 }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Pencil reading-pane subject eyebrow ("WEDNESDAY · APR 23" — `XNqrm`).
+ * Uppercase weekday + dot-separator + uppercase MMM dd.
+ */
+function formatSubjectDate(iso: string): string {
+  const d = new Date(iso)
+  const weekday = d.toLocaleDateString(undefined, { weekday: 'long' }).toUpperCase()
+  const md = d
+    .toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    .toUpperCase()
+  return `${weekday} · ${md}`
+}
+
+/**
+ * Until the AI pipeline emits per-thread summaries we render a
+ * deterministic single-paragraph placeholder mirroring the Pencil
+ * mock voice ("Alex shares Q1 priorities… he's asking for your
+ * feedback by Friday."). Real summaries land on
+ * `selectedFull.aiBrief.summary` once the model is wired up.
+ */
+function summarize(email: FullEmail): string {
+  const sender = email.fromAddress.split('<')[0].trim().replace(/"/g, '') ||
+    email.fromAddress.split('@')[0]
+  const subject = email.subject?.trim() || 'a quick note'
+  const recipientCount = (email.toAddresses ?? []).length
+  const audience =
+    recipientCount > 1 ? `the ${recipientCount}-person thread` : 'you'
+  return `${sender} sent ${audience} about “${subject}”. Skim the body, then pick an action below — draft a reply, extract tasks for Work, or pop a meeting on the calendar.`
+}
+
+/**
+ * Pencil row timestamp:
+ *   - same day  → "2:34 PM"
+ *   - 1–6 d ago → "4d"
+ *   - older     → "Mar 12"
+ */
+function formatRowTime(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  if (sameDay) {
+    return d.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  }
+  const ms = now.getTime() - d.getTime()
+  const days = Math.floor(ms / 86_400_000)
+  if (days < 7) return `${days}d`
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }

@@ -143,9 +143,10 @@ export default function SearchPage() {
                   displayName: extract(r.fromAddress),
                   subject: r.subject,
                   snippet: (r.textBody ?? '').slice(0, 160),
-                  createdAt: r.createdAt,
+                  timeLabel: formatRowTime(r.createdAt),
                   isRead: r.isRead,
                   isStarred: r.isStarred,
+                  tag: 'MAIL',
                 }}
               />
             ))}
@@ -154,6 +155,31 @@ export default function SearchPage() {
       </div>
     </div>
   )
+}
+
+/**
+ * Pencil-style row timestamp:
+ *   - same day  → "2:34 PM"
+ *   - 1–6 d ago → "4d"
+ *   - older     → "Mar 12"
+ */
+function formatRowTime(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  if (sameDay) {
+    return d.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  }
+  const ms = now.getTime() - d.getTime()
+  const days = Math.floor(ms / 86_400_000)
+  if (days < 7) return `${days}d`
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 function FilterChip({

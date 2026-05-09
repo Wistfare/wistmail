@@ -2,8 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import {
-  Send, Trash2, X, Minus, Maximize2, Minimize2,
-  Bold, Italic, Underline, Link2, Paperclip, Clock, ChevronDown,
+  Send,
+  Trash2,
+  X,
+  Minus,
+  Maximize2,
+  Minimize2,
+  Bold,
+  Italic,
+  Underline,
+  Link2,
+  Paperclip,
+  Clock,
+  ChevronDown,
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -25,7 +36,11 @@ function getScheduleTime(dayOffset: number | 'monday', hour: number): string {
 
 function formatSchedulePreview(iso: string): string {
   const d = new Date(iso)
-  return d.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
 export type ComposeData = {
@@ -43,7 +58,38 @@ interface FloatingComposeProps {
   onSent?: () => void
 }
 
-export function FloatingCompose({ initialData, onClose, onSent }: FloatingComposeProps) {
+/**
+ * Floating compose popup — Pencil reference: `Screen/FloatingCompose`
+ * (`tYDXb`) and `composePopup` (`7fMbA`).
+ *
+ * Geometry (sharp 0-radius corners, sits flush bottom-right):
+ *   container 560×582, fill #111111, outside 1px #1A1A1A,
+ *     shadow blur 24 #00000066 offset y=-4
+ *   titleBar  bg #1A2200, padding [10,16], gap 8, 1px bottom #1A1A1A
+ *     - "New Message" Inter 13/600 white
+ *     - flex
+ *     - minus 16, maximize-2 14, x 16 — all #404040
+ *   fields (vertical, each row 1px bottom #1A1A1A):
+ *     fromRow:  padding [8,16] gap 8 — "From" 11/normal #404040 mono +
+ *               value 12/normal white mono
+ *     toRow:    padding [8,16] gap 8 — "To" 11/normal #404040 +
+ *               chip(s) (1px #1A1A1A border, padding [2,8], gap 4,
+ *                       text 11 white, x 10 #404040) + flex +
+ *               "Cc  Bcc" 10/normal #404040
+ *     subjectRow: padding [8,16] — "Subject" 11/normal #404040 +
+ *                 Inter 13/500 white
+ *   bodyArea: padding [12,16], Inter 13/normal #999999 lineHeight 1.6
+ *   toolbar:  padding [8,12], gap 4, 1px top #1A1A1A
+ *     bold/italic/underline (16 #404040) | sep | link-2/paperclip
+ *     | flex | trash-2 (16 #404040) | sep |
+ *     sendBtn — lime fill, padding [6,14], gap 6:
+ *       send icon 14 black + "Send" mono 12/600 black
+ */
+export function FloatingCompose({
+  initialData,
+  onClose,
+  onSent,
+}: FloatingComposeProps) {
   const [mode, setMode] = useState<'open' | 'minimized' | 'expanded'>('open')
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
   const [fromMailboxId, setFromMailboxId] = useState('')
@@ -77,8 +123,14 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
   }, [])
 
   async function handleSend() {
-    if (toChips.length === 0) { setError('At least one recipient is required'); return }
-    if (!subject.trim()) { setError('Subject is required'); return }
+    if (toChips.length === 0) {
+      setError('At least one recipient is required')
+      return
+    }
+    if (!subject.trim()) {
+      setError('Subject is required')
+      return
+    }
 
     setSending(true)
     setError('')
@@ -109,95 +161,192 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
     }
   }
 
-  // Minimized: just the title bar strip
+  // Minimized: just the title bar strip — keeps the same #1A2200 bar
+  // shape so it reads as a docked compose, not a tooltip.
   if (mode === 'minimized') {
     return (
-      <div className="fixed bottom-0 right-6 z-50 w-72 border border-wm-border bg-wm-surface shadow-lg">
+      <div
+        className="fixed bottom-0 right-6 z-50 flex w-72 items-center"
+        style={{
+          background: '#111111',
+          border: '1px solid #1A1A1A',
+          boxShadow: '0 -4px 24px 0 rgba(0,0,0,0.4)',
+        }}
+      >
         <button
           onClick={() => setMode('open')}
-          className="flex w-full cursor-pointer items-center gap-2 bg-wm-accent-dim px-4 py-2.5"
+          className="flex w-full cursor-pointer items-center bg-wm-accent-dim text-left transition-colors hover:bg-wm-accent-dim/80"
+          style={{
+            gap: 8,
+            padding: '10px 16px',
+          }}
         >
-          <span className="flex-1 truncate text-left text-xs font-semibold text-wm-text-primary">
+          <span
+            className="flex-1 truncate font-sans font-semibold text-wm-text-primary"
+            style={{ fontSize: 13 }}
+          >
             {subject || 'New Message'}
           </span>
-          <Maximize2 className="h-3.5 w-3.5 text-wm-text-muted" onClick={(e) => { e.stopPropagation(); setMode('expanded') }} />
-          <X className="h-3.5 w-3.5 text-wm-text-muted" onClick={(e) => { e.stopPropagation(); onClose() }} />
+          <Maximize2
+            style={{ width: 14, height: 14, color: '#404040' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              setMode('expanded')
+            }}
+          />
+          <X
+            style={{ width: 16, height: 16, color: '#404040' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onClose()
+            }}
+          />
         </button>
       </div>
     )
   }
 
   const isExpanded = mode === 'expanded'
-  // V3 chrome: rounded corners on the floating panel, expanded variant
-  // covers the screen with a backdrop. Pencil reference: `tYDXb`
-  // FloatingCompose + `D1EUTv` InboxV3-NewMail.
-  const containerClass = isExpanded
-    ? 'fixed inset-4 z-50 flex flex-col rounded-xl border border-wm-border bg-wm-surface shadow-2xl'
-    : 'fixed bottom-0 right-6 z-50 flex w-[480px] flex-col rounded-t-xl border border-wm-border border-b-0 bg-wm-surface shadow-2xl'
-  const bodyHeight = isExpanded ? 'flex-1' : 'h-[280px]'
+  // Container styles. Pencil uses the same chrome when expanded — just
+  // covers more of the viewport — so we keep the borders/shadows
+  // identical and only change the placement.
+  const containerStyle: React.CSSProperties = isExpanded
+    ? {
+        position: 'fixed',
+        inset: 16,
+        zIndex: 50,
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#111111',
+        border: '1px solid #1A1A1A',
+        boxShadow: '0 -4px 24px 0 rgba(0,0,0,0.4)',
+      }
+    : {
+        position: 'fixed',
+        bottom: 0,
+        right: 24,
+        zIndex: 50,
+        display: 'flex',
+        flexDirection: 'column',
+        width: 560,
+        height: 582,
+        background: '#111111',
+        border: '1px solid #1A1A1A',
+        boxShadow: '0 -4px 24px 0 rgba(0,0,0,0.4)',
+      }
 
   return (
     <>
-      {/* Dim overlay for expanded mode */}
-      {isExpanded && <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setMode('open')} />}
+      {/* Dim overlay for expanded mode — Pencil `dimOverlay` (#00000033). */}
+      {isExpanded && (
+        <div
+          className="fixed inset-0 z-40"
+          style={{ background: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setMode('open')}
+        />
+      )}
 
-      <div className={containerClass}>
-        {/* Title bar — V3 lime-dim accent strip with rounded chrome buttons. */}
-        <div className={`flex items-center gap-1 bg-wm-accent-dim px-4 py-2.5 border-b border-wm-border ${isExpanded ? 'rounded-t-xl' : 'rounded-t-xl'}`}>
-          <span className="flex-1 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-accent">
-            {inReplyTo ? 'Reply' : 'New message'}
+      <div style={containerStyle}>
+        {/* titleBar — bg #1A2200, padding [10,16], gap 8, 1px bottom. */}
+        <div
+          className="flex items-center bg-wm-accent-dim"
+          style={{
+            gap: 8,
+            padding: '10px 16px',
+            borderBottom: '1px solid #1A1A1A',
+          }}
+        >
+          <span
+            className="font-sans font-semibold text-wm-text-primary"
+            style={{ fontSize: 13 }}
+          >
+            {inReplyTo ? 'Re: ' + (subject || 'New Message') : 'New Message'}
           </span>
+          <span style={{ flex: 1 }} />
           <button
+            type="button"
             onClick={() => setMode('minimized')}
             aria-label="Minimize"
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+            className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-text-primary"
+            style={{ width: 16, height: 16, color: '#404040' }}
           >
-            <Minus className="h-3.5 w-3.5" />
+            <Minus style={{ width: 16, height: 16 }} />
           </button>
           <button
+            type="button"
             onClick={() => setMode(isExpanded ? 'open' : 'expanded')}
             aria-label={isExpanded ? 'Restore' : 'Expand'}
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+            className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-text-primary"
+            style={{ width: 14, height: 14, color: '#404040' }}
           >
-            {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            {isExpanded ? (
+              <Minimize2 style={{ width: 14, height: 14 }} />
+            ) : (
+              <Maximize2 style={{ width: 14, height: 14 }} />
+            )}
           </button>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close compose"
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-error/15 hover:text-wm-error"
+            className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-error"
+            style={{ width: 16, height: 16, color: '#404040' }}
           >
-            <X className="h-3.5 w-3.5" />
+            <X style={{ width: 16, height: 16 }} />
           </button>
         </div>
 
-        {/* From */}
-        <div className="flex items-center gap-2 border-b border-wm-border px-4 py-2">
-          <span className="w-14 font-mono text-[11px] text-wm-text-muted">From</span>
-          <select
-            value={fromMailboxId}
-            onChange={(e) => {
-              setFromMailboxId(e.target.value)
-              const mb = mailboxes.find((m) => m.id === e.target.value)
-              if (mb) setFromAddress(mb.address)
-            }}
-            className="flex-1 bg-transparent font-mono text-xs text-wm-text-primary outline-none"
+        {/* fields */}
+        {/* From row — Pencil `HtD9n`. */}
+        <div
+          className="flex items-center"
+          style={{
+            gap: 8,
+            padding: '8px 16px',
+            borderBottom: '1px solid #1A1A1A',
+          }}
+        >
+          <span
+            className="font-mono"
+            style={{ fontSize: 11, color: '#404040', minWidth: 56 }}
           >
-            {mailboxes.map((mb) => (
-              <option key={mb.id} value={mb.id}>{mb.address}</option>
-            ))}
-          </select>
+            From
+          </span>
+          {mailboxes.length > 1 ? (
+            <select
+              value={fromMailboxId}
+              onChange={(e) => {
+                setFromMailboxId(e.target.value)
+                const mb = mailboxes.find((m) => m.id === e.target.value)
+                if (mb) setFromAddress(mb.address)
+              }}
+              className="flex-1 bg-transparent font-mono text-wm-text-primary outline-none"
+              style={{ fontSize: 12 }}
+            >
+              {mailboxes.map((mb) => (
+                <option key={mb.id} value={mb.id}>
+                  {mb.address}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span
+              className="flex-1 truncate font-mono text-wm-text-primary"
+              style={{ fontSize: 12 }}
+            >
+              {fromAddress}
+            </span>
+          )}
         </div>
 
-        {/* To — uses RecipientChipsField with /contacts/search
-            autocomplete. Cc/Bcc are revealed via inline buttons that
-            sit in the To row's right side until the user opts in. */}
-        <div className="relative">
+        {/* To row — Pencil `9TINl`. We use RecipientChipsField for
+            the input itself and overlay Cc/Bcc reveal on the right. */}
+        <div className="relative" style={{ borderBottom: '1px solid #1A1A1A' }}>
           <RecipientChipsField
             label="To"
             values={toChips}
             onChange={setToChips}
             placeholder="recipient@example.com"
-            className="border-b border-wm-border"
           />
           {(!showCc || !showBcc) && (
             <div className="pointer-events-none absolute right-4 top-2 flex items-center gap-2">
@@ -205,7 +354,8 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
                 <button
                   type="button"
                   onClick={() => setShowCc(true)}
-                  className="pointer-events-auto cursor-pointer font-mono text-[10px] text-wm-text-muted hover:text-wm-text-secondary"
+                  className="pointer-events-auto cursor-pointer font-mono hover:text-wm-text-secondary"
+                  style={{ fontSize: 10, color: '#404040' }}
                 >
                   Cc
                 </button>
@@ -214,7 +364,8 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
                 <button
                   type="button"
                   onClick={() => setShowBcc(true)}
-                  className="pointer-events-auto cursor-pointer font-mono text-[10px] text-wm-text-muted hover:text-wm-text-secondary"
+                  className="pointer-events-auto cursor-pointer font-mono hover:text-wm-text-secondary"
+                  style={{ fontSize: 10, color: '#404040' }}
                 >
                   Bcc
                 </button>
@@ -229,7 +380,10 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
             values={ccChips}
             onChange={setCcChips}
             placeholder="Add Cc..."
-            className="border-b border-wm-border"
+            className="border-b"
+            // Border colour set via the wrapper class above — the
+            // component itself accepts arbitrary className and merges
+            // it with its own padding/gap.
           />
         )}
 
@@ -239,97 +393,184 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
             values={bccChips}
             onChange={setBccChips}
             placeholder="Add Bcc..."
-            className="border-b border-wm-border"
+            className="border-b"
           />
         )}
 
-        {/* Subject */}
-        <div className="flex items-center gap-2 border-b border-wm-border px-4 py-2">
-          <span className="w-14 font-mono text-[11px] text-wm-text-muted">Subject</span>
+        {/* Subject row — Pencil `GX2Po`. */}
+        <div
+          className="flex items-center"
+          style={{
+            gap: 8,
+            padding: '8px 16px',
+            borderBottom: '1px solid #1A1A1A',
+          }}
+        >
+          <span
+            className="font-mono"
+            style={{ fontSize: 11, color: '#404040', minWidth: 56 }}
+          >
+            Subject
+          </span>
           <input
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Email subject"
-            className="flex-1 bg-transparent text-[13px] font-medium text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+            className="flex-1 bg-transparent font-sans font-medium text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+            style={{ fontSize: 13 }}
           />
         </div>
 
-        {/* Body */}
-        <div className={cn('overflow-y-auto px-4 py-3', bodyHeight)}>
+        {/* Body — Pencil `bppiU`, padding [12,16], Inter 13/normal #999999 lh 1.6. */}
+        <div className="flex-1 overflow-y-auto" style={{ padding: '12px 16px' }}>
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Write your email..."
-            className="h-full w-full resize-none bg-transparent text-[13px] leading-relaxed text-wm-text-secondary placeholder:text-wm-text-muted outline-none"
+            className="h-full w-full resize-none bg-transparent font-sans placeholder:text-wm-text-muted outline-none"
+            style={{
+              fontSize: 13,
+              lineHeight: 1.6,
+              color: '#999999',
+            }}
             autoFocus
           />
         </div>
 
-        {/* Error */}
+        {/* Inline error strip — out of Pencil's spec but unobtrusive. */}
         {error && (
-          <div className="px-4 py-1.5 border-t border-wm-border">
-            <p className="font-mono text-[10px] text-wm-error">{error}</p>
+          <div
+            style={{
+              padding: '6px 16px',
+              borderTop: '1px solid #1A1A1A',
+            }}
+          >
+            <p className="font-mono text-wm-error" style={{ fontSize: 10 }}>
+              {error}
+            </p>
           </div>
         )}
 
-        {/* V3 toolbar — round chrome buttons + lime Send button. */}
-        <div className="flex items-center gap-0.5 border-t border-wm-border px-3 py-2">
-          {[Bold, Italic, Underline].map((Icon, i) => (
+        {/* toolbar — Pencil `PMTuu`, padding [8,12], gap 4, 1px top. */}
+        <div
+          className="flex items-center"
+          style={{
+            gap: 4,
+            padding: '8px 12px',
+            borderTop: '1px solid #1A1A1A',
+          }}
+        >
+          {[
+            { Icon: Bold, label: 'Bold' },
+            { Icon: Italic, label: 'Italic' },
+            { Icon: Underline, label: 'Underline' },
+          ].map(({ Icon, label }) => (
             <button
-              key={i}
+              key={label}
               type="button"
-              aria-label={['Bold', 'Italic', 'Underline'][i]}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+              aria-label={label}
+              className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-text-primary"
+              style={{ width: 24, height: 24, color: '#404040' }}
             >
-              <Icon className="h-3.5 w-3.5" />
+              <Icon style={{ width: 16, height: 16 }} />
             </button>
           ))}
-          <span aria-hidden className="mx-1 h-4 w-px bg-wm-border" />
-          {[Link2, Paperclip].map((Icon, i) => (
+          <span
+            aria-hidden
+            style={{
+              width: 1,
+              height: 16,
+              background: '#1A1A1A',
+              margin: '0 4px',
+            }}
+          />
+          {[
+            { Icon: Link2, label: 'Add link' },
+            { Icon: Paperclip, label: 'Attach file' },
+          ].map(({ Icon, label }) => (
             <button
-              key={i}
+              key={label}
               type="button"
-              aria-label={['Add link', 'Attach file'][i]}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+              aria-label={label}
+              className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-text-primary"
+              style={{ width: 24, height: 24, color: '#404040' }}
             >
-              <Icon className="h-3.5 w-3.5" />
+              <Icon style={{ width: 16, height: 16 }} />
             </button>
           ))}
-          <div className="flex-1" />
+          <span style={{ flex: 1 }} />
           <button
             type="button"
             onClick={onClose}
             aria-label="Discard draft"
-            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-error/15 hover:text-wm-error"
+            className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-error"
+            style={{ width: 24, height: 24, color: '#404040' }}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 style={{ width: 16, height: 16 }} />
           </button>
-          <span aria-hidden className="mx-1 h-4 w-px bg-wm-border" />
+          <span
+            aria-hidden
+            style={{
+              width: 1,
+              height: 16,
+              background: '#1A1A1A',
+              margin: '0 4px',
+            }}
+          />
 
-          {/* Schedule */}
+          {/* Schedule popover */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setShowSchedule(!showSchedule)}
               aria-label="Schedule send"
-              className="flex h-8 cursor-pointer items-center gap-1 rounded-full px-2 text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+              className="flex cursor-pointer items-center transition-colors hover:text-wm-text-primary"
+              style={{ gap: 2, height: 24, padding: '0 4px', color: '#404040' }}
             >
-              <Clock className="h-3.5 w-3.5" />
-              <ChevronDown className="h-3 w-3" />
+              <Clock style={{ width: 14, height: 14 }} />
+              <ChevronDown style={{ width: 12, height: 12 }} />
             </button>
             {showSchedule && (
               <>
-                <div className="fixed inset-0 z-50" onClick={() => setShowSchedule(false)} />
-                <div className="absolute bottom-9 right-0 z-50 w-60 rounded-lg border border-wm-border bg-wm-surface shadow-2xl">
-                  <div className="border-b border-wm-border px-3 py-2">
-                    <span className="font-mono text-[10px] font-bold uppercase tracking-[1.5px] text-wm-text-tertiary">
+                <div
+                  className="fixed inset-0 z-50"
+                  onClick={() => setShowSchedule(false)}
+                />
+                <div
+                  className="absolute z-50"
+                  style={{
+                    bottom: 36,
+                    right: 0,
+                    width: 240,
+                    background: '#111111',
+                    border: '1px solid #1A1A1A',
+                    boxShadow: '0 8px 24px 0 rgba(0,0,0,0.4)',
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      borderBottom: '1px solid #1A1A1A',
+                    }}
+                  >
+                    <span
+                      className="font-mono font-bold uppercase"
+                      style={{
+                        fontSize: 10,
+                        letterSpacing: 1.5,
+                        color: 'var(--color-wm-text-tertiary)',
+                      }}
+                    >
                       Schedule send
                     </span>
                   </div>
                   {[
                     { label: 'Tomorrow morning', time: getScheduleTime(1, 9) },
-                    { label: 'Tomorrow afternoon', time: getScheduleTime(1, 13) },
+                    {
+                      label: 'Tomorrow afternoon',
+                      time: getScheduleTime(1, 13),
+                    },
                     { label: 'Monday morning', time: getScheduleTime('monday', 9) },
                   ].map((opt) => (
                     <button
@@ -339,25 +580,58 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
                         setScheduledAt(opt.time)
                         setShowSchedule(false)
                       }}
-                      className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+                      className="flex w-full cursor-pointer items-center text-left text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+                      style={{
+                        gap: 8,
+                        padding: '8px 12px',
+                        fontSize: 12,
+                      }}
                     >
-                      <Clock className="h-3 w-3 text-wm-text-muted" />
+                      <Clock
+                        style={{
+                          width: 12,
+                          height: 12,
+                          color: 'var(--color-wm-text-muted)',
+                        }}
+                      />
                       {opt.label}
-                      <span className="flex-1" />
-                      <span className="font-mono text-[10px] text-wm-text-muted">
+                      <span style={{ flex: 1 }} />
+                      <span
+                        className="font-mono"
+                        style={{
+                          fontSize: 10,
+                          color: 'var(--color-wm-text-muted)',
+                        }}
+                      >
                         {formatSchedulePreview(opt.time)}
                       </span>
                     </button>
                   ))}
-                  <div className="border-t border-wm-border px-3 py-2">
-                    <label className="font-mono text-[10px] text-wm-text-muted">
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      borderTop: '1px solid #1A1A1A',
+                    }}
+                  >
+                    <label
+                      className="font-mono"
+                      style={{
+                        fontSize: 10,
+                        color: 'var(--color-wm-text-muted)',
+                      }}
+                    >
                       Pick date &amp; time
                     </label>
                     <input
                       type="datetime-local"
                       value={scheduledAt}
                       onChange={(e) => setScheduledAt(e.target.value)}
-                      className="mt-1 w-full rounded-md border border-wm-border bg-wm-bg px-2 py-1.5 font-mono text-xs text-wm-text-primary outline-none"
+                      className="mt-1 w-full bg-wm-bg font-mono text-wm-text-primary outline-none"
+                      style={{
+                        padding: '6px 8px',
+                        border: '1px solid #1A1A1A',
+                        fontSize: 12,
+                      }}
                     />
                   </div>
                 </div>
@@ -365,17 +639,28 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
             )}
           </div>
 
+          {/* sendBtn — Pencil `az3d4`. Sharp 0-radius lime pill. */}
           <button
             type="button"
             onClick={handleSend}
             disabled={sending}
             className={cn(
-              'flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-wm-accent px-3.5 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover',
+              'flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover',
               sending && 'opacity-50',
             )}
+            style={{
+              gap: 6,
+              padding: '6px 14px',
+              color: '#000000',
+            }}
           >
-            <Send className="h-3.5 w-3.5" />
-            {sending ? 'Sending...' : scheduledAt ? 'Schedule' : 'Send'}
+            <Send style={{ width: 14, height: 14 }} />
+            <span
+              className="font-mono font-semibold"
+              style={{ fontSize: 12 }}
+            >
+              {sending ? 'Sending…' : scheduledAt ? 'Schedule' : 'Send'}
+            </span>
           </button>
         </div>
       </div>

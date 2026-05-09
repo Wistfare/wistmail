@@ -123,7 +123,14 @@ export function AppShell({ user, children }: AppShellProps) {
         </>
       )}
 
-      {renderModuleSidebar(mod, user, () => setUserMenuOpen((v) => !v))}
+      {/* Pencil InboxV3 (`TB36x`) is a self-contained 3-column layout —
+          InboxList (420) + Reading (650) + TodayRail (308). It owns its
+          own header / search / actions, so the global MailSidebar is
+          suppressed on `/inbox`. The sidebar still appears on the
+          legacy folder pages (sent / drafts / trash etc.) where the V3
+          design hasn't replaced the folder list yet. */}
+      {pathname !== '/inbox' &&
+        renderModuleSidebar(mod, user, () => setUserMenuOpen((v) => !v))}
 
       <main className="flex-1 overflow-y-auto">{children}</main>
 

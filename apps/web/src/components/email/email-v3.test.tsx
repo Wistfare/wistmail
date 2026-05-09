@@ -15,7 +15,7 @@ const sample = {
   displayName: 'Sarah Kim',
   subject: 'Q1 Product Roadmap Review',
   snippet: 'Heads up — we should sync on the API surface before review.',
-  createdAt: new Date(Date.now() - 60_000).toISOString(),
+  timeLabel: '2:34 PM',
   isRead: false,
   isStarred: false,
 }
@@ -26,9 +26,11 @@ describe('EmailRowV3', () => {
     expect(screen.getByText('Sarah Kim')).toBeInTheDocument()
     expect(screen.getByText('Q1 Product Roadmap Review')).toBeInTheDocument()
     expect(screen.getByText(/Heads up/)).toBeInTheDocument()
+    // Pencil row1 carries a "MAIL" tag chip on every mail row.
+    expect(screen.getByText('MAIL')).toBeInTheDocument()
   })
 
-  it('marks active row with aria-selected styling', () => {
+  it('marks active row with data-active', () => {
     const { container } = render(<EmailRowV3 email={sample} selected />)
     expect(container.querySelector('[data-active="true"]')).not.toBeNull()
   })
@@ -40,9 +42,14 @@ describe('EmailRowV3', () => {
     expect(onToggleStar).toHaveBeenCalledOnce()
   })
 
-  it('falls back to "(no subject)"', () => {
-    render(<EmailRowV3 email={{ ...sample, subject: '' }} />)
-    expect(screen.getByText('(no subject)')).toBeInTheDocument()
+  it('omits the subject line for chat rows', () => {
+    render(
+      <EmailRowV3
+        email={{ ...sample, tag: 'CHAT', subject: 'should not show' }}
+      />,
+    )
+    expect(screen.queryByText('should not show')).toBeNull()
+    expect(screen.getByText('CHAT')).toBeInTheDocument()
   })
 
   it('renders trailing slot content', () => {
