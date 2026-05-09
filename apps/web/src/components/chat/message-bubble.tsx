@@ -1,7 +1,6 @@
 'use client'
 
-import { Avatar } from '@/components/ui'
-import { cn } from '@/lib/utils'
+import { cn, getInitials, stringToColor } from '@/lib/utils'
 
 export interface MessageReaction {
   emoji: string
@@ -32,15 +31,19 @@ export interface MessageBubbleProps {
 }
 
 /**
- * V3 chat message bubble.
+ * V3 chat message bubble — Pencil reference: `ChatViewV3.messages`
+ * (`FUGkj`) rows m1/m2/m3/m4.
  *
- * Pencil reference: `ChatViewV3` message rows (`X1Safv`).
- * - From-me bubble: lime fill + black text, right-aligned, `cornerRadius`
- *   16 with the bottom-right corner squared off.
- * - From-others: surface fill + 1px border, white text, left-aligned with
- *   sender avatar.
- * - Reactions chip strip below: emoji + count, lime border + accent-dim
- *   bg when the current user reacted.
+ *   incoming (m1, m3): row gap 10
+ *     32×32 round sender avatar (deterministic colour, initials 11/700)
+ *     bubble: bg #111111, radius [14,14,14,4] (bottom-LEFT squared),
+ *             padding [10, 14], font-sans 13/normal lineHeight 1.5
+ *   outgoing (m2, m4): row gap 10, justify end
+ *     bubble: bg lime, black text, radius [14,14,4,14] (bottom-RIGHT
+ *             squared), padding [10, 14]
+ *   reactions strip: chip with bg #111111, 1px #1A1A1A border, radius 12,
+ *     padding [3, 8], emoji + count.  Mine = lime border + accent-dim bg.
+ *   meta row (`Jic2T`/`XQSuw`): time 11 #6e6e6e (+ "edited" muted).
  */
 export function MessageBubble({
   senderName,
@@ -58,31 +61,62 @@ export function MessageBubble({
     hour: 'numeric',
     minute: '2-digit',
   })
+  const initials = getInitials(senderName)
+  const bg = stringToColor(senderName)
 
   return (
     <div
-      className={cn(
-        'flex gap-2.5',
-        fromMe ? 'flex-row-reverse' : 'flex-row',
-        className,
-      )}
+      className={cn('flex w-full', className)}
+      style={{
+        gap: 10,
+        flexDirection: fromMe ? 'row-reverse' : 'row',
+        justifyContent: fromMe ? 'flex-end' : 'flex-start',
+      }}
     >
-      {/* Avatar slot — kept (with opacity 0) when grouped so siblings line
-          up on the same horizontal axis. */}
-      <div className="w-8 shrink-0">
-        {showHeader && !fromMe && (
-          <Avatar name={senderName} src={senderAvatarUrl ?? undefined} size="sm" />
-        )}
-      </div>
+      {/* Avatar slot — Pencil 32×32 (m1Av), kept invisible when grouped
+          to preserve column alignment. Right-side bubbles have no
+          avatar in Pencil — we render an empty 0-width spacer instead. */}
+      {!fromMe && (
+        <div className="shrink-0" style={{ width: 32, height: 32 }}>
+          {showHeader &&
+            (senderAvatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={senderAvatarUrl}
+                alt=""
+                className="rounded-full object-cover"
+                style={{ width: 32, height: 32 }}
+              />
+            ) : (
+              <span
+                aria-hidden
+                className="flex items-center justify-center rounded-full font-mono font-bold text-white"
+                style={{
+                  width: 32,
+                  height: 32,
+                  fontSize: 11,
+                  backgroundColor: bg,
+                }}
+              >
+                {initials || '?'}
+              </span>
+            ))}
+        </div>
+      )}
 
       <div
-        className={cn(
-          'flex max-w-[640px] flex-col gap-1',
-          fromMe ? 'items-end' : 'items-start',
-        )}
+        className="flex max-w-[640px] flex-col"
+        style={{ gap: 4, alignItems: fromMe ? 'flex-end' : 'flex-start' }}
       >
         {showHeader && !fromMe && (
-          <span className="px-2 font-mono text-[10px] font-semibold text-wm-text-tertiary">
+          <span
+            className="font-mono font-semibold"
+            style={{
+              fontSize: 10,
+              padding: '0 4px',
+              color: '#6e6e6e',
+            }}
+          >
             {senderName}
           </span>
         )}
@@ -90,51 +124,79 @@ export function MessageBubble({
           type="button"
           onClick={onClick}
           className={cn(
-            'group/bubble cursor-pointer rounded-2xl px-3.5 py-2 text-left font-sans text-[13px] leading-[1.5]',
-            fromMe
-              ? 'rounded-br-md bg-wm-accent text-wm-text-on-accent'
-              : 'rounded-bl-md border border-wm-border bg-wm-surface text-wm-text-primary',
+            'cursor-pointer text-left font-sans transition-colors',
           )}
+          style={{
+            padding: '10px 14px',
+            fontSize: 13,
+            lineHeight: 1.5,
+            background: fromMe ? 'var(--color-wm-accent)' : '#111111',
+            color: fromMe ? '#000000' : '#FFFFFF',
+            // Pencil bubble corner shapes:
+            //   incoming → [14,14,14,4]   bottom-LEFT squared
+            //   outgoing → [14,14,4,14]   bottom-RIGHT squared
+            borderRadius: fromMe
+              ? '14px 14px 4px 14px'
+              : '14px 14px 14px 4px',
+          }}
         >
           {content}
           {edited && (
             <span
-              className={cn(
-                'ml-2 align-middle font-mono text-[9px]',
-                fromMe ? 'text-wm-text-on-accent/60' : 'text-wm-text-tertiary',
-              )}
+              className="ml-2 align-middle font-mono"
+              style={{
+                fontSize: 9,
+                color: fromMe ? 'rgba(0,0,0,0.6)' : '#6e6e6e',
+              }}
             >
               edited
             </span>
           )}
         </button>
-        <span className="px-2 font-mono text-[10px] text-wm-text-tertiary">
-          {time}
-        </span>
 
         {reactions && reactions.length > 0 && (
           <div
-            className={cn(
-              'flex flex-wrap gap-1',
-              fromMe ? 'justify-end' : 'justify-start',
-            )}
+            className="flex flex-wrap"
+            style={{
+              gap: 4,
+              justifyContent: fromMe ? 'flex-end' : 'flex-start',
+            }}
           >
             {reactions.map((r) => (
               <span
                 key={r.emoji}
                 className={cn(
-                  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px]',
-                  r.reactedByMe
-                    ? 'border-wm-accent bg-wm-accent-dim text-wm-accent'
-                    : 'border-wm-border bg-wm-surface text-wm-text-secondary',
+                  'inline-flex items-center font-mono',
+                  r.reactedByMe ? 'text-wm-accent' : 'text-wm-text-secondary',
                 )}
+                style={{
+                  gap: 4,
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  borderRadius: 12,
+                  background: r.reactedByMe ? 'var(--color-wm-accent-dim)' : '#111111',
+                  border: r.reactedByMe
+                    ? '1px solid var(--color-wm-accent)'
+                    : '1px solid #1A1A1A',
+                }}
               >
                 <span>{r.emoji}</span>
-                <span className="font-bold">{r.count}</span>
+                <span style={{ fontWeight: 700 }}>{r.count}</span>
               </span>
             ))}
           </div>
         )}
+
+        <span
+          className="font-mono"
+          style={{
+            fontSize: 11,
+            padding: '0 4px',
+            color: '#6e6e6e',
+          }}
+        >
+          {time}
+        </span>
       </div>
     </div>
   )

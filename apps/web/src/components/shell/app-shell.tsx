@@ -123,13 +123,13 @@ export function AppShell({ user, children }: AppShellProps) {
         </>
       )}
 
-      {/* Pencil InboxV3 (`TB36x`) is a self-contained 3-column layout —
-          InboxList (420) + Reading (650) + TodayRail (308). It owns its
-          own header / search / actions, so the global MailSidebar is
-          suppressed on `/inbox`. The sidebar still appears on the
-          legacy folder pages (sent / drafts / trash etc.) where the V3
-          design hasn't replaced the folder list yet. */}
+      {/* Pencil InboxV3 (`TB36x`) and ChatViewV3 (`X1Safv`) are
+          self-contained 3- to 4-column layouts that own their own
+          left-side list, so the global module sidebar is suppressed
+          on those routes. Other Mail/Chat sub-routes (sent, drafts,
+          /chat/new, etc.) keep the sidebar for now. */}
       {pathname !== '/inbox' &&
+        !pathname.startsWith('/chat') &&
         renderModuleSidebar(mod, user, () => setUserMenuOpen((v) => !v))}
 
       <main className="flex-1 overflow-y-auto">{children}</main>
