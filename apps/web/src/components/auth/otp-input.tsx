@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 export interface OtpInputProps {
@@ -13,22 +13,25 @@ export interface OtpInputProps {
   autoFocus?: boolean
   disabled?: boolean
   inputMode?: 'numeric' | 'text'
-  /** Show the input boxes with a lime active border (vs neutral). */
+  /** Override the default neutral border treatment. */
   status?: 'default' | 'error' | 'success'
 }
 
 /**
- * 6-digit OTP input row.
+ * 6-cell OTP input.
  *
- * Pencil reference: `MFAChallengeV3.codeRow` — six 56×56 cells, gap 8,
- * cornerRadius 12, bg #111, 1px #1A1A1A border, JetBrains Mono 24px 700
- * centered. Active cell (focused / next-to-fill) gets a lime border.
+ * Pencil reference: `MFAChallengeV3.codeRow` (`QdqfU`).
+ *   - Each cell: 64×64, cornerRadius 10, fill #111
+ *   - Filled digit cell: 1px lime stroke, content JetBrains Mono 24/700 white
+ *   - Cursor cell (currently focused, empty): 2px lime stroke, content
+ *     "|" 26/500 lime
+ *   - Empty placeholder cell: 1px #1A1A1A stroke, content "·" 24/500 #404040
+ *   - Row layout: gap 8, justifyContent center, fill_container width
  *
- * Behaviour:
- * - Each cell is its own `<input>` so screen readers and password managers
- *   work; we coordinate them via refs and forward arrow / backspace nav.
- * - Pasting a full code into any cell distributes the digits and focuses
- *   the last cell.
+ * Each cell is its own `<input>` so password managers + screen readers
+ * work; we coordinate via refs and forward arrow / backspace nav. Pasting
+ * a full code into any cell distributes the digits and focuses the last
+ * cell.
  */
 export function OtpInput({
   length = 6,
@@ -42,6 +45,7 @@ export function OtpInput({
 }: OtpInputProps) {
   const id = useId()
   const cellsRef = useRef<HTMLInputElement[]>([])
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
   const digits = (value ?? '').padEnd(length, ' ').slice(0, length).split('')
 
   useEffect(() => {
@@ -72,7 +76,6 @@ export function OtpInput({
       e.preventDefault()
       focusCell(idx + 1)
     } else if (e.key === 'Backspace') {
-      // Clear current; if already empty, move back.
       const cur = digits[idx].trim()
       if (!cur) {
         e.preventDefault()
@@ -82,7 +85,6 @@ export function OtpInput({
         setAt(idx, '')
       }
     } else if (e.key === 'Enter') {
-      // Trigger onComplete on Enter even if not all cells are filled.
       const trimmed = (value ?? '').trim()
       if (trimmed.length === length) onComplete?.(trimmed)
     }
@@ -106,12 +108,11 @@ export function OtpInput({
 
   function handleInput(e: React.FormEvent<HTMLInputElement>, idx: number) {
     const raw = (e.target as HTMLInputElement).value
-    let cleaned = inputMode === 'numeric' ? raw.replace(/\D/g, '') : raw
+    const cleaned = inputMode === 'numeric' ? raw.replace(/\D/g, '') : raw
     if (!cleaned) {
       setAt(idx, '')
       return
     }
-    // Multi-char insert (autofill via password manager) → distribute.
     if (cleaned.length > 1) {
       const next = (value ?? '').slice(0, idx) + cleaned.slice(0, length - idx)
       const truncated = next.slice(0, length)
@@ -128,43 +129,78 @@ export function OtpInput({
     focusCell(idx + 1)
   }
 
-  const borderForCell = (idx: number, hasValue: boolean) => {
-    if (status === 'error') return 'border-wm-error'
-    if (status === 'success') return 'border-wm-accent'
-    if (hasValue) return 'border-wm-accent'
-    // First empty cell highlighted as the next-to-type.
-    const firstEmpty = digits.findIndex((d) => !d.trim())
-    if (idx === firstEmpty) return 'border-wm-accent'
-    return 'border-wm-border'
+  /// Compute Pencil's tri-state per-cell border:
+  ///   filled  → 1px lime
+  ///   focused → 2px lime  (the "cursor" cell)
+  ///   empty   → 1px #1A1A1A neutral
+  function cellStyle(idx: number, ch: string): React.CSSProperties {
+    const isFilled = !!ch
+    const isFocused = focusedIdx === idx
+    if (status === 'error') {
+      return { border: '1px solid var(--color-wm-error)' }
+    }
+    if (isFocused && !isFilled) {
+      return { border: '2px solid var(--color-wm-accent)' }
+    }
+    if (isFilled) {
+      return { border: '1px solid var(--color-wm-accent)' }
+    }
+    return { border: '1px solid var(--color-wm-border)' }
   }
 
   return (
-    <div className="flex w-full justify-center gap-2">
+    <div
+      className="flex w-full justify-center"
+      // Pencil codeRow gap 8.
+      style={{ gap: 8 }}
+    >
       {Array.from({ length }).map((_, idx) => {
         const ch = digits[idx].trim()
+        const isFocused = focusedIdx === idx
+        const isEmptyAndUnfocused = !ch && !isFocused
         return (
-          <input
+          <div
             key={idx}
-            ref={(el) => {
-              if (el) cellsRef.current[idx] = el
-            }}
-            id={`${id}-${idx}`}
-            inputMode={inputMode}
-            autoComplete={idx === 0 ? 'one-time-code' : 'off'}
-            disabled={disabled}
-            value={ch}
-            onChange={(e) => handleInput(e, idx)}
-            onKeyDown={(e) => handleKeyDown(e, idx)}
-            onPaste={(e) => handlePaste(e, idx)}
-            onFocus={(e) => e.currentTarget.select()}
-            maxLength={1}
-            aria-label={`Digit ${idx + 1} of ${length}`}
-            className={cn(
-              'h-14 w-14 rounded-[12px] border bg-wm-surface text-center font-mono text-[24px] font-bold text-wm-text-primary outline-none transition-colors',
-              'focus:border-wm-accent focus:ring-1 focus:ring-wm-accent/40 disabled:opacity-50',
-              borderForCell(idx, !!ch),
+            className="relative"
+            style={{ width: 64, height: 64 }}
+          >
+            {/* Empty placeholder dot — Pencil shows "·" in #404040 in
+                cells that are neither filled nor the focus cursor. */}
+            {isEmptyAndUnfocused && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono"
+                style={{ fontSize: 24, fontWeight: 500, color: '#404040' }}
+              >
+                ·
+              </span>
             )}
-          />
+            <input
+              ref={(el) => {
+                if (el) cellsRef.current[idx] = el
+              }}
+              id={`${id}-${idx}`}
+              inputMode={inputMode}
+              autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+              disabled={disabled}
+              value={ch}
+              onChange={(e) => handleInput(e, idx)}
+              onKeyDown={(e) => handleKeyDown(e, idx)}
+              onPaste={(e) => handlePaste(e, idx)}
+              onFocus={(e) => {
+                setFocusedIdx(idx)
+                e.currentTarget.select()
+              }}
+              onBlur={() => setFocusedIdx((cur) => (cur === idx ? null : cur))}
+              maxLength={1}
+              aria-label={`Digit ${idx + 1} of ${length}`}
+              className={cn(
+                'h-full w-full bg-wm-surface text-center font-mono text-[24px] font-bold text-wm-text-primary outline-none transition-colors',
+                'disabled:opacity-50',
+              )}
+              style={{ borderRadius: 10, ...cellStyle(idx, ch) }}
+            />
+          </div>
         )
       })}
     </div>

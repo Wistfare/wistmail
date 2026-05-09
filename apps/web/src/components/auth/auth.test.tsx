@@ -161,10 +161,10 @@ describe('OtpInput', () => {
 
 describe('WizardLayout', () => {
   const STEPS: WizardStep[] = [
-    { id: 'a', label: 'Domain', desc: 'Verify', icon: Globe },
-    { id: 'b', label: 'DNS', desc: 'Configure', icon: Globe },
-    { id: 'c', label: 'Account', desc: 'Create', icon: Globe },
-    { id: 'd', label: 'Finish', desc: 'Setup complete', icon: Globe },
+    { id: 'a', label: 'Domain', caption: 'Verify your domain', icon: Globe },
+    { id: 'b', label: 'DNS', caption: 'Configure DNS records', icon: Globe },
+    { id: 'c', label: 'Account', caption: 'Create admin account', icon: Globe },
+    { id: 'd', label: 'Finish', caption: 'Setup complete', icon: Globe },
   ]
 
   it('shows step counter and renders children', () => {
@@ -173,7 +173,10 @@ describe('WizardLayout', () => {
         <p>step body</p>
       </WizardLayout>,
     )
-    expect(screen.getByText('Setup Wizard · Step 2 of 4')).toBeInTheDocument()
+    // V3 sideBar wording: "Setup wizard · step 2 of 4" — case-insensitive.
+    expect(
+      screen.getByText(/setup wizard · step 2 of 4/i),
+    ).toBeInTheDocument()
     expect(screen.getByText('step body')).toBeInTheDocument()
   })
 
