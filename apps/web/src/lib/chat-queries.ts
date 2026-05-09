@@ -46,6 +46,12 @@ export interface ChatMessage {
   editedAt?: string | null
   deletedAt?: string | null
   attachments?: ChatAttachment[]
+  /// Client-side delivery status — populated for the user's own
+  /// outgoing messages so the bubble can render the sending /
+  /// sent / failed indicator.  The server never sends this field;
+  /// it's derived locally during optimistic send and replaced by
+  /// the server payload (which is treated as `sent` by default).
+  _status?: 'sending' | 'sent' | 'failed'
 }
 
 export interface ChatAttachment {
@@ -193,25 +199,109 @@ export function useDeleteMessage(conversationId: string) {
 export function useSendMessage(conversationId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: string | { content: string; attachmentIds?: string[] }) => {
-      const body =
-        typeof input === 'string'
-          ? { content: input }
-          : { content: input.content, attachmentIds: input.attachmentIds }
+    mutationFn: async (input: {
+      content: string
+      attachmentIds?: string[]
+      senderId: string
+      tempId: string
+    }) => {
       const res = await api.post<{ id: string; createdAt: string }>(
         `/api/v1/chat/conversations/${conversationId}/messages`,
-        body,
+        { content: input.content, attachmentIds: input.attachmentIds },
       )
-      return res
+      return { ...res, tempId: input.tempId }
     },
-    onSuccess: () => {
-      // The realtime bridge will fold incoming messages into the
-      // cache for *other* participants, but the sender doesn't get
-      // a `chat.message.new` event back (by design — we don't want
-      // every client deduping). So invalidate locally so the row
-      // we just sent appears.
-      qc.invalidateQueries({ queryKey: chatKeys.messages(conversationId) })
-      qc.invalidateQueries({ queryKey: chatKeys.conversations() })
+    /// Optimistic insert so the bubble renders the moment the user
+    /// hits Send.  We push a temporary message into the messages
+    /// cache (status='sending') AND bump the conversation list's
+    /// last-message + ordering so the inbox row reorders too.  When
+    /// the server replies we swap the temp id for the real one and
+    /// flip status to 'sent'; on error we mark it 'failed' so the
+    /// caller can offer retry.
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: chatKeys.messages(conversationId) })
+      const prevMessages = qc.getQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+      )
+      const prevConversations = qc.getQueryData<ConversationSummary[]>(
+        chatKeys.conversations(),
+      )
+      const now = new Date().toISOString()
+      const optimistic: ChatMessage = {
+        id: input.tempId,
+        conversationId,
+        senderId: input.senderId,
+        content: input.content,
+        createdAt: now,
+        _status: 'sending',
+      }
+      qc.setQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+        (old) => (old ? [...old, optimistic] : [optimistic]),
+      )
+      qc.setQueryData<ConversationSummary[]>(
+        chatKeys.conversations(),
+        (old) => {
+          if (!old) return old
+          const next = old.map((c) =>
+            c.id === conversationId
+              ? {
+                  ...c,
+                  lastMessageAt: now,
+                  lastMessage: {
+                    id: input.tempId,
+                    content: input.content,
+                    senderId: input.senderId,
+                    createdAt: now,
+                  },
+                }
+              : c,
+          )
+          next.sort(
+            (a, b) =>
+              new Date(b.lastMessageAt).getTime() -
+              new Date(a.lastMessageAt).getTime(),
+          )
+          return next
+        },
+      )
+      return { prevMessages, prevConversations }
+    },
+    onSuccess: (res) => {
+      // Replace the optimistic temp message with the server payload
+      // and mark it sent.  Avoids a full refetch — the server only
+      // returns id+createdAt so we patch in place.
+      qc.setQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+        (old) => {
+          if (!old) return old
+          return old.map((m) =>
+            m.id === res.tempId
+              ? { ...m, id: res.id, createdAt: res.createdAt, _status: 'sent' }
+              : m,
+          )
+        },
+      )
+      // Server has the canonical lastMessageAt now; invalidate so
+      // any presence-ordered fields the cache might be missing
+      // refresh in the background.
+      qc.invalidateQueries({
+        queryKey: chatKeys.conversations(),
+        refetchType: 'none',
+      })
+    },
+    onError: (_err, input) => {
+      // Keep the bubble visible but mark it failed so the user can
+      // retry from the composer affordance.
+      qc.setQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+        (old) => {
+          if (!old) return old
+          return old.map((m) =>
+            m.id === input.tempId ? { ...m, _status: 'failed' } : m,
+          )
+        },
+      )
     },
   })
 }
@@ -423,11 +513,33 @@ export function applyChatMessageNew(
         createdAt: evt.createdAt,
       }
       if (!old) return [incoming]
-      // Dedupe: a sender's own POST already invalidates and refetches,
-      // and that refetch may race with an event arriving from the bus
-      // (an unlikely-but-possible self-route case). Either way, never
-      // duplicate.
+      // Dedupe by both real id and optimistic temp ids: when the
+      // sender's own POST resolves, onSuccess swaps the temp id for
+      // the real one — but if a `chat.message.new` event for that
+      // same message arrives over the bus first (multi-device echo)
+      // we'd otherwise insert a duplicate.  Match on content +
+      // senderId + a 5s window to fold the echo into the existing
+      // optimistic row.
       if (old.some((m) => m.id === evt.messageId)) return old
+      const idx = old.findIndex(
+        (m) =>
+          m.id.startsWith('temp-') &&
+          m.senderId === evt.senderId &&
+          m.content === evt.content &&
+          Math.abs(
+            new Date(m.createdAt).getTime() - new Date(evt.createdAt).getTime(),
+          ) < 5_000,
+      )
+      if (idx !== -1) {
+        const next = [...old]
+        next[idx] = {
+          ...next[idx],
+          id: evt.messageId,
+          createdAt: evt.createdAt,
+          _status: 'sent',
+        }
+        return next
+      }
       return [...old, incoming]
     },
   )

@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  AlertCircle,
   Check,
+  CheckCheck,
   Download,
   File as FileIcon,
   Loader2,
@@ -15,6 +17,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  RefreshCw,
   Search,
   Send,
   Smile,
@@ -24,11 +27,13 @@ import {
   Video,
   X,
 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { MessageStackSkeleton } from './chat-skeletons'
 import {
   chatAttachmentUrl,
+  chatKeys,
   useAddParticipants,
   useContactSearch,
   useConversationReads,
@@ -76,6 +81,7 @@ export interface ChatThreadViewProps {
 
 export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) {
   const router = useRouter()
+  const qc = useQueryClient()
   const sessionUser = useSessionUser()
   const conversationsQ = useConversations()
   const messagesQ = useMessages(conversationId)
@@ -130,14 +136,43 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
     const content = draft.trim()
     if ((!content && pending.length === 0) || send.isPending) return
     const attachmentIds = pending.map((a) => a.id)
+    // Clear the composer immediately — the optimistic message lands
+    // in the thread before the server roundtrip resolves, so leaving
+    // the draft in place would feel stale.
     setDraft('')
     setPending([])
     try {
-      await send.mutateAsync({ content, attachmentIds })
+      await send.mutateAsync({
+        content,
+        attachmentIds,
+        senderId: sessionUser.id,
+        tempId: `temp-${crypto.randomUUID()}`,
+      })
     } catch {
-      // Restore so the user can retry without re-typing or re-uploading.
-      setDraft(content)
-      setPending(pending)
+      // The optimistic bubble stays in the thread (marked failed via
+      // onError); we don't restore the composer because the user can
+      // retry the failed bubble from its hover menu.
+    }
+  }
+
+  /// Re-send a message that was marked failed.  Drops the failed temp
+  /// row and queues a brand-new optimistic send with the same body —
+  /// keeps the UX simple (no in-place "retrying" state).
+  async function handleRetry(message: ChatMessage) {
+    if (message._status !== 'failed') return
+    // Remove the failed row before queueing a fresh send so the user
+    // doesn't see two bubbles for the same content.
+    qc.setQueryData<ChatMessage[]>(chatKeys.messages(conversationId), (old) =>
+      old ? old.filter((m) => m.id !== message.id) : old,
+    )
+    try {
+      await send.mutateAsync({
+        content: message.content,
+        senderId: sessionUser.id,
+        tempId: `temp-${crypto.randomUUID()}`,
+      })
+    } catch {
+      /* onError handles UI state */
     }
   }
 
@@ -350,6 +385,7 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
                     showAvatar={showAvatar}
                     showReadAvatars={idx === lastMineIdx}
                     readBy={readsByMessage.get(m.id) ?? []}
+                    isLastMine={idx === lastMineIdx}
                     onEdit={async (content) => {
                       await editMessage.mutateAsync({
                         messageId: m.id,
@@ -363,6 +399,7 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
                         await deleteMessage.mutateAsync(m.id)
                       }
                     }}
+                    onRetry={() => void handleRetry(m)}
                   />
                 )
               })
@@ -558,8 +595,10 @@ function MessageBubble({
   showAvatar,
   showReadAvatars,
   readBy,
+  isLastMine,
   onEdit,
   onDelete,
+  onRetry,
 }: {
   message: ChatMessage
   isMine: boolean
@@ -574,8 +613,10 @@ function MessageBubble({
   showAvatar: boolean
   showReadAvatars: boolean
   readBy: ReadByEntry[]
+  isLastMine: boolean
   onEdit: (content: string) => Promise<void>
   onDelete: () => Promise<void>
+  onRetry: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -755,6 +796,14 @@ function MessageBubble({
         >
           <span>{time}</span>
           {isEdited && <span>· edited</span>}
+          {isMine && !isDeleted && (
+            <DeliveryStatus
+              status={message._status}
+              readByCount={readBy.length}
+              isLastMine={isLastMine}
+              onRetry={onRetry}
+            />
+          )}
         </div>
         {isMine && showReadAvatars && readBy.length > 0 && (
           <ReadByRow readers={readBy} />
@@ -817,6 +866,76 @@ function BubbleMenu({
         </>
       )}
     </div>
+  )
+}
+
+/// Delivery indicator on the user's own bubbles — Pencil V3 shows
+/// a status glyph hugging the timestamp:
+///
+///   sending  → spinner (clock-style)
+///   failed   → red alert + retry button
+///   sent     → single check (no readers)
+///   read     → double-check + numeric reader count (matches the
+///              "1" badge Pencil ships under outgoing bubbles in
+///              `ChatViewV3.messages`)
+///
+/// We only surface "read" on the LAST self-sent message so the
+/// stack doesn't litter every bubble with status chips.
+function DeliveryStatus({
+  status,
+  readByCount,
+  isLastMine,
+  onRetry,
+}: {
+  status: ChatMessage['_status']
+  readByCount: number
+  isLastMine: boolean
+  onRetry: () => void
+}) {
+  if (status === 'sending') {
+    return (
+      <Loader2
+        className="animate-spin"
+        style={{ width: 9, height: 9, color: '#6e6e6e' }}
+        aria-label="Sending"
+      />
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRetry()
+        }}
+        className="inline-flex cursor-pointer items-center text-wm-error hover:opacity-80"
+        style={{ gap: 3 }}
+        aria-label="Failed to send — retry"
+        title="Failed to send — retry"
+      >
+        <AlertCircle style={{ width: 9, height: 9 }} />
+        <RefreshCw style={{ width: 9, height: 9 }} />
+      </button>
+    )
+  }
+  // sent (or undefined — server payload defaults to delivered)
+  if (isLastMine && readByCount > 0) {
+    return (
+      <span className="inline-flex items-center" style={{ gap: 2 }}>
+        <CheckCheck
+          style={{ width: 10, height: 10, color: 'var(--color-wm-accent)' }}
+          aria-label="Seen"
+        />
+        <span style={{ color: 'var(--color-wm-accent)' }}>{readByCount}</span>
+      </span>
+    )
+  }
+  return (
+    <Check
+      style={{ width: 10, height: 10, color: '#6e6e6e' }}
+      aria-label="Sent"
+    />
   )
 }
 
