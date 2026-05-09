@@ -9,7 +9,6 @@ import {
 } from 'lucide-react'
 import { IconRail, type IconRailItem } from './icon-rail'
 import { MailSidebar } from './mail-sidebar'
-import { ChatSidebar } from './chat-sidebar'
 import { CalendarSidebar } from './calendar-sidebar'
 import { WorkSidebar } from './work-sidebar'
 import { DocsSidebar } from './docs-sidebar'
@@ -167,7 +166,12 @@ function renderModuleSidebar(
 ) {
   switch (mod) {
     case 'chat':
-      return <ChatSidebar user={user} onUserMenu={onUserMenu} />
+      // Decommissioned: /chat redirects to /inbox?kind=chats. The
+      // unified inbox owns the chat list now; nothing to render
+      // here.  Kept in the switch for the (vanishing) edge case
+      // where pathname is /chat for a single render before the
+      // redirect lands.
+      return null
     case 'calendar':
       return <CalendarSidebar user={user} onUserMenu={onUserMenu} />
     case 'work':

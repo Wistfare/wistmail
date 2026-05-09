@@ -25,6 +25,7 @@ import {
   updateIndexedEmail,
   deleteIndexedEmail,
 } from '../services/search.js'
+import { FeedService } from '../services/feed.js'
 
 const MAIL_ENGINE_URL = process.env.MAIL_ENGINE_URL || 'http://mail-engine:8025'
 const INBOUND_SECRET = process.env.INBOUND_SECRET || ''
@@ -34,7 +35,61 @@ export const inboxRoutes = new Hono<SessionEnv>()
 inboxRoutes.use('*', sessionAuth)
 
 /**
+ * GET /api/v1/inbox/list
+ *
+ * Unified inbox feed — emails + chats merged into a single
+ * cursor-paginated, chronologically ordered stream.
+ *
+ * Query params:
+ *   folder=inbox|sent|drafts|trash|spam|archive|starred|snoozed|scheduled|all
+ *     Mail folder filter. Default `inbox`. Chats only surface when
+ *     folder=inbox; every other folder is mail-only by definition.
+ *   kind=all|mail|chats
+ *     Item-kind filter. Default `all`. Honoured only when folder=inbox
+ *     (other folders ignore it; chats don't have folders).
+ *   cursor=<iso8601>
+ *     Pagination cursor. Returns rows whose activityAt < cursor.
+ *     Omit / null to fetch the most recent page.
+ *   limit=1..100  (default 50)
+ *   q=<string>
+ *     Optional full-text search. When present we hit the MeiliSearch
+ *     indices instead of Postgres; the same kind filter applies.
+ *
+ * Response:
+ *   { data: FeedItem[], nextCursor: string | null, unreadCount: number }
+ *
+ * `FeedItem` is a discriminated union on `kind` ('email' | 'chat-direct'
+ * | 'chat-group'). See `apps/api/src/services/feed.ts` for the full shape.
+ */
+inboxRoutes.get('/list', async (c) => {
+  const folder = c.req.query('folder') || 'inbox'
+  const rawKind = c.req.query('kind') || 'all'
+  const kind: 'all' | 'mail' | 'chats' =
+    rawKind === 'mail' || rawKind === 'chats' ? rawKind : 'all'
+  const cursor = c.req.query('cursor') || null
+  const limit = parseInt(c.req.query('limit') || '50', 10)
+  const q = c.req.query('q') || undefined
+
+  const db = getDb()
+  const feedService = new FeedService(db)
+  const result = await feedService.list({
+    userId: c.get('userId'),
+    folder,
+    kind,
+    cursor,
+    limit: Number.isFinite(limit) ? limit : 50,
+    q,
+  })
+
+  return c.json(result)
+})
+
+/**
  * GET /api/v1/inbox/emails?folder=inbox&page=1&pageSize=25
+ *
+ * Legacy mail-only listing — preserved for the mobile app and any
+ * callers that haven't migrated to /list. Returns offset-paginated
+ * EmailListItem rows. New web code should call /list instead.
  */
 inboxRoutes.get('/emails', async (c) => {
   const folder = c.req.query('folder') || 'inbox'
