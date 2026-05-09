@@ -10,15 +10,22 @@ import {
   Loader2,
   LogOut,
   MessageSquare,
+  Mic,
   MoreHorizontal,
   Paperclip,
   Pencil,
+  Phone,
   Plus,
+  Search,
   Send,
+  Smile,
+  Sparkles,
   Trash2,
   Users,
+  Video,
   X,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { MessageStackSkeleton } from './chat-skeletons'
 import {
@@ -42,7 +49,6 @@ import {
   type ConversationReadEntry,
   type ConversationSummary,
 } from '@/lib/chat-queries'
-import { cn } from '@/lib/utils'
 import { useSessionUser } from '@/lib/session-user-context'
 import { useTypers } from '@/lib/typing-bus'
 
@@ -160,55 +166,132 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
   const other = conversation?.otherParticipants[0]
   const displayName =
     conversation?.title ?? other?.name ?? other?.email ?? 'Chat'
-  const subtitle = isGroup
+  /// Pencil chS (presence row) splits into two slots:
+  ///   - active: lime dot + "ACTIVE NOW" 9/700 lime tracking 1.5
+  ///   - role  : "·" separator + role/handle 9/500 #6e6e6e tracking 0.5
+  /// We show the active slot when the conversation has any unread
+  /// activity in the last few minutes (typing or recent message);
+  /// the role slot reads from the participant's email handle.
+  const isActive = (typers && typers.length > 0) ? false : false // placeholder — TODO: wire real presence
+  const role = isGroup
     ? `${(conversation?.otherParticipants.length ?? 0) + 1} members`
     : (other?.email ?? '')
 
   return (
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-wm-border px-6 py-3">
-          <button
-            type="button"
-            onClick={() => (onBack ? onBack() : router.push('/inbox'))}
-            className="cursor-pointer text-wm-text-muted hover:text-wm-text-primary"
-            aria-label="Back to inbox"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          {isGroup ? (
-            <div className="flex h-8 w-8 items-center justify-center bg-wm-accent/15">
-              <Users className="h-4 w-4 text-wm-accent" />
-            </div>
-          ) : (
-            <Avatar name={displayName} src={other?.avatarUrl} size="md" />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-wm-text-primary">
-              {displayName}
-            </p>
-            {subtitle && (
-              <p className="truncate font-mono text-[10px] text-wm-text-muted">
-                {subtitle}
-              </p>
-            )}
-          </div>
-          {isGroup && (
+        {/* Pencil cHd (`U41as`): padding [14, 24], 1px bottom #1A1A1A,
+            justify between.  Inbox-embedded use mounts a leading
+            back-arrow before cHL so the user has a one-click way to
+            clear the inline selection; standalone /chat/[id] use
+            keeps the same affordance but routes back to /inbox. */}
+        <header
+          className="flex w-full items-center justify-between"
+          style={{
+            padding: '14px 24px',
+            borderBottom: '1px solid var(--color-wm-border)',
+          }}
+        >
+          <div className="flex min-w-0 items-center" style={{ gap: 12 }}>
             <button
               type="button"
-              onClick={() => setShowMembers((v) => !v)}
-              className={cn(
-                'inline-flex cursor-pointer items-center gap-1 border px-2 py-1 font-mono text-[10px] font-semibold transition-colors',
-                showMembers
-                  ? 'border-wm-accent bg-wm-accent/10 text-wm-accent'
-                  : 'border-wm-border text-wm-text-secondary hover:bg-wm-surface-hover',
-              )}
+              onClick={() => (onBack ? onBack() : router.push('/inbox'))}
+              className="flex shrink-0 cursor-pointer items-center justify-center text-wm-text-muted transition-colors hover:text-wm-text-primary"
+              aria-label="Back to inbox"
+              style={{ width: 24, height: 24 }}
             >
-              <Users className="h-3 w-3" />
-              Members
+              <ArrowLeft style={{ width: 14, height: 14 }} />
             </button>
-          )}
-        </div>
+            {isGroup ? (
+              <span
+                aria-hidden
+                className="flex shrink-0 items-center justify-center rounded-full text-white"
+                style={{ width: 40, height: 40, background: '#6D4AD4' }}
+              >
+                <Users style={{ width: 18, height: 18 }} />
+              </span>
+            ) : (
+              <Avatar name={displayName} src={other?.avatarUrl} size="md" />
+            )}
+            <div className="flex min-w-0 flex-col" style={{ gap: 1 }}>
+              <h2
+                className="truncate font-mono font-bold text-wm-text-primary"
+                style={{ fontSize: 14 }}
+              >
+                {displayName}
+              </h2>
+              <div
+                className="flex min-w-0 items-center"
+                style={{ gap: 6 }}
+              >
+                {isActive && (
+                  <>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 999,
+                        background: 'var(--color-wm-accent)',
+                      }}
+                    />
+                    <span
+                      className="font-mono font-bold uppercase text-wm-accent"
+                      style={{ fontSize: 9, letterSpacing: 1.5 }}
+                    >
+                      Active now
+                    </span>
+                  </>
+                )}
+                {isActive && role && (
+                  <span
+                    className="font-mono"
+                    style={{ fontSize: 9, color: '#6e6e6e' }}
+                  >
+                    ·
+                  </span>
+                )}
+                {role && (
+                  <span
+                    className="truncate font-mono"
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 500,
+                      letterSpacing: 0.5,
+                      color: '#6e6e6e',
+                    }}
+                  >
+                    {role}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center" style={{ gap: 6 }}>
+            <HeaderRound label="Voice call">
+              <Phone style={{ width: 14, height: 14, color: '#999999' }} />
+            </HeaderRound>
+            <HeaderRound label="Video call">
+              <Video style={{ width: 14, height: 14, color: '#999999' }} />
+            </HeaderRound>
+            <HeaderRound label="Search messages">
+              <Search style={{ width: 14, height: 14, color: '#999999' }} />
+            </HeaderRound>
+            {isGroup ? (
+              <HeaderRound
+                label="Members"
+                onClick={() => setShowMembers((v) => !v)}
+                active={showMembers}
+              >
+                <Users style={{ width: 14, height: 14 }} />
+              </HeaderRound>
+            ) : (
+              <HeaderRound label="More">
+                <MoreHorizontal style={{ width: 14, height: 14, color: '#999999' }} />
+              </HeaderRound>
+            )}
+          </div>
+        </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
           {messagesQ.isPending && <MessageStackSkeleton />}
@@ -276,22 +359,46 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
           </div>
         </div>
 
-        <div className="border-t border-wm-border px-6 py-3">
+        {/* V3 composer — Pencil `kPc6V`/`NPOQP`. cmpBox: cornerRadius
+            24, fill #111111, 1px #1A1A1A border, padding [6, 8, 6, 16],
+            gap 8.  Left: 32 round paperclip.  Middle: input.  Right:
+            32 sparkles (lime), 32 smile, 32 mic, 36×36 round LIME
+            send button. */}
+        <div
+          className="flex w-full flex-col"
+          style={{
+            padding: '12px 20px 16px 20px',
+            gap: 10,
+            borderTop: '1px solid var(--color-wm-border)',
+          }}
+        >
           {typers.length > 0 && (
-            <p className="mb-1 font-mono text-[10px] text-wm-text-muted">
+            <p
+              className="font-mono"
+              style={{ fontSize: 10, color: '#6e6e6e' }}
+            >
               {typingLabel(typers.map((t) => t.typerName))}
             </p>
           )}
           {pending.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1">
+            <div className="flex flex-wrap" style={{ gap: 6 }}>
               {pending.map((a) => (
                 <span
                   key={a.id}
-                  className="inline-flex items-center gap-1 border border-wm-border bg-wm-surface px-2 py-1 font-mono text-[10px] text-wm-text-secondary"
+                  className="inline-flex items-center font-mono"
+                  style={{
+                    gap: 6,
+                    padding: '4px 8px',
+                    fontSize: 10,
+                    background: '#000000',
+                    border: '1px solid var(--color-wm-border)',
+                    borderRadius: 8,
+                    color: '#999999',
+                  }}
                 >
-                  <FileIcon className="h-3 w-3" />
+                  <FileIcon style={{ width: 11, height: 11 }} />
                   <span className="max-w-[160px] truncate">{a.filename}</span>
-                  <span className="text-wm-text-muted">
+                  <span style={{ color: '#6e6e6e' }}>
                     {formatBytes(a.sizeBytes)}
                   </span>
                   <button
@@ -300,26 +407,34 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
                     className="cursor-pointer text-wm-text-muted hover:text-wm-error"
                     aria-label="Remove"
                   >
-                    <X className="h-3 w-3" />
+                    <X style={{ width: 11, height: 11 }} />
                   </button>
                 </span>
               ))}
             </div>
           )}
           {uploadError && (
-            <p className="mb-1 font-mono text-[10px] text-wm-error">
+            <p
+              className="font-mono"
+              style={{ fontSize: 10, color: 'var(--color-wm-error)' }}
+            >
               {uploadError}
             </p>
           )}
-          {/* V3 composer — Pencil ChatViewV3 (`X1Safv`) bottom bar.
-              Round attach button on the left, rounded text input,
-              lime pill Send button on the right. */}
+
           <form
             onSubmit={(e) => {
               e.preventDefault()
               void handleSend()
             }}
-            className="flex items-end gap-2"
+            className="flex w-full items-center"
+            style={{
+              gap: 8,
+              padding: '6px 8px 6px 16px',
+              background: '#111111',
+              borderRadius: 24,
+              border: '1px solid var(--color-wm-border)',
+            }}
           >
             <input
               ref={fileInputRef}
@@ -328,50 +443,72 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
               hidden
               onChange={(e) => void handlePickFiles(e.target.files)}
             />
-            <button
-              type="button"
+            <CmpIcon
+              label="Attach file"
               onClick={() => fileInputRef.current?.click()}
               disabled={upload.isPending}
-              aria-label="Attach file"
-              title="Attach file"
-              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary disabled:opacity-50"
             >
               {upload.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 style={{ width: 15, height: 15 }} className="animate-spin" />
               ) : (
-                <Paperclip className="h-4 w-4" />
+                <Paperclip style={{ width: 15, height: 15 }} />
               )}
-            </button>
+            </CmpIcon>
             <input
               type="text"
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value)
-                // Debounce typing pings: at most one per 3s.
                 const now = Date.now()
                 if (now - lastTypingSentRef.current >= 3_000) {
                   lastTypingSentRef.current = now
                   notifyTyping.mutate(conversationId)
                 }
               }}
-              placeholder="Type a message…"
-              className="min-h-10 flex-1 rounded-md border border-wm-border bg-wm-surface px-3.5 py-2 font-sans text-[13px] text-wm-text-primary placeholder:text-wm-text-muted outline-none focus:border-wm-accent"
+              placeholder={`Message ${displayName}…`}
+              className="min-w-0 flex-1 bg-transparent font-mono outline-none placeholder:text-wm-text-muted text-wm-text-primary"
+              style={{ fontSize: 13, fontWeight: 500 }}
               disabled={send.isPending}
             />
+            <CmpIcon label="AI assist" lime>
+              <Sparkles
+                style={{ width: 15, height: 15, color: 'var(--color-wm-accent)' }}
+              />
+            </CmpIcon>
+            <CmpIcon label="Emoji">
+              <Smile style={{ width: 15, height: 15 }} />
+            </CmpIcon>
+            <CmpIcon label="Voice message">
+              <Mic style={{ width: 15, height: 15 }} />
+            </CmpIcon>
+            {/* 36×36 lime round send button — Pencil P024jy. Disabled
+                state dims via opacity rather than colour change so the
+                lime palette doesn't shift on hover/disable. */}
             <button
               type="submit"
               disabled={
                 (!draft.trim() && pending.length === 0) || send.isPending
               }
               aria-label="Send message"
-              className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full bg-wm-accent px-4 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className={cn(
+                'flex shrink-0 items-center justify-center transition-colors',
+                send.isPending || (!draft.trim() && pending.length === 0)
+                  ? 'cursor-not-allowed opacity-50'
+                  : 'cursor-pointer hover:bg-wm-accent-hover',
+              )}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                background: 'var(--color-wm-accent)',
+                color: '#000000',
+              }}
             >
               {send.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} />
               ) : (
-                <Send className="h-3.5 w-3.5" />
+                <Send style={{ width: 14, height: 14 }} />
               )}
-              Send
             </button>
           </form>
         </div>
@@ -740,6 +877,81 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/// Pencil composer icon (`Vcmyv`/`GoEhC`/`KTbEM`/`TDzqb`): 32×32
+/// transparent round-square (radius 16), centered 15-px lucide icon
+/// at #999999.  `lime` overrides the colour for the AI sparkles slot.
+function CmpIcon({
+  label,
+  onClick,
+  disabled,
+  lime,
+  children,
+}: {
+  label: string
+  onClick?: () => void
+  disabled?: boolean
+  lime?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className={cn(
+        'flex shrink-0 items-center justify-center transition-colors',
+        disabled
+          ? 'cursor-not-allowed opacity-50'
+          : 'cursor-pointer hover:bg-wm-surface-hover',
+        !lime && 'text-wm-text-secondary hover:text-wm-text-primary',
+      )}
+      style={{ width: 32, height: 32, borderRadius: 16 }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/// Pencil cHd round button (`hr1`/`hr2`/`hr3`/`hr4`): 36×36 round
+/// (radius 18), fill #111111, centered 14-px lucide icon at #999999.
+/// `active` flips to lime-tinted bg (used for the Members toggle on
+/// group threads).
+function HeaderRound({
+  label,
+  onClick,
+  active,
+  children,
+}: {
+  label: string
+  onClick?: () => void
+  active?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={cn(
+        'flex shrink-0 cursor-pointer items-center justify-center transition-colors',
+        active
+          ? 'bg-wm-accent-dim text-wm-accent'
+          : 'bg-wm-surface text-wm-text-secondary hover:bg-wm-surface-hover hover:text-wm-text-primary',
+      )}
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+      }}
+    >
+      {children}
+    </button>
+  )
 }
 
 /// "Alice is typing…" / "Alice and Bob are typing…" / "Alice and N
