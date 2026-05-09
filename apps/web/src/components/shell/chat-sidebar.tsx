@@ -7,7 +7,6 @@ import {
   SidebarSection,
   SidebarNavItem,
   SidebarComposeButton,
-  SidebarUser,
 } from './sidebar-shell'
 
 export interface ChatSidebarProps {
@@ -23,12 +22,11 @@ export interface ChatSidebarProps {
   onUserMenu?: () => void
 }
 
-export function ChatSidebar({ user, conversations = [], onUserMenu }: ChatSidebarProps) {
+export function ChatSidebar({ conversations = [] }: ChatSidebarProps) {
   const pathname = usePathname()
   return (
     <SidebarShell
       cta={<SidebarComposeButton href="/chat/new">New chat</SidebarComposeButton>}
-      footer={<SidebarUser name={user.name} email={user.email} onClick={onUserMenu} />}
     >
       <SidebarSection label="Chats">
         <SidebarNavItem

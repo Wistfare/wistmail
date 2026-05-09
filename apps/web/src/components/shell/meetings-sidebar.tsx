@@ -7,7 +7,6 @@ import {
   SidebarSection,
   SidebarNavItem,
   SidebarComposeButton,
-  SidebarUser,
 } from './sidebar-shell'
 
 export interface MeetingsSidebarProps {
@@ -19,16 +18,13 @@ export interface MeetingsSidebarProps {
 
 /** Pencil reference: `MeetingsV3` (`RTarH`) left panel. */
 export function MeetingsSidebar({
-  user,
   upcoming = [],
   onCreate,
-  onUserMenu,
 }: MeetingsSidebarProps) {
   const pathname = usePathname()
   return (
     <SidebarShell
       cta={<SidebarComposeButton onClick={onCreate}>New meeting</SidebarComposeButton>}
-      footer={<SidebarUser name={user.name} email={user.email} onClick={onUserMenu} />}
     >
       <SidebarSection label="Meetings">
         <SidebarNavItem

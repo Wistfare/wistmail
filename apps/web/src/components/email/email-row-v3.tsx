@@ -54,12 +54,8 @@ export interface EmailRowV3Data {
 export interface EmailRowV3Props {
   email: EmailRowV3Data
   selected?: boolean
-  /** When in selection mode, render the checkbox always-visible. */
-  selectionMode?: boolean
-  isChecked?: boolean
   onClick?: () => void
   onToggleStar?: () => void
-  onToggleCheck?: () => void
   /** Trailing slot — used to render the SendStatusPill or other metadata. */
   trailing?: React.ReactNode
 }
@@ -67,11 +63,8 @@ export interface EmailRowV3Props {
 export function EmailRowV3({
   email,
   selected,
-  selectionMode,
-  isChecked,
   onClick,
   onToggleStar,
-  onToggleCheck,
   trailing,
 }: EmailRowV3Props) {
   const display = email.displayName ?? email.fromAddress
@@ -86,12 +79,8 @@ export function EmailRowV3({
       onClick={onClick}
       data-active={selected ? 'true' : undefined}
       className={cn(
-        'group flex w-full cursor-pointer items-start text-left transition-colors',
-        selected
-          ? 'bg-wm-accent-dim'
-          : isChecked
-            ? 'bg-wm-accent/5'
-            : 'hover:bg-wm-surface-hover',
+        'flex w-full cursor-pointer items-start text-left transition-colors',
+        selected ? 'bg-wm-accent-dim' : 'hover:bg-wm-surface-hover',
       )}
       style={{
         padding: '12px 20px',
@@ -99,65 +88,20 @@ export function EmailRowV3({
         // Pencil row1 has a 3-px LEFT lime stroke on the active row only.
         borderLeft: selected
           ? '3px solid var(--color-wm-accent)'
-          : isChecked
-            ? '3px solid var(--color-wm-accent)'
-            : '3px solid transparent',
+          : '3px solid transparent',
       }}
     >
-      {/* Avatar / checkbox swap (40×40 round) */}
+      {/* Avatar — Pencil V3 doesn't ship row-level multi-select, so we
+          render the 40×40 deterministic-colour avatar with no hover
+          swap to a checkbox. The selection-related props on this
+          component (selectionMode, isChecked, onToggleCheck) are kept
+          for forward-compat but currently no-op visually. */}
       <span
-        className="relative shrink-0"
-        style={{ width: 40, height: 40 }}
+        aria-hidden
+        className="flex shrink-0 items-center justify-center rounded-full font-mono font-bold text-white"
+        style={{ width: 40, height: 40, fontSize: 13, backgroundColor: bg }}
       >
-        <span
-          aria-hidden
-          className={cn(
-            'flex items-center justify-center rounded-full font-mono font-bold text-white transition-opacity',
-            (selectionMode || isChecked) && 'opacity-0',
-          )}
-          style={{ width: 40, height: 40, fontSize: 13, backgroundColor: bg }}
-        >
-          {initials || '?'}
-        </span>
-        <span
-          role="checkbox"
-          aria-checked={!!isChecked}
-          tabIndex={-1}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleCheck?.()
-          }}
-          className={cn(
-            'absolute inset-0 flex cursor-pointer items-center justify-center transition-opacity',
-            isChecked
-              ? 'opacity-100'
-              : selectionMode
-                ? 'opacity-100'
-                : 'opacity-0 group-hover:opacity-100',
-          )}
-        >
-          <span
-            className={cn(
-              'flex items-center justify-center border',
-              isChecked
-                ? 'border-wm-accent bg-wm-accent text-wm-text-on-accent'
-                : 'border-wm-border bg-wm-surface text-wm-text-muted',
-            )}
-            style={{ width: 20, height: 20, borderRadius: 4 }}
-          >
-            {isChecked && (
-              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M5 12l5 5 9-11"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
-          </span>
-        </span>
+        {initials || '?'}
       </span>
 
       <span

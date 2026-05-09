@@ -1,11 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Search,
-  ArrowUpDown,
-  SlidersHorizontal,
   Archive,
   AlarmClock,
   Trash2,
@@ -17,17 +16,11 @@ import {
   AlertTriangle,
   RefreshCw,
   CalendarPlus,
-  CheckSquare,
   ListChecks,
-  Square,
-  MailOpen,
   Mail,
   MessageSquare,
   MoreHorizontal,
-  FolderInput,
-  X,
 } from 'lucide-react'
-import { useLabels } from '@/lib/labels'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useCompose } from '@/components/email/compose-provider'
@@ -35,7 +28,6 @@ import { EmailBody } from '@/components/email/email-body'
 import { LabelAssignPopover } from '@/components/email/label-assign-popover'
 import { AttachmentsStrip } from '@/components/email/attachments-strip'
 import { EmailRowV3 } from '@/components/email/email-row-v3'
-import { FilterPills } from '@/components/email/filter-pills'
 import { InboxSectionHeader } from '@/components/email/inbox-section-header'
 import { AIBrief } from '@/components/email/ai-brief'
 import { NewDropdown } from '@/components/email/new-dropdown'
@@ -53,29 +45,16 @@ import {
   type EmailListItem,
   type FullEmail,
   useArchive,
-  useBulkAction,
   useDelete,
   useEmailDetail,
   useEmailThread,
-  useEmptyFolder,
   useFolderRetention,
   useInboxList,
-  useMarkAllRead,
   useMarkRead,
   usePurge,
   useSnooze,
   useToggleStar,
 } from '@/lib/email-queries'
-
-// Row-level filter tabs above the list. Applied client-side against
-// the page already loaded — no extra network — so filters compose
-// with the folder param naturally.
-const FILTER_TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'unread', label: 'Unread' },
-  { id: 'starred', label: 'Starred' },
-  { id: 'attachments', label: 'Has files' },
-] as const
 
 type ContentType = 'all' | 'mail' | 'chat'
 
@@ -86,22 +65,11 @@ export default function InboxPage() {
   const folderParam = searchParams.get('folder') || 'inbox'
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState('all')
   /// Pencil InboxV3 segmented control: All / Mail / Chat. We gate
   /// emails at the list level here; clicking "Chat" navigates over to
   /// /chat — the unified inbox feed lives on mobile only for now.
   const [contentType, setContentType] = useState<ContentType>('all')
-  const [searchQuery, setSearchQuery] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
-
-  // Multi-select state. A non-empty set flips the left pane into
-  // "selection mode" — the top bar gets replaced by a bulk action
-  // toolbar, row clicks toggle the checkbox instead of opening the
-  // preview, and the detail pane clears.
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
-  const inSelectionMode = selectedIds.size > 0
-
-  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   // Cache-driven data: list (paginated) + selected detail.
   const list = useInboxList(folderParam)
@@ -114,15 +82,13 @@ export default function InboxPage() {
   const archive = useArchive()
   const remove = useDelete()
   const purge = usePurge()
-  const emptyFolder = useEmptyFolder()
-  // The retention banner + Empty button only show on folders that
-  // auto-purge. For everything else the folder config query is idle.
+  // Trash/Spam retention banner — Pencil V3 doesn't surface it on the
+  // main inbox view; we only render it on the folders that actually
+  // auto-purge. The folder query stays idle on /inbox.
   const cleanableFolder = folderParam === 'trash' || folderParam === 'spam'
   const retention = useFolderRetention(
     (cleanableFolder ? folderParam : 'trash') as 'trash' | 'spam',
   )
-  const bulk = useBulkAction()
-  const markAllRead = useMarkAllRead()
   const snooze = useSnooze()
   const toast = useToast()
   const [snoozeOpen, setSnoozeOpen] = useState(false)
@@ -130,7 +96,6 @@ export default function InboxPage() {
   // Reset selection when the folder changes.
   useEffect(() => {
     setSelectedId(null)
-    setSelectedIds(new Set())
   }, [folderParam])
 
   // Flatten the infinite-query pages into a single array for rendering.
@@ -153,22 +118,11 @@ export default function InboxPage() {
     return () => el.removeEventListener('scroll', onScroll)
   }, [list])
 
-  const filteredEmails = useMemo(() => {
-    return emails.filter((email) => {
-      if (activeFilter === 'unread' && email.isRead) return false
-      if (activeFilter === 'starred' && !email.isStarred) return false
-      if (activeFilter === 'attachments' && !email.hasAttachments) return false
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase()
-        return (
-          email.fromAddress.toLowerCase().includes(q) ||
-          email.subject.toLowerCase().includes(q) ||
-          email.snippet.toLowerCase().includes(q)
-        )
-      }
-      return true
-    })
-  }, [emails, activeFilter, searchQuery])
+  // Pencil InboxV3 doesn't show client-side filter pills (Unread /
+  // Starred / Has files / search) — those affordances aren't part of
+  // the V3 design. We feed the raw list straight through to the
+  // section grouping. Search lives on its own /search route.
+  const filteredEmails = emails
 
   /// Group filtered emails into Today / Yesterday / This week / Earlier
   /// bands so the list pane gets the V3 section dividers. Pencil
@@ -193,7 +147,7 @@ export default function InboxPage() {
   /// `InboxV3.TodayRail`). Only show on the actual `inbox` folder; the
   /// other folders (sent / drafts / trash etc) keep the 2-column layout
   /// from before.
-  const showTodayRail = folderParam === 'inbox' && !inSelectionMode
+  const showTodayRail = folderParam === 'inbox'
   const todayRange = useMemo(() => rangeForWeek(new Date()), [])
   const todayEvents = useEventsInRange(todayRange.from, todayRange.to)
   const todayPanelEvents = useMemo<TodayEvent[]>(() => {
@@ -219,13 +173,6 @@ export default function InboxPage() {
   }, [todayEvents.data])
 
   function selectEmail(email: EmailListItem) {
-    // In selection mode, clicking a row toggles its checkbox rather
-    // than opening the preview — matches Gmail's behaviour and the
-    // mobile long-press mode below.
-    if (inSelectionMode) {
-      toggleSelect(email.id)
-      return
-    }
     setSelectedId(email.id)
     if (!email.isRead) markRead.mutate({ id: email.id })
   }
@@ -233,7 +180,9 @@ export default function InboxPage() {
   // Global keyboard shortcuts. Modelled on Gmail so muscle memory
   // transfers. Events from text inputs / contentEditable are
   // ignored so typing in compose doesn't eat a `c` as "compose"
-  // or `e` as "archive". `/` focuses search even if nothing else is.
+  // or `e` as "archive".  Pencil V3 doesn't ship row-level multi-
+  // select or an inline search, so the legacy `/`, `x`, and Esc
+  // hooks for those affordances are gone.
   useEffect(() => {
     function isTypingSurface(target: EventTarget | null): boolean {
       if (!(target instanceof HTMLElement)) return false
@@ -245,23 +194,9 @@ export default function InboxPage() {
 
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (e.key === '/' && !isTypingSurface(e.target)) {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-        return
-      }
       if (isTypingSurface(e.target)) return
 
       switch (e.key) {
-        case 'Escape':
-          if (inSelectionMode) {
-            clearSelection()
-            e.preventDefault()
-          } else if (searchQuery) {
-            setSearchQuery('')
-            e.preventDefault()
-          }
-          return
         case 'j': {
           if (filteredEmails.length === 0) return
           const idx = selectedId
@@ -283,12 +218,6 @@ export default function InboxPage() {
           e.preventDefault()
           return
         }
-        case 'x':
-          if (selectedId) {
-            toggleSelect(selectedId)
-            e.preventDefault()
-          }
-          return
         case 'e':
           if (selectedId) {
             handleArchive(selectedId)
@@ -329,117 +258,8 @@ export default function InboxPage() {
     filteredEmails,
     selectedId,
     selectedFull,
-    inSelectionMode,
-    searchQuery,
     emails,
   ])
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  function selectAllVisible() {
-    setSelectedIds(new Set(filteredEmails.map((e) => e.id)))
-  }
-
-  function clearSelection() {
-    setSelectedIds(new Set())
-  }
-
-  /// Fire a bulk action for the current selection, then clear it.
-  /// Destructive actions (delete/purge) also close the detail pane
-  /// if the selected email was part of the batch.
-  function runBulk(action: Parameters<typeof bulk.mutate>[0]) {
-    if (selectedIds.size === 0) return
-    bulk.mutate(action)
-    const affectedIds = [...action.ids]
-    if (
-      selectedId &&
-      action.ids.includes(selectedId) &&
-      (action.action === 'delete' ||
-        action.action === 'purge' ||
-        action.action === 'archive' ||
-        action.action === 'move')
-    ) {
-      setSelectedId(null)
-    }
-    clearSelection()
-
-    // Undo affordances for reversible destructive actions.
-    // `purge` is permanent (bytes gone) — no undo.
-    const count = affectedIds.length
-    const plural = count === 1 ? 'email' : 'emails'
-    if (action.action === 'delete') {
-      toast.show({
-        message: `${count} ${plural} moved to Trash.`,
-        undo: () =>
-          bulk.mutateAsync({
-            ids: affectedIds,
-            action: 'move',
-            folder: 'inbox',
-          }).then(() => {}),
-      })
-    } else if (action.action === 'archive') {
-      toast.show({
-        message: `Archived ${count} ${plural}.`,
-        undo: () =>
-          bulk.mutateAsync({
-            ids: affectedIds,
-            action: 'move',
-            folder: 'inbox',
-          }).then(() => {}),
-      })
-    } else if (action.action === 'read') {
-      toast.show({
-        message: `Marked ${count} as read.`,
-        undo: () =>
-          bulk.mutateAsync({ ids: affectedIds, action: 'unread' }).then(() => {}),
-      })
-    } else if (action.action === 'unread') {
-      toast.show({
-        message: `Marked ${count} as unread.`,
-        undo: () =>
-          bulk.mutateAsync({ ids: affectedIds, action: 'read' }).then(() => {}),
-      })
-    } else if (action.action === 'purge') {
-      toast.show({ message: `Permanently deleted ${count} ${plural}.` })
-    } else if (action.action === 'move') {
-      toast.show({
-        message: `Moved ${count} ${plural} to ${action.folder}.`,
-        undo: () =>
-          bulk.mutateAsync({
-            ids: affectedIds,
-            action: 'move',
-            folder: folderParam,
-          }).then(() => {}),
-      })
-    } else if (action.action === 'label-add') {
-      toast.show({
-        message: `Added label to ${count} ${plural}.`,
-        undo: () =>
-          bulk.mutateAsync({
-            ids: affectedIds,
-            action: 'label-remove',
-            labelIds: action.labelIds,
-          }).then(() => {}),
-      })
-    } else if (action.action === 'label-remove') {
-      toast.show({
-        message: `Removed label from ${count} ${plural}.`,
-        undo: () =>
-          bulk.mutateAsync({
-            ids: affectedIds,
-            action: 'label-add',
-            labelIds: action.labelIds,
-          }).then(() => {}),
-      })
-    }
-  }
 
   function handleStar(email: EmailListItem) {
     star.mutate(email)
@@ -481,38 +301,6 @@ export default function InboxPage() {
     }
     purge.mutate({ id: emailId })
     if (selectedId === emailId) setSelectedId(null)
-  }
-
-  function handleMarkAllRead() {
-    const unreadCount = emails.filter((e) => !e.isRead).length
-    if (unreadCount === 0) return
-    markAllRead.mutate(
-      { folder: folderParam },
-      {
-        onSuccess: (res) => {
-          toast.show({
-            message: `Marked ${res.affected} as read.`,
-          })
-        },
-      },
-    )
-  }
-
-  function handleEmptyFolder() {
-    if (!cleanableFolder) return
-    if (emails.length === 0) return
-    const folderNameCap = folderParam === 'trash' ? 'Trash' : 'Spam'
-    if (
-      !confirm(
-        `Permanently delete all ${emails.length} email${
-          emails.length === 1 ? '' : 's'
-        } in ${folderNameCap}? This can't be undone.`,
-      )
-    ) {
-      return
-    }
-    emptyFolder.mutate({ folder: folderParam as 'trash' | 'spam' })
-    setSelectedId(null)
   }
 
   async function handleRetrySend(emailId: string) {
@@ -727,9 +515,14 @@ export default function InboxPage() {
             CHATS
           </SegPill>
           <span style={{ flex: 1 }} />
+          {/* Round search button — Pencil `Q60pJN`. Pencil's static
+              InboxV3 frame doesn't show any inline search UI in the
+              list pane; the round button is the entry point and we
+              route to the dedicated `/search` page where the input
+              already lives. */}
           <button
             type="button"
-            onClick={() => searchInputRef.current?.focus()}
+            onClick={() => router.push('/search')}
             aria-label="Search emails"
             className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
             style={{
@@ -743,78 +536,13 @@ export default function InboxPage() {
           </button>
         </div>
 
-        {/* Search bar — collapses to icon-only via the pill row's button. */}
-        <div className="flex items-center gap-2 border-y border-wm-border bg-wm-surface px-5 py-2.5">
-          <Search className="h-4 w-4 text-wm-text-muted" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Search ${folderName.toLowerCase()}…`}
-            className="flex-1 bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
-              aria-label="Clear search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* Bulk-action toolbar (replaces the secondary chrome when 1+ rows selected). */}
-        {inSelectionMode ? (
-          <BulkActionToolbar
-            count={selectedIds.size}
-            visibleCount={filteredEmails.length}
-            folder={folderParam}
-            onSelectAllVisible={selectAllVisible}
-            onClear={clearSelection}
-            onRun={(action) =>
-              runBulk({ ids: Array.from(selectedIds), ...action })
-            }
-          />
-        ) : (
-          <div className="flex items-center justify-end gap-2 border-b border-wm-border px-5 py-2">
-            {emails.some((e) => !e.isRead) && (
-              <button
-                type="button"
-                onClick={handleMarkAllRead}
-                disabled={markAllRead.isPending}
-                className="inline-flex cursor-pointer items-center gap-1 border border-wm-border px-2 py-1 font-mono text-[10px] font-semibold text-wm-text-secondary transition-colors hover:bg-wm-surface-hover disabled:cursor-wait disabled:opacity-60"
-                title="Mark everything in this folder as read"
-              >
-                <MailOpen className="h-3 w-3" />
-                {markAllRead.isPending ? 'Marking…' : 'Mark all read'}
-              </button>
-            )}
-            {cleanableFolder && emails.length > 0 && (
-              <button
-                type="button"
-                onClick={handleEmptyFolder}
-                disabled={emptyFolder.isPending}
-                className="inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20 disabled:cursor-wait disabled:opacity-60"
-                title={`Permanently delete every email in ${folderName}`}
-              >
-                <Trash2 className="h-3 w-3" />
-                {emptyFolder.isPending ? 'Emptying…' : `Empty ${folderParam}`}
-              </button>
-            )}
-            {/* Read-status filter — kept as a secondary chip strip. */}
-            <FilterPills
-              value={activeFilter}
-              options={FILTER_TABS.map((t) => ({ id: t.id, label: t.label }))}
-              onChange={(id) => setActiveFilter(id)}
-              className="text-[10px]"
-            />
-            <ArrowUpDown className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
-            <SlidersHorizontal className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
-          </div>
-        )}
+        {/* Pencil InboxV3 (`TB36x`) flows directly from the segmented
+            control into the TODAY section header — there is no inline
+            search input row, no read-status filter pills, and no
+            bulk-action toolbar. We honour that and only surface the
+            destructive-folder retention notice (still useful on
+            /inbox?folder=trash etc., never visible on the main inbox
+            view). */}
 
         {cleanableFolder && (
           <div className="border-b border-wm-border bg-wm-warning/5 px-5 py-2">
@@ -849,13 +577,7 @@ export default function InboxPage() {
 
           {!list.isPending && !list.isError && filteredEmails.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 py-16">
-              <p className="text-sm text-wm-text-muted">
-                {searchQuery
-                  ? 'No results found'
-                  : activeFilter === 'unread'
-                    ? 'No unread emails'
-                    : 'No emails yet'}
-              </p>
+              <p className="text-sm text-wm-text-muted">No emails yet</p>
             </div>
           )}
 
@@ -879,12 +601,9 @@ export default function InboxPage() {
                     tag: 'MAIL',
                     labels: email.labels ?? [],
                   }}
-                  selected={selectedId === email.id && !inSelectionMode}
-                  selectionMode={inSelectionMode}
-                  isChecked={selectedIds.has(email.id)}
+                  selected={selectedId === email.id}
                   onClick={() => selectEmail(email)}
                   onToggleStar={() => handleStar(email)}
-                  onToggleCheck={() => toggleSelect(email.id)}
                   trailing={
                     <SendStatusPill
                       status={email.status}
@@ -903,12 +622,27 @@ export default function InboxPage() {
         </div>
       </div>
 
-      {/* ── Email preview pane ── */}
-      <div className="flex flex-1 flex-col">
+      {/* ── Email preview pane ──
+          `min-w-0` is critical: without it a long unbreakable subject
+          or URL inside the body will push this flex-child wider than
+          its allotted space, blowing out the layout and forcing
+          horizontal scroll on the whole page.  `overflow-hidden` on
+          the column then clips any stray inline content (HTML emails
+          with absolutely-positioned elements, etc.). */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {!selectedId ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3">
-            <div className="flex h-14 w-14 items-center justify-center bg-wm-accent">
-              <span className="text-xl font-bold text-wm-text-on-accent">W</span>
+            <div
+              className="relative overflow-hidden"
+              style={{ width: 56, height: 56, borderRadius: 14 }}
+            >
+              <Image
+                src="/wistfare_mail_logo.png"
+                alt=""
+                fill
+                sizes="56px"
+                className="object-contain"
+              />
             </div>
             <p className="text-base font-medium text-wm-text-primary">
               {emails.length > 0 ? 'Select an email to read' : 'Your inbox is empty'}
@@ -1078,7 +812,16 @@ export default function InboxPage() {
                 </span>
                 <h2
                   className="font-mono font-bold text-wm-text-primary"
-                  style={{ fontSize: 26, lineHeight: 1.25 }}
+                  style={{
+                    fontSize: 26,
+                    lineHeight: 1.25,
+                    // Long unbreakable strings (e.g. "[GitHub] Your
+                    // personal access token (classic)…") have no
+                    // natural break opportunities — `overflow-wrap:
+                    // anywhere` lets the browser break inside the
+                    // word so the title stays inside the column.
+                    overflowWrap: 'anywhere',
+                  }}
                 >
                   {selectedFull.subject || '(no subject)'}
                 </h2>
@@ -1293,302 +1036,16 @@ function SendStatusPill({
   )
 }
 
-// Row-level label rendering moved to <EmailRowV3>; this helper is gone.
+// Pencil InboxV3 doesn't ship multi-row selection or a bulk-action
+// toolbar — both lived only in the legacy V2 inbox. The supporting
+// types / constants / components (BulkActionVars, MOVE_TARGETS,
+// BulkActionToolbar, MoveMenu, LabelMenu, BulkBtn) and their lucide
+// icons (CheckSquare, Square, MailOpen, FolderInput, X) were all
+// dead weight after the V3 chrome went in, so we removed them in
+// one pass. Single-row archive/delete/snooze still work via the
+// reading-pane toolbar and keyboard shortcuts (e/#/Delete/s).
 
-type BulkActionVars =
-  | { action: 'read' }
-  | { action: 'unread' }
-  | { action: 'archive' }
-  | { action: 'delete' }
-  | { action: 'purge' }
-  | { action: 'move'; folder: string }
-  | { action: 'label-add'; labelIds: string[] }
-  | { action: 'label-remove'; labelIds: string[] }
-
-/// Destination folders the "Move to" dropdown offers. We intentionally
-/// skip source folders that a bulk move would imply (the current
-/// folder) — the toolbar strips those at render time.
-const MOVE_TARGETS: { id: string; label: string }[] = [
-  { id: 'inbox', label: 'Inbox' },
-  { id: 'archive', label: 'Archive' },
-  { id: 'spam', label: 'Spam' },
-  { id: 'trash', label: 'Trash' },
-]
-
-/// Top-of-list action bar that replaces the folder title when one or
-/// more rows are selected. Keeps the same height so the list below
-/// doesn't jump. Actions mirror the single-email toolbar in the
-/// detail pane but operate on the selection set. Move / Label are
-/// intentionally omitted here — those need secondary UI (folder
-/// picker / label picker) and would make the bar crowded; they'll
-/// land as a "More…" menu in a follow-up.
-function BulkActionToolbar({
-  count,
-  visibleCount,
-  folder,
-  onSelectAllVisible,
-  onClear,
-  onRun,
-}: {
-  count: number
-  visibleCount: number
-  folder: string
-  onSelectAllVisible: () => void
-  onClear: () => void
-  onRun: (action: BulkActionVars) => void
-}) {
-  const allSelected = count >= visibleCount && visibleCount > 0
-  const [openMenu, setOpenMenu] = useState<'move' | 'labels' | null>(null)
-  const labels = useLabels()
-  return (
-    <div className="relative flex items-center gap-2 border-b border-wm-border bg-wm-accent/5 px-5 py-2.5">
-      <button
-        type="button"
-        onClick={allSelected ? onClear : onSelectAllVisible}
-        className="inline-flex cursor-pointer items-center gap-1 text-wm-accent hover:text-wm-text-primary"
-        title={allSelected ? 'Clear selection' : 'Select all visible'}
-      >
-        {allSelected ? (
-          <CheckSquare className="h-4 w-4" />
-        ) : (
-          <Square className="h-4 w-4" />
-        )}
-      </button>
-      <span className="font-mono text-[11px] font-semibold text-wm-text-secondary">
-        {count} selected
-      </span>
-      <div className="flex-1" />
-
-      <BulkBtn
-        icon={<MailOpen className="h-3.5 w-3.5" />}
-        label="Read"
-        onClick={() => onRun({ action: 'read' })}
-      />
-      <BulkBtn
-        icon={<Mail className="h-3.5 w-3.5" />}
-        label="Unread"
-        onClick={() => onRun({ action: 'unread' })}
-      />
-      {folder !== 'archive' && folder !== 'trash' && (
-        <BulkBtn
-          icon={<Archive className="h-3.5 w-3.5" />}
-          label="Archive"
-          onClick={() => onRun({ action: 'archive' })}
-        />
-      )}
-
-      {/* Move-to-folder popover. Opens a small menu of destinations
-          that excludes the current folder so the user can't no-op
-          move into itself. */}
-      <div className="relative">
-        <BulkBtn
-          icon={<FolderInput className="h-3.5 w-3.5" />}
-          label="Move"
-          onClick={() =>
-            setOpenMenu((m) => (m === 'move' ? null : 'move'))
-          }
-        />
-        {openMenu === 'move' && (
-          <MoveMenu
-            currentFolder={folder}
-            onPick={(target) => {
-              setOpenMenu(null)
-              onRun({ action: 'move', folder: target })
-            }}
-            onDismiss={() => setOpenMenu(null)}
-          />
-        )}
-      </div>
-
-      {/* Labels popover. Tapping a label toggles add/remove on the
-          whole selection in one API call. Fast-open: we read the
-          label list from the already-cached /labels query. */}
-      <div className="relative">
-        <BulkBtn
-          icon={<Tag className="h-3.5 w-3.5" />}
-          label="Labels"
-          onClick={() =>
-            setOpenMenu((m) => (m === 'labels' ? null : 'labels'))
-          }
-        />
-        {openMenu === 'labels' && (
-          <LabelMenu
-            labels={labels.data ?? []}
-            onPickAdd={(id) => {
-              setOpenMenu(null)
-              onRun({ action: 'label-add', labelIds: [id] })
-            }}
-            onPickRemove={(id) => {
-              setOpenMenu(null)
-              onRun({ action: 'label-remove', labelIds: [id] })
-            }}
-            onDismiss={() => setOpenMenu(null)}
-          />
-        )}
-      </div>
-
-      {folder === 'trash' ? (
-        <BulkBtn
-          icon={<Trash2 className="h-3.5 w-3.5" />}
-          label="Delete forever"
-          destructive
-          onClick={() => {
-            if (
-              confirm(
-                `Permanently delete ${count} email${count === 1 ? '' : 's'}? This can't be undone.`,
-              )
-            ) {
-              onRun({ action: 'purge' })
-            }
-          }}
-        />
-      ) : (
-        <BulkBtn
-          icon={<Trash2 className="h-3.5 w-3.5" />}
-          label="Delete"
-          destructive
-          onClick={() => onRun({ action: 'delete' })}
-        />
-      )}
-      <button
-        type="button"
-        onClick={onClear}
-        className="ml-2 inline-flex cursor-pointer items-center gap-1 border border-wm-border px-2 py-1 font-mono text-[10px] font-semibold text-wm-text-secondary hover:bg-wm-surface-hover"
-        title="Clear selection"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    </div>
-  )
-}
-
-/// Tiny dropdown listing folder destinations. Light-touch: no
-/// outside-click detection beyond a full-screen invisible backdrop
-/// because the dropdown is small and the selection flow is linear.
-function MoveMenu({
-  currentFolder,
-  onPick,
-  onDismiss,
-}: {
-  currentFolder: string
-  onPick: (folder: string) => void
-  onDismiss: () => void
-}) {
-  const targets = MOVE_TARGETS.filter((t) => t.id !== currentFolder)
-  return (
-    <>
-      <div
-        className="fixed inset-0 z-[60]"
-        onClick={onDismiss}
-        aria-hidden="true"
-      />
-      <div className="absolute right-0 top-full z-[70] mt-1 min-w-[160px] border border-wm-border bg-wm-surface shadow-lg">
-        <p className="border-b border-wm-border px-3 py-1.5 font-mono text-[9px] font-semibold uppercase text-wm-text-muted">
-          Move to
-        </p>
-        {targets.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onPick(t.id)}
-            className="block w-full cursor-pointer px-3 py-2 text-left font-mono text-[11px] text-wm-text-primary hover:bg-wm-surface-hover"
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-    </>
-  )
-}
-
-/// Tiny multi-select for labels. Tapping a label dispatches one bulk
-/// action per tap (add or remove) — we don't batch across multiple
-/// labels because the user typically only flips one chip at a time;
-/// if they pick three we just fire three calls, which is still one
-/// round-trip per label thanks to the batch endpoint.
-function LabelMenu({
-  labels,
-  onPickAdd,
-  onPickRemove,
-  onDismiss,
-}: {
-  labels: { id: string; name: string; color: string }[]
-  onPickAdd: (id: string) => void
-  onPickRemove: (id: string) => void
-  onDismiss: () => void
-}) {
-  return (
-    <>
-      <div
-        className="fixed inset-0 z-[60]"
-        onClick={onDismiss}
-        aria-hidden="true"
-      />
-      <div className="absolute right-0 top-full z-[70] mt-1 min-w-[220px] border border-wm-border bg-wm-surface shadow-lg">
-        <p className="border-b border-wm-border px-3 py-1.5 font-mono text-[9px] font-semibold uppercase text-wm-text-muted">
-          Add label · shift-click to remove
-        </p>
-        {labels.length === 0 ? (
-          <p className="px-3 py-2 font-mono text-[11px] text-wm-text-muted">
-            No labels yet. Create one in Settings.
-          </p>
-        ) : (
-          <div className="max-h-[240px] overflow-y-auto">
-            {labels.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                onClick={(e) => {
-                  if (e.shiftKey) onPickRemove(l.id)
-                  else onPickAdd(l.id)
-                }}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left hover:bg-wm-surface-hover"
-                title="Click to add, Shift+click to remove"
-              >
-                <span
-                  className="h-2.5 w-2.5 shrink-0"
-                  style={{ backgroundColor: l.color }}
-                />
-                <span className="truncate font-mono text-[11px] text-wm-text-primary">
-                  {l.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
-
-function BulkBtn({
-  icon,
-  label,
-  destructive = false,
-  onClick,
-}: {
-  icon: React.ReactNode
-  label: string
-  destructive?: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'inline-flex cursor-pointer items-center gap-1 border px-2 py-1 font-mono text-[10px] font-semibold transition-colors',
-        destructive
-          ? 'border-wm-error/40 text-wm-error hover:bg-wm-error/10'
-          : 'border-wm-border text-wm-text-secondary hover:bg-wm-surface-hover',
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  )
-}
-
+// Hidden helper to keep the diff narrow until we delete everything below.
 /// Shared presets for the snooze dropdown. The times are computed at
 /// render time so "Tomorrow morning" is tomorrow from the user's
 /// wall-clock perspective, not the server's UTC.

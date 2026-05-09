@@ -14,7 +14,6 @@ import {
   SidebarShell,
   SidebarSection,
   SidebarNavItem,
-  SidebarUser,
 } from './sidebar-shell'
 
 export interface AdminSidebarProps {
@@ -23,11 +22,11 @@ export interface AdminSidebarProps {
 }
 
 /** Pencil reference: `AdminV3-Overview` (`boHfA`) left nav. */
-export function AdminSidebar({ user, onUserMenu }: AdminSidebarProps) {
+export function AdminSidebar({}: AdminSidebarProps) {
   const pathname = usePathname()
   const is = (href: string) => pathname === href || pathname.startsWith(href + '/')
   return (
-    <SidebarShell footer={<SidebarUser name={user.name} email={user.email} onClick={onUserMenu} />}>
+    <SidebarShell>
       <SidebarSection label="Workspace">
         <SidebarNavItem
           href="/admin"

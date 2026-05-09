@@ -18,7 +18,6 @@ import {
   SidebarNavItem,
   SidebarLabelItem,
   SidebarComposeButton,
-  SidebarUser,
 } from './sidebar-shell'
 import { useLabels } from '@/lib/labels'
 import { useCompose } from '@/components/email/compose-provider'
@@ -33,7 +32,7 @@ export interface MailSidebarProps {
  * Pencil reference: `Component/SidebarV2.detailPanel` in Mail mode.
  * Mail folders + Labels + bottom user pill.
  */
-export function MailSidebar({ user, unreadCounts = {}, onUserMenu }: MailSidebarProps) {
+export function MailSidebar({ unreadCounts = {} }: MailSidebarProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { openCompose } = useCompose()
@@ -48,7 +47,6 @@ export function MailSidebar({ user, unreadCounts = {}, onUserMenu }: MailSidebar
   return (
     <SidebarShell
       cta={<SidebarComposeButton onClick={() => openCompose()}>Compose</SidebarComposeButton>}
-      footer={<SidebarUser name={user.name} email={user.email} onClick={onUserMenu} />}
     >
       <SidebarSection label="Mail">
         <SidebarNavItem

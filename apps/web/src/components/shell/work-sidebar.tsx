@@ -16,7 +16,6 @@ import {
   SidebarSection,
   SidebarNavItem,
   SidebarComposeButton,
-  SidebarUser,
 } from './sidebar-shell'
 import { useProjects, useToday, type TaskStatus } from '@/lib/work-queries'
 
@@ -36,7 +35,7 @@ export interface WorkSidebarProps {
  *   project highlighted
  * - Docs link at the bottom
  */
-export function WorkSidebar({ user, onNewProject, onUserMenu }: WorkSidebarProps) {
+export function WorkSidebar({ onNewProject }: WorkSidebarProps) {
   const pathname = usePathname()
   const is = (h: string) => pathname === h || pathname.startsWith(h + '/')
   const today = useToday()
@@ -65,7 +64,6 @@ export function WorkSidebar({ user, onNewProject, onUserMenu }: WorkSidebarProps
   return (
     <SidebarShell
       cta={<SidebarComposeButton onClick={onNewProject}>New project</SidebarComposeButton>}
-      footer={<SidebarUser name={user.name} email={user.email} onClick={onUserMenu} />}
     >
       <SidebarSection label="Tasks">
         <SidebarNavItem

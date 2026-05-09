@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { SidebarShell, SidebarComposeButton, SidebarUser } from './sidebar-shell'
+import { SidebarShell, SidebarComposeButton } from './sidebar-shell'
 import { CalendarsList, MiniMonth, UpNextCard } from '@/components/calendar'
 import {
   rangeForMonthGrid,
@@ -30,7 +30,7 @@ export interface CalendarSidebarProps {
  * page reacts via `useSearchParams()`. Same channel for the URL-shared
  * anchor that the in-page header uses.
  */
-export function CalendarSidebar({ user, onCreate, onUserMenu }: CalendarSidebarProps) {
+export function CalendarSidebar({ onCreate }: CalendarSidebarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const search = useSearchParams()
@@ -106,7 +106,6 @@ export function CalendarSidebar({ user, onCreate, onUserMenu }: CalendarSidebarP
           New event
         </SidebarComposeButton>
       }
-      footer={<SidebarUser name={user.name} email={user.email} onClick={onUserMenu} />}
     >
       <div className="flex flex-col gap-5 px-1 pt-2">
         <MiniMonth

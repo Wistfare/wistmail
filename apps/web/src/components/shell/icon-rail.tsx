@@ -3,7 +3,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
-import { Tooltip } from '@/components/ui'
 
 /**
  * IconRail — Pencil reference: `Screen/InboxV3.iconRail` (`heGq7`).
@@ -68,24 +67,25 @@ export function IconRail({
         borderRight: '1px solid var(--color-wm-border)',
       }}
     >
-      {/* (1) logo — Pencil `nCoRJ`: 40×40, cornerRadius 12, fit image. */}
-      <Tooltip side="right" content="Wistfare Mail">
-        <Link
-          href="/inbox"
-          aria-label="Wistfare Mail home"
-          className="relative shrink-0 overflow-hidden"
-          style={{ width: 40, height: 40, borderRadius: 12 }}
-        >
-          <Image
-            src="/wistfare_mail_logo.png"
-            alt=""
-            fill
-            sizes="40px"
-            className="object-contain"
-            priority
-          />
-        </Link>
-      </Tooltip>
+      {/* (1) logo — Pencil `nCoRJ`: 40×40, cornerRadius 12, fit image.
+          No tooltip — Pencil's iconRail surfaces no on-hover label, so
+          the logo and nav tiles are plain links. Screen readers still
+          get the aria-label for accessibility. */}
+      <Link
+        href="/inbox"
+        aria-label="Wistfare Mail home"
+        className="relative shrink-0 overflow-hidden"
+        style={{ width: 40, height: 40, borderRadius: 12 }}
+      >
+        <Image
+          src="/wistfare_mail_logo.png"
+          alt=""
+          fill
+          sizes="40px"
+          className="object-contain"
+          priority
+        />
+      </Link>
 
       {/* (2) sp1 — Pencil `AkpDt`: 1×20 spacer. The parent gap is 8,
           so adding a 20-px-tall invisible block pushes the next item
@@ -110,32 +110,30 @@ export function IconRail({
       ))}
 
       {/* (5) avatar — Pencil `QK4fW`: 40×40 round, fill #1B6FE0, "V" 14/700 white. */}
-      <Tooltip side="right" content={user.name || 'Account'}>
-        <button
-          type="button"
-          onClick={onAvatarClick}
-          aria-label={`Account: ${user.name || 'guest'}`}
-          className="flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full font-mono font-bold text-white transition-opacity hover:opacity-90"
-          style={{
-            width: 40,
-            height: 40,
-            fontSize: 14,
-            background: '#1B6FE0',
-          }}
-        >
-          {user.avatarUrl ? (
-            <Image
-              src={user.avatarUrl}
-              alt=""
-              width={40}
-              height={40}
-              className="object-cover"
-            />
-          ) : (
-            initials(user.name)
-          )}
-        </button>
-      </Tooltip>
+      <button
+        type="button"
+        onClick={onAvatarClick}
+        aria-label={`Account: ${user.name || 'guest'}`}
+        className="flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full font-mono font-bold text-white transition-opacity hover:opacity-90"
+        style={{
+          width: 40,
+          height: 40,
+          fontSize: 14,
+          background: '#1B6FE0',
+        }}
+      >
+        {user.avatarUrl ? (
+          <Image
+            src={user.avatarUrl}
+            alt=""
+            width={40}
+            height={40}
+            className="object-cover"
+          />
+        ) : (
+          initials(user.name)
+        )}
+      </button>
     </nav>
   )
 }
@@ -147,22 +145,20 @@ export function IconRail({
  */
 function NavTile({ item, active }: { item: IconRailItem; active: boolean }) {
   return (
-    <Tooltip side="right" content={item.label}>
-      <Link
-        href={item.href}
-        aria-label={item.label}
-        aria-current={active ? 'page' : undefined}
-        className={cn(
-          'flex shrink-0 items-center justify-center transition-colors',
-          active
-            ? 'bg-wm-accent text-wm-text-on-accent'
-            : 'bg-wm-surface text-wm-text-secondary hover:text-wm-text-primary',
-        )}
-        style={{ width: 48, height: 48, borderRadius: 14 }}
-      >
-        {item.icon}
-      </Link>
-    </Tooltip>
+    <Link
+      href={item.href}
+      aria-label={item.label}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'flex shrink-0 items-center justify-center transition-colors',
+        active
+          ? 'bg-wm-accent text-wm-text-on-accent'
+          : 'bg-wm-surface text-wm-text-secondary hover:text-wm-text-primary',
+      )}
+      style={{ width: 48, height: 48, borderRadius: 14 }}
+    >
+      {item.icon}
+    </Link>
   )
 }
 

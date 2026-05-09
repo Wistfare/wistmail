@@ -7,7 +7,6 @@ import {
   SidebarSection,
   SidebarNavItem,
   SidebarComposeButton,
-  SidebarUser,
 } from './sidebar-shell'
 
 export interface DocsSidebarProps {
@@ -18,12 +17,11 @@ export interface DocsSidebarProps {
 }
 
 /** Pencil reference: `DocsV3` (`sOpka`) left panel. */
-export function DocsSidebar({ user, spaces = [], onNewDoc, onUserMenu }: DocsSidebarProps) {
+export function DocsSidebar({ spaces = [], onNewDoc }: DocsSidebarProps) {
   const pathname = usePathname()
   return (
     <SidebarShell
       cta={<SidebarComposeButton onClick={onNewDoc}>New doc</SidebarComposeButton>}
-      footer={<SidebarUser name={user.name} email={user.email} onClick={onUserMenu} />}
     >
       <SidebarSection label="Docs">
         <SidebarNavItem

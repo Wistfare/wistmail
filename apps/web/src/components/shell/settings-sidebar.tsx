@@ -17,7 +17,6 @@ import {
   SidebarShell,
   SidebarSection,
   SidebarNavItem,
-  SidebarUser,
 } from './sidebar-shell'
 
 export interface SettingsSidebarProps {
@@ -29,11 +28,11 @@ export interface SettingsSidebarProps {
  * Pencil reference: `SettingsV3-Account` (`QWQRT`) left nav, grouped as
  * Profile / Security / Mail / Developer.
  */
-export function SettingsSidebar({ user, onUserMenu }: SettingsSidebarProps) {
+export function SettingsSidebar({}: SettingsSidebarProps) {
   const pathname = usePathname()
   const is = (href: string) => pathname === href || pathname.startsWith(href + '/')
   return (
-    <SidebarShell footer={<SidebarUser name={user.name} email={user.email} onClick={onUserMenu} />}>
+    <SidebarShell>
       <SidebarSection label="Profile">
         <SidebarNavItem
           href="/settings/account"
