@@ -14,8 +14,6 @@ import {
   Loader2,
   AlertTriangle,
   RefreshCw,
-  CalendarPlus,
-  ListChecks,
   Mail,
   MessageSquare,
   MoreHorizontal,
@@ -28,7 +26,6 @@ import { LabelAssignPopover } from '@/components/email/label-assign-popover'
 import { AttachmentsStrip } from '@/components/email/attachments-strip'
 import { EmailRowV3 } from '@/components/email/email-row-v3'
 import { InboxSectionHeader } from '@/components/email/inbox-section-header'
-import { AIBrief } from '@/components/email/ai-brief'
 import { NewDropdown } from '@/components/email/new-dropdown'
 import { ReadingEmpty } from '@/components/email/reading-empty'
 import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
@@ -923,41 +920,14 @@ export default function InboxPage() {
               className="flex-1 overflow-y-auto"
               style={{ padding: '20px 28px 32px 28px' }}
             >
-              {/* V3 AI brief block — Pencil `InboxV3.aiBrief` (`Hyivo`).
-                  Currently a deterministic placeholder; once the AI
-                  pipeline emits per-thread summaries we'll switch to
-                  reading `selectedFull.aiBrief.summary` + `meta`. */}
-              <AIBrief
-                className="mb-5"
-                headline="AI BRIEF · 3 ACTION ITEMS"
-                meta="DUE FRI"
-                summary={summarize(selectedFull)}
-                actions={[
-                  {
-                    id: 'draft-reply',
-                    label: 'Draft reply',
-                    icon: <Reply style={{ width: 13, height: 13 }} />,
-                    onClick: handleReply,
-                  },
-                  {
-                    id: 'extract-tasks',
-                    label: 'Extract tasks',
-                    icon: <ListChecks style={{ width: 13, height: 13 }} />,
-                    onClick: () => {
-                      toast.show({
-                        message:
-                          'Task extraction queued — we’ll surface tasks in Work.',
-                      })
-                    },
-                  },
-                  {
-                    id: 'schedule-call',
-                    label: 'Schedule call',
-                    icon: <CalendarPlus style={{ width: 13, height: 13 }} />,
-                    onClick: () => router.push('/calendar'),
-                  },
-                ]}
-              />
+              {/* The Pencil V3 AI Brief block (`Hyivo`) — sparkles
+                  header, summary paragraph, and the three action chips
+                  (Draft reply / Extract tasks / Schedule call) — is
+                  intentionally hidden for now.  The AIBrief component
+                  itself is preserved in `components/email/ai-brief.tsx`
+                  so it can be wired back in once the AI pipeline emits
+                  per-thread summaries. Until then the reading pane
+                  shows the email body directly. */}
               {renderEmailBody(selectedFull)}
             </div>
           </>
@@ -1300,23 +1270,6 @@ function formatSubjectDate(iso: string): string {
     .toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
     .toUpperCase()
   return `${weekday} · ${md}`
-}
-
-/**
- * Until the AI pipeline emits per-thread summaries we render a
- * deterministic single-paragraph placeholder mirroring the Pencil
- * mock voice ("Alex shares Q1 priorities… he's asking for your
- * feedback by Friday."). Real summaries land on
- * `selectedFull.aiBrief.summary` once the model is wired up.
- */
-function summarize(email: FullEmail): string {
-  const sender = email.fromAddress.split('<')[0].trim().replace(/"/g, '') ||
-    email.fromAddress.split('@')[0]
-  const subject = email.subject?.trim() || 'a quick note'
-  const recipientCount = (email.toAddresses ?? []).length
-  const audience =
-    recipientCount > 1 ? `the ${recipientCount}-person thread` : 'you'
-  return `${sender} sent ${audience} about “${subject}”. Skim the body, then pick an action below — draft a reply, extract tasks for Work, or pop a meeting on the calendar.`
 }
 
 /**
