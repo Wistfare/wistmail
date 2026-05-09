@@ -22,7 +22,7 @@ describe('AuthShell', () => {
         <p>form</p>
       </AuthShell>,
     )
-    expect(screen.getByText('Wistfare Mail')).toBeInTheDocument()
+    expect(screen.getByText('WISTFARE MAIL')).toBeInTheDocument()
     expect(screen.getByText('YOUR INBOX,')).toBeInTheDocument()
     expect(screen.getByText('BUILT FOR FOCUS.')).toBeInTheDocument()
     expect(screen.getByText('form')).toBeInTheDocument()
@@ -43,7 +43,7 @@ describe('AuthShell', () => {
 describe('BrandMark + AuthHeading + AuthCard + AuthDivider', () => {
   it('renders brandmark text', () => {
     render(<BrandMark />)
-    expect(screen.getByText('Wistfare Mail')).toBeInTheDocument()
+    expect(screen.getByText('WISTFARE MAIL')).toBeInTheDocument()
   })
   it('renders heading eyebrow / title / description', () => {
     render(<AuthHeading eyebrow="Sign in" title="Welcome" description="hi" />)

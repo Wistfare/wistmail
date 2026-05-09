@@ -39,7 +39,7 @@ describe('LoginPage', () => {
   it('shows email + password fields', () => {
     render(<LoginPage />)
     expect(screen.getByPlaceholderText('you@yourdomain.com')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('••••••••••••')).toBeInTheDocument()
     expect(screen.getByText('Email address')).toBeInTheDocument()
     expect(screen.getByText('Password')).toBeInTheDocument()
   })
@@ -48,13 +48,13 @@ describe('LoginPage', () => {
     render(<LoginPage />)
     const setupLink = screen.getByText(/Set up your domain/)
     expect(setupLink.closest('a')).toHaveAttribute('href', '/setup')
-    const forgotLink = screen.getByText('Forgot?')
+    const forgotLink = screen.getByText(/Forgot password\?/i)
     expect(forgotLink.closest('a')).toHaveAttribute('href', '/forgot-password')
   })
 
   it('reveals password when toggled', () => {
     render(<LoginPage />)
-    const passwordInput = screen.getByPlaceholderText('Enter your password')
+    const passwordInput = screen.getByPlaceholderText('••••••••••••')
     expect(passwordInput).toHaveAttribute('type', 'password')
     const toggle = screen.getByRole('button', { name: /Show password/i })
     fireEvent.click(toggle)
@@ -100,7 +100,7 @@ describe('LoginPage', () => {
   it('flags short password', async () => {
     render(<LoginPage />)
     fireEvent.change(screen.getByPlaceholderText('you@yourdomain.com'), { target: { value: 'user@example.com' } })
-    fireEvent.change(screen.getByPlaceholderText('Enter your password'), { target: { value: 'short' } })
+    fireEvent.change(screen.getByPlaceholderText('••••••••••••'), { target: { value: 'short' } })
     const form = screen.getByPlaceholderText('you@yourdomain.com').closest('form')!
     fireEvent.submit(form)
     await waitFor(() => {
@@ -114,7 +114,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage />)
     fireEvent.change(screen.getByPlaceholderText('you@yourdomain.com'), { target: { value: 'user@example.com' } })
-    fireEvent.change(screen.getByPlaceholderText('Enter your password'), { target: { value: 'Password123' } })
+    fireEvent.change(screen.getByPlaceholderText('••••••••••••'), { target: { value: 'Password123' } })
     fireEvent.click(screen.getByRole('button', { name: /Sign in/i }))
 
     await waitFor(() => {
@@ -132,7 +132,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage />)
     fireEvent.change(screen.getByPlaceholderText('you@yourdomain.com'), { target: { value: 'user@example.com' } })
-    fireEvent.change(screen.getByPlaceholderText('Enter your password'), { target: { value: 'Password123' } })
+    fireEvent.change(screen.getByPlaceholderText('••••••••••••'), { target: { value: 'Password123' } })
     fireEvent.click(screen.getByRole('button', { name: /Sign in/i }))
 
     await waitFor(() => {
@@ -146,7 +146,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage />)
     fireEvent.change(screen.getByPlaceholderText('you@yourdomain.com'), { target: { value: 'user@example.com' } })
-    fireEvent.change(screen.getByPlaceholderText('Enter your password'), { target: { value: 'Password123' } })
+    fireEvent.change(screen.getByPlaceholderText('••••••••••••'), { target: { value: 'Password123' } })
     fireEvent.click(screen.getByRole('button', { name: /Sign in/i }))
 
     await waitFor(() => {

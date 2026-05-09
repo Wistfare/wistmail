@@ -1,26 +1,26 @@
-import { ShieldCheck } from 'lucide-react'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
 /**
- * AuthShell — the V3 split-screen used by login, MFA challenge, forgot
+ * AuthShell — V3 split-screen used by login, MFA challenge, forgot
  * password, reset password.
  *
- * Pencil reference: `LoginV3` (`Ar0aI`) and `MFAChallengeV3` (`XTWjb`).
+ * Pencil reference: `Screen/LoginV3` (`Ar0aI`):
+ *   ┌──── 1460 ────────────────────────────────────────────┐
+ *   │ decorPane 662 │ formPane fill                         │
+ *   │ bg #111       │ bg #000                               │
+ *   │ padding 60    │ padding [40, 80]                      │
+ *   │ vert · between│ centered                              │
+ *   └──────────────────────────────────────────────────────┘
  *
- * Layout (above lg breakpoint):
- *   ┌─────────────── 1460 ───────────────┐
- *   │  decorPane 662  │ formPane fill     │
- *   │  bg #111        │ bg #000           │
- *   │  padding 60     │ padding [40, 80]  │
- *   │  vert · between │ centered          │
- *   └────────────────────────────────────┘
- *
- * Below lg the decor pane collapses; the form fills the screen.
+ * Below the lg breakpoint the decor pane is hidden; the form fills the
+ * whole screen.
  */
 
 export interface AuthShellProps {
   decor?: React.ReactNode
-  /** Optional below-marketing footer line (e.g. "Self-hosted · open source"). */
+  /** Optional bottom-row footer in the decor pane. Pencil's LoginV3 has
+   * no footer — leave undefined unless a sibling frame (e.g. setup) does. */
   footer?: React.ReactNode
   children: React.ReactNode
   className?: string
@@ -29,16 +29,22 @@ export interface AuthShellProps {
 export function AuthShell({ decor, footer, children, className }: AuthShellProps) {
   return (
     <div className={cn('flex min-h-screen bg-wm-bg', className)}>
-      <aside className="relative hidden w-[45%] max-w-[662px] flex-col justify-between border-r border-wm-border bg-wm-surface p-[60px] lg:flex">
-        {decor ?? <DefaultDecor />}
-        {footer && (
-          <div className="flex items-center gap-2.5 font-mono text-[10px] font-semibold text-wm-text-tertiary">
-            <ShieldCheck className="h-3.5 w-3.5 text-wm-accent" />
-            {footer}
-          </div>
+      <aside
+        className={cn(
+          'relative hidden flex-col justify-between border-r border-wm-border bg-wm-surface lg:flex',
+          'w-[45%] max-w-[662px]',
         )}
+        // Pencil decorPane padding: 60 — render the literal value so the
+        // header + tagline line up against the design.
+        style={{ padding: 60 }}
+      >
+        {decor ?? <DefaultDecor />}
+        {footer && <div className="font-mono text-[10px] text-wm-text-tertiary">{footer}</div>}
       </aside>
-      <main className="flex flex-1 items-center justify-center px-6 py-10 lg:px-20 lg:py-10">
+      {/* Pencil formPane: padding [40, 80] (lg+) — collapses to 24/40 on
+          smaller screens. Form children are rendered once; the form
+          itself constrains its own width via `max-w-[420px]`. */}
+      <main className="flex flex-1 items-center justify-center px-6 py-10 lg:px-[80px] lg:py-10">
         {children}
       </main>
     </div>
@@ -46,8 +52,8 @@ export function AuthShell({ decor, footer, children, className }: AuthShellProps
 }
 
 /**
- * Default left-pane decoration: logo at top + marketing tagline at bottom.
- * Pencil's `decorPane` for LoginV3.
+ * Default left-pane decoration: brand mark at top, marketing tagline at
+ * bottom. Pencil's `decorPane.ldecH` + `decorPane.ldecQ`.
  */
 export function DefaultDecor() {
   return (
@@ -59,26 +65,53 @@ export function DefaultDecor() {
 }
 
 export function BrandMark({ className }: { className?: string }) {
+  // Pencil ldecLogo: alignItems center, gap 14 horizontal.
+  // ldecLogoMark: 50×48, cornerRadius 14, image fill (mode=fit) of
+  // `wistfare_mail_logo.png`. The wordmark is JetBrains Mono 14px 700
+  // #FFFFFF letterSpacing 3.
   return (
-    <div className={cn('flex items-center gap-3.5', className)}>
-      <div className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-wm-accent">
-        <span className="font-sans text-xl font-bold text-wm-text-on-accent">W</span>
+    <div className={cn('flex items-center gap-[14px]', className)}>
+      <div
+        className="relative shrink-0 overflow-hidden rounded-[14px]"
+        style={{ width: 50, height: 48 }}
+      >
+        <Image
+          src="/wistfare_mail_logo.png"
+          alt="Wistfare Mail logo"
+          fill
+          sizes="50px"
+          className="object-contain"
+          priority
+        />
       </div>
-      <span className="font-mono text-sm font-bold uppercase tracking-[3px] text-wm-text-primary">
-        Wistfare Mail
+      <span
+        className="font-mono text-[14px] font-bold text-wm-text-primary"
+        style={{ letterSpacing: 3 }}
+      >
+        WISTFARE MAIL
       </span>
     </div>
   )
 }
 
 export function Tagline() {
+  // Pencil ldecQ: gap 18 vertical, width fill_container.
+  // - "YOUR INBOX," — JetBrains Mono 38px 700 #FFFFFF letterSpacing 1 lineHeight 1.1
+  // - "BUILT FOR FOCUS." — same but #BFFF00
+  // - subtitle — JetBrains Mono 13px 500 #999999 lineHeight 1.6
   return (
-    <div className="flex max-w-md flex-col gap-4">
-      <h2 className="font-mono text-[38px] font-bold leading-[1.1] tracking-[1px]">
+    <div className="flex w-full flex-col" style={{ gap: 18 }}>
+      <h2
+        className="font-mono font-bold"
+        style={{ fontSize: 38, lineHeight: 1.1, letterSpacing: 1 }}
+      >
         <span className="block text-wm-text-primary">YOUR INBOX,</span>
         <span className="block text-wm-accent">BUILT FOR FOCUS.</span>
       </h2>
-      <p className="font-mono text-[13px] font-medium leading-[1.6] text-wm-text-secondary">
+      <p
+        className="font-mono font-medium text-wm-text-secondary"
+        style={{ fontSize: 13, lineHeight: 1.6 }}
+      >
         Mail · Chat · Calendar · Projects.
         <br />
         One workspace, end-to-end encrypted, AI-aware.

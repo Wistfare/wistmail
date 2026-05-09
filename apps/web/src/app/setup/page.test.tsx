@@ -167,10 +167,12 @@ describe('SetupPage', () => {
 
   it('renders the V3 brandmark', () => {
     render(<SetupPage />)
-    // V3 BrandMark renders the literal text "Wistfare Mail" with CSS
-    // uppercase + tracking; the rendered glyphs read "WISTFARE MAIL".
-    expect(screen.getByText('Wistfare Mail')).toBeInTheDocument()
-    expect(screen.getByText('W')).toBeInTheDocument()
+    // V3 BrandMark renders the literal node text "WISTFARE MAIL" plus
+    // the wistfare_mail_logo.png image (alt text exposes it via role).
+    expect(screen.getByText('WISTFARE MAIL')).toBeInTheDocument()
+    expect(
+      screen.getByRole('img', { name: /Wistfare Mail logo/ }),
+    ).toBeInTheDocument()
   })
 
   it('resumes setup if it is in progress', async () => {
