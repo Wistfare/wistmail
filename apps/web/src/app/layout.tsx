@@ -16,8 +16,12 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: 'Wistfare Mail',
-  description: 'Open-source email platform. Self-hostable email client + transactional email API.',
-  icons: { icon: '/favicon.ico' },
+  description:
+    'Open-source email platform. Self-hostable email client + transactional email API.',
+  // Favicons are auto-detected from `src/app/icon.png` and
+  // `src/app/apple-icon.png` — Next.js generates the correct
+  // <link rel="icon"> / <link rel="apple-touch-icon"> tags at build
+  // time. No manual `icons` mapping needed.
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

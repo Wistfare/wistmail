@@ -128,11 +128,7 @@ export default function LoginPage() {
       )}
 
       {/* (3) fEmail */}
-      <FieldShell
-        label="Email address"
-        error={errors.email}
-        active={false /* design's email field shows the unfocused stroke */}
-      >
+      <FieldShell label="Email address" error={errors.email}>
         <Mail className="h-[14px] w-[14px] shrink-0" style={{ color: '#6e6e6e' }} />
         <input
           type="email"
@@ -140,7 +136,6 @@ export default function LoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@yourdomain.com"
           autoComplete="email"
-          autoFocus
           required
           className={cn(
             'min-w-0 flex-1 bg-transparent font-mono outline-none',
@@ -154,7 +149,6 @@ export default function LoginPage() {
       <FieldShell
         label="Password"
         error={errors.password}
-        active /* Pencil shows the password field with the lime active stroke */
         trailingLabel={
           <Link
             href="/forgot-password"
@@ -166,8 +160,9 @@ export default function LoginPage() {
         }
       >
         <Lock
-          className="h-[14px] w-[14px] shrink-0 text-wm-accent"
+          className="h-[14px] w-[14px] shrink-0"
           aria-hidden
+          style={{ color: '#6e6e6e' }}
         />
         <input
           type={reveal ? 'text' : 'password'}
@@ -272,19 +267,21 @@ export default function LoginPage() {
  *
  * Input box:
  *   - cornerRadius 10, height 46, bg #111111, padding [0, 14], gap 10
- *   - default border #1A1A1A; `active` flips it to lime to match the
- *     password field's "currently-being-typed-in" treatment.
+ *   - border defaults to #1A1A1A (idle) and flips to lime via
+ *     `focus-within:border-wm-accent` while a child input is focused.
+ *     The Pencil mock shows the password row with the lime stroke
+ *     because the user is actively typing in it — there is no separate
+ *     "active" state independent of focus, so the styling is purely
+ *     focus-driven.  Errors override both with the error palette.
  */
 function FieldShell({
   label,
   trailingLabel,
-  active,
   error,
   children,
 }: {
   label: string
   trailingLabel?: React.ReactNode
-  active?: boolean
   error?: string
   children: React.ReactNode
 }) {
@@ -300,23 +297,21 @@ function FieldShell({
         <FieldLabel>{label}</FieldLabel>
       )}
 
-      {/* input box — Pencil f1Box / f2Box */}
+      {/* input box — Pencil f1Box / f2Box. Tailwind owns the border
+          colour so the focus-within rule actually applies; an inline
+          `borderColor` would beat the class and pin the colour. */}
       <div
         className={cn(
-          'flex w-full items-center bg-wm-surface',
-          'transition-colors focus-within:border-wm-accent',
+          'flex w-full items-center border bg-wm-surface transition-colors',
+          error
+            ? 'border-wm-error focus-within:border-wm-error'
+            : 'border-wm-border focus-within:border-wm-accent',
         )}
         style={{
           height: 46,
           borderRadius: 10,
           padding: '0 14px',
           gap: 10,
-          border: '1px solid',
-          borderColor: error
-            ? 'var(--color-wm-error)'
-            : active
-              ? 'var(--color-wm-accent)'
-              : 'var(--color-wm-border)',
         }}
       >
         {children}
