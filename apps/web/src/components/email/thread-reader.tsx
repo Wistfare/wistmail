@@ -60,9 +60,24 @@ export function ThreadReader({
     [messages],
   )
 
-  // Singleton thread — render the lone email exactly like the legacy
-  // single-email reading pane (no avatar stack, no prior cards).
+  // Pencil ships two layouts for the reading pane:
+  //   - InboxV3-Thread          (Z9fGe) — group: 3+ unique senders
+  //   - InboxV3-Thread-OneToOne (BEYcq) — 1:1 between two parties
+  // The 1:1 variant skips the avatar stack and just shows a single
+  // sender row above the messages.  We pick by counting unique
+  // sender addresses across the thread (case-insensitive) so a 1:1
+  // with many back-and-forth messages still uses the lighter
+  // chrome.  Singleton threads (one inbound or one cold draft)
+  // collapse further: no header at all above the body.
+  const uniqueSenders = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of sorted) {
+      set.add(extractAddress(m.fromAddress).toLowerCase())
+    }
+    return set
+  }, [sorted])
   const isSingleton = sorted.length <= 1
+  const isOneToOne = !isSingleton && uniqueSenders.size <= 2
 
   // Find the anchor's slot in the chronological list so prior /
   // following messages render in the right place.  Until the thread
@@ -77,7 +92,15 @@ export function ThreadReader({
 
   return (
     <div className="flex flex-col" style={{ gap: 16, padding: '0 28px' }}>
-      {!isSingleton && (
+      {isOneToOne && (
+        <OneToOneHeader
+          anchor={anchor}
+          onReply={onReply}
+          onReplyAll={onReplyAll}
+          onForward={onForward}
+        />
+      )}
+      {!isOneToOne && !isSingleton && (
         <ParticipantsRow
           messages={sorted}
           onReply={onReply}
@@ -96,7 +119,7 @@ export function ThreadReader({
 
       <ExpandedMessage
         email={anchor}
-        showSenderRow
+        showSenderRow={!isOneToOne}
         showActions={isSingleton}
         onReply={onReply}
         onReplyAll={onReplyAll}
@@ -110,6 +133,111 @@ export function ThreadReader({
           onClick={() => onPickMessage(m.id)}
         />
       ))}
+    </div>
+  )
+}
+
+/// Pencil `Screen/InboxV3-Thread-OneToOne` (`BEYcq`) header — the
+/// thread is between two parties, so we collapse the avatar stack to
+/// a single sender row.  Identical typography to the senderRow
+/// `Ogz6Z` in the legacy single-email pane, just without the
+/// duplicate render inside ExpandedMessage (we suppress its sender
+/// row when this header is in play, otherwise the avatar shows up
+/// twice in a row).
+function OneToOneHeader({
+  anchor,
+  onReply,
+  onReplyAll,
+  onForward,
+}: {
+  anchor: FullEmail
+  onReply: () => void
+  onReplyAll: () => void
+  onForward: () => void
+}) {
+  const senderName = extractName(anchor.fromAddress)
+  return (
+    <div
+      className="flex w-full items-center"
+      style={{ gap: 12, padding: '8px 0 12px 0' }}
+    >
+      <Avatar name={senderName} size="lg" />
+      <div className="flex min-w-0 flex-1 flex-col" style={{ gap: 2 }}>
+        <p
+          className="truncate font-mono font-semibold text-wm-text-primary"
+          style={{ fontSize: 13 }}
+        >
+          {senderName}
+        </p>
+        <p
+          className="truncate font-mono"
+          style={{ fontSize: 11, color: '#6e6e6e' }}
+        >
+          {extractAddress(anchor.fromAddress)}
+          {(anchor.toAddresses ?? []).length > 0 && (
+            <>
+              {' '}
+              → {(anchor.toAddresses ?? []).map(extractAddress).join(', ')}
+            </>
+          )}
+        </p>
+      </div>
+      <span
+        className="shrink-0 font-mono"
+        style={{ fontSize: 11, color: '#6e6e6e' }}
+      >
+        {formatRelative(anchor.createdAt)}
+      </span>
+      <div className="flex items-center" style={{ gap: 8 }}>
+        <button
+          type="button"
+          onClick={onReply}
+          className="inline-flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover"
+          style={{
+            gap: 6,
+            padding: '8px 14px',
+            borderRadius: 18,
+            color: '#000000',
+          }}
+          aria-label="Reply"
+        >
+          <Reply style={{ width: 13, height: 13 }} />
+          <span
+            className="font-mono font-bold uppercase"
+            style={{ fontSize: 11, letterSpacing: 1 }}
+          >
+            Reply
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onReplyAll}
+          className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-primary transition-colors hover:bg-wm-surface-hover"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            border: '1px solid var(--color-wm-border)',
+          }}
+          aria-label="Reply all"
+        >
+          <ReplyAll style={{ width: 14, height: 14 }} />
+        </button>
+        <button
+          type="button"
+          onClick={onForward}
+          className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-primary transition-colors hover:bg-wm-surface-hover"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            border: '1px solid var(--color-wm-border)',
+          }}
+          aria-label="Forward"
+        >
+          <Forward style={{ width: 14, height: 14 }} />
+        </button>
+      </div>
     </div>
   )
 }

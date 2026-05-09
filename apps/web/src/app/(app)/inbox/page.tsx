@@ -852,10 +852,11 @@ export default function InboxPage() {
                   archive · alarm-clock · tag · trash-2 · ellipsis
                   icons 14 #999999 */}
             <div
-              className="flex w-full items-center justify-between"
+              className="flex w-full shrink-0 items-center justify-between"
               style={{
                 padding: '16px 28px',
                 borderBottom: '1px solid var(--color-wm-border)',
+                background: 'var(--color-wm-bg)',
               }}
             >
               <div className="flex min-w-0 items-center" style={{ gap: 10 }}>
@@ -963,27 +964,32 @@ export default function InboxPage() {
               </div>
             </div>
 
-            {/* subjRow (Pencil `BTgy9`, gap 6):
-                  "WEDNESDAY · APR 23"   10/700 #6e6e6e tracking 1
-                  "<subject>"             26/700 white lineHeight 1.25
-                senderRow (`Ogz6Z`, gap 12):
-                  44×44 round avatar
-                  sCol: name 13/600 white + "from → to,cc" 11/normal #6e6e6e
-                  sActions (gap 8):
-                    REPLY pill (lime) — reply icon 13 + "REPLY" 11/700 black
-                    36×36 reply-all surface button (radius 18, 1px border)
-                Pencil scroll wrapper (`Vmhgr`): padding [24, 28], gap 20.
-                We render subjRow + senderRow inline at the top of the
-                scrolling container so they don't double up with the
-                toolbar above. */}
-            <div
-              className="flex flex-col"
-              style={{
-                gap: 20,
-                padding: '24px 28px 0 28px',
-              }}
-            >
-              <div className="flex flex-col" style={{ gap: 6 }}>
+            {/* Single scroll container — Pencil V3 anchors only the
+                toolbar above; the subjRow ("WEDNESDAY · APR 23" +
+                title), participant header, and message body all
+                slide under it as the user scrolls.  Putting the
+                subject row inside the scroll surface (instead of
+                between toolbar and scroll) means a long 5-line
+                title doesn't squat at the top of the pane forever
+                — the user can scroll it out of the way to read the
+                body. */}
+            <div className="flex-1 overflow-y-auto">
+              {/* subjRow (Pencil `BTgy9`, gap 6):
+                    "WEDNESDAY · APR 23"   10/700 #6e6e6e tracking 1
+                    "<subject>"             26/700 white lineHeight 1.25
+                  Title is line-clamped to 3 lines so newsletter
+                  subjects packed with " | " separators ("Story A |
+                  Story B | Story C…") truncate gracefully instead of
+                  pushing the body 5+ lines down.  Hover or focus on
+                  the toolbar breadcrumb (which carries the full
+                  subject) to read the rest. */}
+              <div
+                className="flex flex-col"
+                style={{
+                  gap: 6,
+                  padding: '20px 28px 16px 28px',
+                }}
+              >
                 <span
                   className="font-mono font-bold uppercase"
                   style={{
@@ -996,47 +1002,55 @@ export default function InboxPage() {
                 </span>
                 <h2
                   className="font-mono font-bold text-wm-text-primary"
+                  title={selectedFull.subject || '(no subject)'}
                   style={{
-                    fontSize: 26,
-                    lineHeight: 1.25,
+                    fontSize: 24,
+                    lineHeight: 1.2,
                     // Long unbreakable strings (e.g. "[GitHub] Your
                     // personal access token (classic)…") have no
                     // natural break opportunities — `overflow-wrap:
                     // anywhere` lets the browser break inside the
                     // word so the title stays inside the column.
                     overflowWrap: 'anywhere',
+                    // Cap the rendered subject at 3 lines so a
+                    // newsletter "Story A | Story B | Story C |
+                    // Story D" headline doesn't dominate the pane.
+                    // The full subject still lives in the toolbar
+                    // breadcrumb above + the title attribute below.
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
                   }}
                 >
                   {selectedFull.subject || '(no subject)'}
                 </h2>
               </div>
-            </div>
 
-            {/* Thread reader — Pencil `Screen/InboxV3-Thread.Reading`
-                (`srVZO`).  Renders the participant stack, every prior
-                message as a compact card, and the current anchor
-                fully expanded.  Clicking a prior card switches the
-                anchor by updating `selectedId`, which triggers a
-                fresh `useEmailDetail` fetch and re-renders the
-                thread with that message expanded. */}
-            <div
-              className="flex-1 overflow-y-auto"
-              style={{ padding: '4px 0 32px 0' }}
-            >
-              {/* The Pencil V3 AI Brief block (`Hyivo`) — sparkles
+              {/* Thread reader — Pencil `Screen/InboxV3-Thread.Reading`
+                  (`srVZO`).  Renders the participant stack, every prior
+                  message as a compact card, and the current anchor
+                  fully expanded.  Clicking a prior card switches the
+                  anchor by updating `selectedId`, which triggers a
+                  fresh `useEmailDetail` fetch and re-renders the
+                  thread with that message expanded.
+
+                  The Pencil V3 AI Brief block (`Hyivo`) — sparkles
                   header, summary paragraph, and the three action chips
                   (Draft reply / Extract tasks / Schedule call) — is
                   intentionally hidden for now.  The AIBrief component
                   itself is preserved in `components/email/ai-brief.tsx`
                   so it can be wired back in once the AI pipeline emits
                   per-thread summaries. */}
-              <ThreadReader
-                anchor={selectedFull}
-                onPickMessage={(id) => setSelectedId(id)}
-                onReply={handleReply}
-                onReplyAll={handleReplyAll}
-                onForward={handleForward}
-              />
+              <div style={{ paddingBottom: 32 }}>
+                <ThreadReader
+                  anchor={selectedFull}
+                  onPickMessage={(id) => setSelectedId(id)}
+                  onReply={handleReply}
+                  onReplyAll={handleReplyAll}
+                  onForward={handleForward}
+                />
+              </div>
             </div>
 
             {/* Inline composer — Pencil V3 anchors `composerWrap` at
@@ -1047,10 +1061,11 @@ export default function InboxPage() {
                 past the body to find their reply. */}
             {composerMode && (
               <div
+                className="shrink-0"
                 style={{
-                  padding: '0 28px 20px 28px',
+                  padding: '16px 28px 20px 28px',
                   borderTop: '1px solid var(--color-wm-border)',
-                  paddingTop: 16,
+                  background: 'var(--color-wm-bg)',
                 }}
               >
                 <InlineComposer
