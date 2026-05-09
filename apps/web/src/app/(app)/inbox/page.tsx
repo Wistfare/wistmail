@@ -28,6 +28,11 @@ import { EmailRowV3 } from '@/components/email/email-row-v3'
 import { InboxSectionHeader } from '@/components/email/inbox-section-header'
 import { NewDropdown } from '@/components/email/new-dropdown'
 import { ReadingEmpty } from '@/components/email/reading-empty'
+import {
+  InlineComposer,
+  type InlineComposerMode,
+  type RecipientChip,
+} from '@/components/email/inline-composer'
 import { ChatThreadView } from '@/components/chat/chat-thread-view'
 import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
 import {
@@ -90,6 +95,18 @@ export default function InboxPage() {
   const [contentType, setContentType] = useState<FeedKind>(
     kindParam === 'mail' || kindParam === 'chats' ? kindParam : 'all',
   )
+  /// Inline composer state — Pencil V3 puts reply / reply-all /
+  /// forward right inside the thread reading pane (Components/V3-
+  /// ComposerVariants).  When `composerMode` is set we render the
+  /// InlineComposer beneath the email body; the floating popup is
+  /// reserved for the "+ NEW" → "New email" creation flow only.
+  const [composerMode, setComposerMode] = useState<InlineComposerMode | null>(
+    null,
+  )
+  const [composerTo, setComposerTo] = useState<RecipientChip[]>([])
+  const [composerCc, setComposerCc] = useState<RecipientChip[]>([])
+  const [composerSubject, setComposerSubject] = useState<string>('')
+  const [composerBody, setComposerBody] = useState<string>('')
 
   // Sync external URL changes to internal state — covers the case
   // where the user uses the back button to return to a deep-linked
@@ -126,11 +143,19 @@ export default function InboxPage() {
   const [snoozeOpen, setSnoozeOpen] = useState(false)
 
   // Reset both selection slots when the folder changes — chat or
-  // email, whichever was active.
+  // email, whichever was active. Closes any open inline composer too
+  // so the user doesn't carry a half-typed reply across folders.
   useEffect(() => {
     setSelectedId(null)
     setSelectedChatId(null)
+    setComposerMode(null)
   }, [folderParam])
+
+  // When the user picks a different email, drop any open inline
+  // composer for the previous one.
+  useEffect(() => {
+    setComposerMode(null)
+  }, [selectedId])
 
   // Flatten the infinite-query pages into a single FeedItem array.
   // Items are already chronologically merged server-side; the client
@@ -436,14 +461,18 @@ export default function InboxPage() {
     return `\n\n${header}\n${original}`
   }
 
+  /// Reply / reply-all / forward all open the inline composer in the
+  /// same column as the email body, matching Pencil's V3 thread
+  /// design — no more floating popup for these flows.  The floating
+  /// FloatingCompose only appears for the "+ NEW" → "New email"
+  /// creation flow now.
   function handleReply() {
     if (!selectedFull) return
-    openCompose({
-      to: [extractAddress(selectedFull.fromAddress)],
-      subject: prefixSubject('Re:', selectedFull.subject),
-      body: quotedReplyBody(selectedFull),
-      inReplyTo: selectedFull.id,
-    })
+    setComposerMode('reply')
+    setComposerTo([{ email: extractAddress(selectedFull.fromAddress) }])
+    setComposerCc([])
+    setComposerSubject(prefixSubject('Re:', selectedFull.subject))
+    setComposerBody(quotedReplyBody(selectedFull))
   }
 
   function handleReplyAll() {
@@ -454,27 +483,68 @@ export default function InboxPage() {
       ...(selectedFull.cc ?? []).map(extractAddress),
     ])
     others.delete(sender)
-    openCompose({
-      to: [sender],
-      cc: [...others].filter((a) => a.length > 0),
-      subject: prefixSubject('Re:', selectedFull.subject),
-      body: quotedReplyBody(selectedFull),
-      inReplyTo: selectedFull.id,
-    })
+    setComposerMode('reply-all')
+    setComposerTo([{ email: sender }])
+    setComposerCc(
+      [...others]
+        .filter((a) => a.length > 0)
+        .map((email) => ({ email })),
+    )
+    setComposerSubject(prefixSubject('Re:', selectedFull.subject))
+    setComposerBody(quotedReplyBody(selectedFull))
   }
 
   function handleForward() {
     if (!selectedFull) return
-    openCompose({
-      subject: prefixSubject('Fwd:', selectedFull.subject),
-      body: `\n\n---------- Forwarded message ----------\nFrom: ${selectedFull.fromAddress}\nDate: ${new Date(
+    setComposerMode('forward')
+    setComposerTo([])
+    setComposerCc([])
+    setComposerSubject(prefixSubject('Fwd:', selectedFull.subject))
+    setComposerBody(
+      `\n\n---------- Forwarded message ----------\nFrom: ${selectedFull.fromAddress}\nDate: ${new Date(
         selectedFull.createdAt,
       ).toLocaleString()}\nSubject: ${selectedFull.subject}\nTo: ${(selectedFull.toAddresses ?? []).join(', ')}${
         (selectedFull.cc ?? []).length > 0
           ? `\nCc: ${(selectedFull.cc ?? []).join(', ')}`
           : ''
       }\n\n${selectedFull.textBody || ''}`,
+    )
+  }
+
+  function closeComposer() {
+    setComposerMode(null)
+    setComposerTo([])
+    setComposerCc([])
+    setComposerSubject('')
+    setComposerBody('')
+  }
+
+  /// Sends the inline composer's draft via the existing compose API.
+  /// We reuse `/api/v1/inbox/compose` so the network surface is
+  /// unchanged — only the UI moved from popup to inline.
+  async function sendInlineComposer(input: {
+    to: RecipientChip[]
+    cc?: RecipientChip[]
+    bcc?: RecipientChip[]
+    subject?: string
+    body: string
+  }) {
+    if (!selectedFull) {
+      closeComposer()
+      return
+    }
+    await api.post('/api/v1/inbox/compose', {
+      fromAddress: undefined, // server picks the user's primary mailbox
+      toAddresses: input.to.map((c) => c.email),
+      cc: input.cc?.map((c) => c.email),
+      bcc: input.bcc?.map((c) => c.email),
+      subject: input.subject ?? composerSubject,
+      textBody: input.body,
+      inReplyTo: composerMode === 'forward' ? undefined : selectedFull.id,
+      send: true,
     })
+    toast.show({ message: 'Sent.' })
+    closeComposer()
   }
 
   /// Renders the email body via the sandboxed iframe component, which
@@ -1021,6 +1091,25 @@ export default function InboxPage() {
                   per-thread summaries. Until then the reading pane
                   shows the email body directly. */}
               {renderEmailBody(selectedFull)}
+
+              {/* Inline composer — Pencil V3 puts reply / reply-all
+                  / forward right inside the thread reading pane
+                  (Components/V3-ComposerVariants).  When the user
+                  hasn't engaged any of those actions, this slot is
+                  empty and the body holds the full reading area. */}
+              {composerMode && (
+                <div style={{ marginTop: 24 }}>
+                  <InlineComposer
+                    mode={composerMode}
+                    to={composerTo}
+                    cc={composerCc}
+                    subject={composerSubject}
+                    initialBody={composerBody}
+                    onCancel={closeComposer}
+                    onSend={sendInlineComposer}
+                  />
+                </div>
+              )}
             </div>
           </>
         )}

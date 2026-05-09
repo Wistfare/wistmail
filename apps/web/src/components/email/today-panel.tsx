@@ -308,7 +308,11 @@ function TodayEmpty({
           </p>
         </div>
 
-        {/* eTrCta — ADD A TASK button. */}
+        {/* eTrCta — ADD A TASK button. Pencil `R2H8ux` declares no
+            fill at all (background removed in the latest design pass)
+            and a stroke `{ thickness: 1 }` with no fill colour, which
+            renders as no visible border. We honour both: transparent
+            background, no border. */}
         <button
           type="button"
           onClick={onAddTask}
@@ -317,8 +321,6 @@ function TodayEmpty({
             gap: 8,
             padding: '10px 14px',
             borderRadius: 10,
-            background: '#000000',
-            border: '1px solid var(--color-wm-border)',
           }}
         >
           <Plus style={{ width: 13, height: 13 }} />

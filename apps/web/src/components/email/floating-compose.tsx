@@ -1,20 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
-  Send,
-  Trash2,
-  X,
-  Minus,
+  AlarmClock,
+  Calendar as CalendarIcon,
+  ChevronDown,
+  Image as ImageIcon,
   Maximize2,
   Minimize2,
-  Bold,
-  Italic,
-  Underline,
-  Link2,
+  Minus,
   Paperclip,
-  Clock,
-  ChevronDown,
+  Send,
+  Smile,
+  Sparkles,
+  SquarePen,
+  X,
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -59,31 +59,63 @@ interface FloatingComposeProps {
 }
 
 /**
- * Floating compose popup — Pencil reference: `Screen/FloatingCompose`
- * (`tYDXb`) and `composePopup` (`7fMbA`).
+ * Floating compose popup — Pencil reference: `Screen/ComposeV3-Signature`
+ * (`Qe0q2.composeModal` / `Xl7Os`).
  *
- * Geometry (sharp 0-radius corners, sits flush bottom-right):
- *   container 560×582, fill #111111, outside 1px #1A1A1A,
- *     shadow blur 24 #00000066 offset y=-4
- *   titleBar  bg #1A2200, padding [10,16], gap 8, 1px bottom #1A1A1A
- *     - "New Message" Inter 13/600 white
- *     - flex
- *     - minus 16, maximize-2 14, x 16 — all #404040
- *   fields (vertical, each row 1px bottom #1A1A1A):
- *     fromRow:  padding [8,16] gap 8 — "From" 11/normal #404040 mono +
- *               value 12/normal white mono
- *     toRow:    padding [8,16] gap 8 — "To" 11/normal #404040 +
- *               chip(s) (1px #1A1A1A border, padding [2,8], gap 4,
- *                       text 11 white, x 10 #404040) + flex +
- *               "Cc  Bcc" 10/normal #404040
- *     subjectRow: padding [8,16] — "Subject" 11/normal #404040 +
- *                 Inter 13/500 white
- *   bodyArea: padding [12,16], Inter 13/normal #999999 lineHeight 1.6
- *   toolbar:  padding [8,12], gap 4, 1px top #1A1A1A
- *     bold/italic/underline (16 #404040) | sep | link-2/paperclip
- *     | flex | trash-2 (16 #404040) | sep |
- *     sendBtn — lime fill, padding [6,14], gap 6:
- *       send icon 14 black + "Send" mono 12/600 black
+ * Used only for the "+ NEW" → "New email" creation flow now. Reply /
+ * reply-all / forward live inline in the thread reading pane via
+ * `<InlineComposer>` (see `inline-composer.tsx`).
+ *
+ *   container (`Xl7Os`) — bottom-right, 580×580
+ *     cornerRadius [14, 14, 0, 0]   (rounded top corners only)
+ *     fill #111111, 1px outside #1A1A1A
+ *     drop-shadow blur 48 #000000B0 offset y=-8
+ *
+ *   mHead (`UnaiP`, padding [16, 20, 14, 20], 1px bottom)
+ *     left  (gap 10): square-pen 14 LIME + "NEW EMAIL" 11/700 white
+ *                     tracking 1.5
+ *     right (gap 6) : 3 round-square 28×28 (radius 8) buttons —
+ *                     minus 13 / maximize-2 12 / x 13 — icons #999
+ *
+ *   fields (`VvzPo`, padding [0, 20, 8, 20])
+ *     frTo  (padding [12, 0], 1px bottom):
+ *       label "TO" 10/700 #6e6e6e tracking 1.5 width 48
+ *       chip stack + cursor "|" lime
+ *       "Cc Bcc" toggle 11/600 #6e6e6e
+ *     frSubj (padding [12, 0], 1px bottom):
+ *       label "SUBJECT" 10/700 #6e6e6e tracking 1.5 width 54
+ *       value 13/600 white
+ *     frFrom (padding [12, 0]):
+ *       label "FROM" 10/700 #6e6e6e tracking 1.5 width 48
+ *       chip — radius 14, bg #000, 1px #1A1A1A border, padding
+ *         [4, 10, 4, 4]: 20-px lime avatar + 12-px white email +
+ *         chevron-down 11 #6e6e6e
+ *
+ *   aiHint (`qxyXq`, bg #1A2200, padding [10, 20], 1px top + bottom)
+ *     sparkles 13 lime + "AI · DRAFT FROM PROMPT" 10/700 lime
+ *     tracking 1.5 + flex + "⌘K" 10/600 lime
+ *
+ *   body (`mky4G`, padding [20, 20, 12, 20], gap 12)
+ *     paragraphs Inter 14/normal lineHeight 1.6 (first paragraph
+ *     white "Hey Alex,", rest #999)
+ *     sigBlk (`R3IcE`, cornerRadius 8, gap 14, padding [10, 0],
+ *       1px LEFT border):
+ *       sigAv 48×48 cornerRadius 10 lime fill, "W" 22/700 black
+ *       sigCol gap 2:
+ *         "Veda Nsengimana" Inter 14/700 white
+ *         "Founder · Wistmail" Inter 12/500 #999
+ *         "veda@wistmail.com · wistmail.com" Inter 11/500 LIME
+ *
+ *   mTool (`RCjSS`, padding [12, 20, 16, 20], 1px top, justify between)
+ *     toolL (gap 4): 4 round-square 32×32 (radius 8) transparent
+ *                    buttons — paperclip / image / smile / calendar
+ *                    — icons 14 #999
+ *     toolR (gap 8):
+ *       SCHEDULE pill — radius 18, bg #000, padding [8, 14], 1px
+ *         #1A1A1A: alarm-clock 12 #999 + "SCHEDULE" 11/700 #999
+ *       SEND pill — radius 18, lime, drop-shadow blur 16
+ *         #BFFF0040 offset y=4, padding [8, 16]: send 13 black +
+ *         "SEND" 11/700 black tracking 1
  */
 export function FloatingCompose({
   initialData,
@@ -106,6 +138,7 @@ export function FloatingCompose({
   const [error, setError] = useState('')
   const [showSchedule, setShowSchedule] = useState(false)
   const [scheduledAt, setScheduledAt] = useState('')
+  const [showFromMenu, setShowFromMenu] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -131,7 +164,6 @@ export function FloatingCompose({
       setError('Subject is required')
       return
     }
-
     setSending(true)
     setError('')
     try {
@@ -144,12 +176,9 @@ export function FloatingCompose({
         textBody: body,
         mailboxId: fromMailboxId,
         inReplyTo: inReplyTo || undefined,
-        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
-        // Schedule send is still a real send — server flips the draft
-        // into folder='drafts' with scheduledAt set and the dispatcher
-        // picks it up when the timestamp elapses. Passing send:true
-        // here is what tells the server "this is scheduled, not a
-        // saved draft that the user will finish later."
+        scheduledAt: scheduledAt
+          ? new Date(scheduledAt).toISOString()
+          : undefined,
         send: true,
       })
       onSent?.()
@@ -161,41 +190,44 @@ export function FloatingCompose({
     }
   }
 
-  // Minimized: just the title bar strip — keeps the same #1A2200 bar
-  // shape so it reads as a docked compose, not a tooltip.
+  // Minimized: just the header strip pinned to bottom-right.
   if (mode === 'minimized') {
     return (
       <div
         className="fixed bottom-0 right-6 z-50 flex w-72 items-center"
         style={{
           background: '#111111',
-          border: '1px solid #1A1A1A',
-          boxShadow: '0 -4px 24px 0 rgba(0,0,0,0.4)',
+          border: '1px solid var(--color-wm-border)',
+          borderRadius: '14px 14px 0 0',
+          boxShadow: '0 -8px 48px 0 rgba(0,0,0,0.7)',
         }}
       >
         <button
           onClick={() => setMode('open')}
-          className="flex w-full cursor-pointer items-center bg-wm-accent-dim text-left transition-colors hover:bg-wm-accent-dim/80"
+          className="flex w-full cursor-pointer items-center text-left"
           style={{
-            gap: 8,
-            padding: '10px 16px',
+            gap: 10,
+            padding: '14px 20px',
           }}
         >
+          <SquarePen
+            style={{ width: 14, height: 14, color: 'var(--color-wm-accent)' }}
+          />
           <span
-            className="flex-1 truncate font-sans font-semibold text-wm-text-primary"
-            style={{ fontSize: 13 }}
+            className="flex-1 truncate font-mono font-bold uppercase text-wm-text-primary"
+            style={{ fontSize: 11, letterSpacing: 1.5 }}
           >
-            {subject || 'New Message'}
+            {subject || 'New email'}
           </span>
           <Maximize2
-            style={{ width: 14, height: 14, color: '#404040' }}
+            style={{ width: 12, height: 12, color: '#999999' }}
             onClick={(e) => {
               e.stopPropagation()
-              setMode('expanded')
+              setMode('open')
             }}
           />
           <X
-            style={{ width: 16, height: 16, color: '#404040' }}
+            style={{ width: 13, height: 13, color: '#999999' }}
             onClick={(e) => {
               e.stopPropagation()
               onClose()
@@ -207,9 +239,6 @@ export function FloatingCompose({
   }
 
   const isExpanded = mode === 'expanded'
-  // Container styles. Pencil uses the same chrome when expanded — just
-  // covers more of the viewport — so we keep the borders/shadows
-  // identical and only change the placement.
   const containerStyle: React.CSSProperties = isExpanded
     ? {
         position: 'fixed',
@@ -218,8 +247,9 @@ export function FloatingCompose({
         display: 'flex',
         flexDirection: 'column',
         background: '#111111',
-        border: '1px solid #1A1A1A',
-        boxShadow: '0 -4px 24px 0 rgba(0,0,0,0.4)',
+        border: '1px solid var(--color-wm-border)',
+        borderRadius: 14,
+        boxShadow: '0 -8px 48px 0 rgba(0,0,0,0.7)',
       }
     : {
         position: 'fixed',
@@ -228,16 +258,22 @@ export function FloatingCompose({
         zIndex: 50,
         display: 'flex',
         flexDirection: 'column',
-        width: 560,
-        height: 582,
+        width: 580,
+        height: 580,
         background: '#111111',
-        border: '1px solid #1A1A1A',
-        boxShadow: '0 -4px 24px 0 rgba(0,0,0,0.4)',
+        border: '1px solid var(--color-wm-border)',
+        // Pencil cornerRadius [14, 14, 0, 0] — top-rounded, flat bottom
+        // since the popup sits flush against the viewport edge.
+        borderRadius: '14px 14px 0 0',
+        boxShadow: '0 -8px 48px 0 rgba(0,0,0,0.7)',
       }
+
+  const fromInitial = useMemo(() => {
+    return (fromAddress.split('@')[0]?.[0] ?? 'W').toUpperCase()
+  }, [fromAddress])
 
   return (
     <>
-      {/* Dim overlay for expanded mode — Pencil `dimOverlay` (#00000033). */}
       {isExpanded && (
         <div
           className="fixed inset-0 z-40"
@@ -247,423 +283,531 @@ export function FloatingCompose({
       )}
 
       <div style={containerStyle}>
-        {/* titleBar — bg #1A2200, padding [10,16], gap 8, 1px bottom. */}
+        {/* mHead — header */}
         <div
-          className="flex items-center bg-wm-accent-dim"
+          className="flex w-full items-center justify-between"
           style={{
-            gap: 8,
-            padding: '10px 16px',
-            borderBottom: '1px solid #1A1A1A',
+            padding: '16px 20px 14px 20px',
+            borderBottom: '1px solid var(--color-wm-border)',
           }}
         >
-          <span
-            className="font-sans font-semibold text-wm-text-primary"
-            style={{ fontSize: 13 }}
-          >
-            {inReplyTo ? 'Re: ' + (subject || 'New Message') : 'New Message'}
-          </span>
-          <span style={{ flex: 1 }} />
-          <button
-            type="button"
-            onClick={() => setMode('minimized')}
-            aria-label="Minimize"
-            className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-text-primary"
-            style={{ width: 16, height: 16, color: '#404040' }}
-          >
-            <Minus style={{ width: 16, height: 16 }} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode(isExpanded ? 'open' : 'expanded')}
-            aria-label={isExpanded ? 'Restore' : 'Expand'}
-            className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-text-primary"
-            style={{ width: 14, height: 14, color: '#404040' }}
-          >
-            {isExpanded ? (
-              <Minimize2 style={{ width: 14, height: 14 }} />
-            ) : (
-              <Maximize2 style={{ width: 14, height: 14 }} />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close compose"
-            className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-error"
-            style={{ width: 16, height: 16, color: '#404040' }}
-          >
-            <X style={{ width: 16, height: 16 }} />
-          </button>
+          <div className="flex items-center" style={{ gap: 10 }}>
+            <SquarePen
+              style={{ width: 14, height: 14, color: 'var(--color-wm-accent)' }}
+            />
+            <span
+              className="font-mono font-bold uppercase text-wm-text-primary"
+              style={{ fontSize: 11, letterSpacing: 1.5 }}
+            >
+              New email
+            </span>
+          </div>
+          <div className="flex items-center" style={{ gap: 6 }}>
+            <HeaderIc label="Minimize" onClick={() => setMode('minimized')}>
+              <Minus style={{ width: 13, height: 13 }} />
+            </HeaderIc>
+            <HeaderIc
+              label={isExpanded ? 'Restore' : 'Expand'}
+              onClick={() => setMode(isExpanded ? 'open' : 'expanded')}
+            >
+              {isExpanded ? (
+                <Minimize2 style={{ width: 12, height: 12 }} />
+              ) : (
+                <Maximize2 style={{ width: 12, height: 12 }} />
+              )}
+            </HeaderIc>
+            <HeaderIc label="Close" onClick={onClose}>
+              <X style={{ width: 13, height: 13 }} />
+            </HeaderIc>
+          </div>
         </div>
 
         {/* fields */}
-        {/* From row — Pencil `HtD9n`. */}
-        <div
-          className="flex items-center"
-          style={{
-            gap: 8,
-            padding: '8px 16px',
-            borderBottom: '1px solid #1A1A1A',
-          }}
-        >
-          <span
-            className="font-mono"
-            style={{ fontSize: 11, color: '#404040', minWidth: 56 }}
+        <div className="flex flex-col" style={{ padding: '0 20px 8px 20px' }}>
+          {/* TO row */}
+          <div
+            className="flex items-center"
+            style={{
+              padding: '12px 0',
+              gap: 14,
+              borderBottom: '1px solid var(--color-wm-border)',
+            }}
           >
-            From
-          </span>
-          {mailboxes.length > 1 ? (
-            <select
-              value={fromMailboxId}
-              onChange={(e) => {
-                setFromMailboxId(e.target.value)
-                const mb = mailboxes.find((m) => m.id === e.target.value)
-                if (mb) setFromAddress(mb.address)
-              }}
-              className="flex-1 bg-transparent font-mono text-wm-text-primary outline-none"
-              style={{ fontSize: 12 }}
-            >
-              {mailboxes.map((mb) => (
-                <option key={mb.id} value={mb.id}>
-                  {mb.address}
-                </option>
-              ))}
-            </select>
-          ) : (
             <span
-              className="flex-1 truncate font-mono text-wm-text-primary"
-              style={{ fontSize: 12 }}
+              className="font-mono font-bold uppercase shrink-0"
+              style={{
+                fontSize: 10,
+                letterSpacing: 1.5,
+                color: '#6e6e6e',
+                width: 48,
+              }}
             >
-              {fromAddress}
+              To
             </span>
-          )}
-        </div>
+            <div className="flex-1 min-w-0">
+              <RecipientChipsField
+                label=""
+                values={toChips}
+                onChange={setToChips}
+                placeholder="recipient@example.com"
+                className="!p-0"
+              />
+            </div>
+            {(!showCc || !showBcc) && (
+              <div className="flex items-center" style={{ gap: 4 }}>
+                {!showCc && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCc(true)}
+                    className="cursor-pointer font-mono font-semibold hover:text-wm-text-secondary"
+                    style={{ fontSize: 11, color: '#6e6e6e' }}
+                  >
+                    Cc
+                  </button>
+                )}
+                {!showBcc && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBcc(true)}
+                    className="cursor-pointer font-mono font-semibold hover:text-wm-text-secondary"
+                    style={{ fontSize: 11, color: '#6e6e6e' }}
+                  >
+                    Bcc
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
-        {/* To row — Pencil `9TINl`. We use RecipientChipsField for
-            the input itself and overlay Cc/Bcc reveal on the right. */}
-        <div className="relative" style={{ borderBottom: '1px solid #1A1A1A' }}>
-          <RecipientChipsField
-            label="To"
-            values={toChips}
-            onChange={setToChips}
-            placeholder="recipient@example.com"
-          />
-          {(!showCc || !showBcc) && (
-            <div className="pointer-events-none absolute right-4 top-2 flex items-center gap-2">
-              {!showCc && (
-                <button
-                  type="button"
-                  onClick={() => setShowCc(true)}
-                  className="pointer-events-auto cursor-pointer font-mono hover:text-wm-text-secondary"
-                  style={{ fontSize: 10, color: '#404040' }}
-                >
-                  Cc
-                </button>
-              )}
-              {!showBcc && (
-                <button
-                  type="button"
-                  onClick={() => setShowBcc(true)}
-                  className="pointer-events-auto cursor-pointer font-mono hover:text-wm-text-secondary"
-                  style={{ fontSize: 10, color: '#404040' }}
-                >
-                  Bcc
-                </button>
-              )}
+          {showCc && (
+            <div
+              className="flex items-center"
+              style={{
+                padding: '12px 0',
+                gap: 14,
+                borderBottom: '1px solid var(--color-wm-border)',
+              }}
+            >
+              <span
+                className="font-mono font-bold uppercase shrink-0"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  color: '#6e6e6e',
+                  width: 48,
+                }}
+              >
+                Cc
+              </span>
+              <div className="flex-1 min-w-0">
+                <RecipientChipsField
+                  label=""
+                  values={ccChips}
+                  onChange={setCcChips}
+                  placeholder="cc@example.com"
+                  className="!p-0"
+                />
+              </div>
             </div>
           )}
+
+          {showBcc && (
+            <div
+              className="flex items-center"
+              style={{
+                padding: '12px 0',
+                gap: 14,
+                borderBottom: '1px solid var(--color-wm-border)',
+              }}
+            >
+              <span
+                className="font-mono font-bold uppercase shrink-0"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  color: '#6e6e6e',
+                  width: 48,
+                }}
+              >
+                Bcc
+              </span>
+              <div className="flex-1 min-w-0">
+                <RecipientChipsField
+                  label=""
+                  values={bccChips}
+                  onChange={setBccChips}
+                  placeholder="bcc@example.com"
+                  className="!p-0"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* SUBJECT row */}
+          <div
+            className="flex items-center"
+            style={{
+              padding: '12px 0',
+              gap: 14,
+              borderBottom: '1px solid var(--color-wm-border)',
+            }}
+          >
+            <span
+              className="font-mono font-bold uppercase shrink-0"
+              style={{
+                fontSize: 10,
+                letterSpacing: 1.5,
+                color: '#6e6e6e',
+                width: 54,
+              }}
+            >
+              Subject
+            </span>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Email subject"
+              className="flex-1 bg-transparent font-mono font-semibold text-wm-text-primary outline-none placeholder:text-wm-text-muted"
+              style={{ fontSize: 13 }}
+            />
+          </div>
+
+          {/* FROM row */}
+          <div
+            className="flex items-center"
+            style={{ padding: '12px 0', gap: 14 }}
+          >
+            <span
+              className="font-mono font-bold uppercase shrink-0"
+              style={{
+                fontSize: 10,
+                letterSpacing: 1.5,
+                color: '#6e6e6e',
+                width: 48,
+              }}
+            >
+              From
+            </span>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowFromMenu((v) => !v)}
+                className="inline-flex cursor-pointer items-center"
+                style={{
+                  padding: '4px 10px 4px 4px',
+                  gap: 8,
+                  borderRadius: 14,
+                  background: '#000000',
+                  border: '1px solid var(--color-wm-border)',
+                }}
+              >
+                <span
+                  aria-hidden
+                  className="flex items-center justify-center font-mono font-bold"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    background: 'var(--color-wm-accent)',
+                    color: '#000000',
+                    fontSize: 10,
+                  }}
+                >
+                  {fromInitial}
+                </span>
+                <span
+                  className="font-mono text-wm-text-primary"
+                  style={{ fontSize: 12 }}
+                >
+                  {fromAddress || 'pick a mailbox'}
+                </span>
+                <ChevronDown
+                  style={{ width: 11, height: 11, color: '#6e6e6e' }}
+                />
+              </button>
+              {showFromMenu && mailboxes.length > 1 && (
+                <>
+                  <div
+                    className="fixed inset-0 z-50"
+                    onClick={() => setShowFromMenu(false)}
+                  />
+                  <div
+                    className="absolute z-50"
+                    style={{
+                      top: 'calc(100% + 6px)',
+                      left: 0,
+                      minWidth: 240,
+                      background: '#111111',
+                      border: '1px solid var(--color-wm-border)',
+                      borderRadius: 10,
+                      boxShadow: '0 12px 32px 0 rgba(0,0,0,0.5)',
+                    }}
+                  >
+                    {mailboxes.map((mb) => (
+                      <button
+                        key={mb.id}
+                        type="button"
+                        onClick={() => {
+                          setFromMailboxId(mb.id)
+                          setFromAddress(mb.address)
+                          setShowFromMenu(false)
+                        }}
+                        className="block w-full cursor-pointer px-3 py-2 text-left font-mono text-wm-text-primary hover:bg-wm-surface-hover"
+                        style={{ fontSize: 12 }}
+                      >
+                        {mb.address}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
-        {showCc && (
-          <RecipientChipsField
-            label="Cc"
-            values={ccChips}
-            onChange={setCcChips}
-            placeholder="Add Cc..."
-            className="border-b"
-            // Border colour set via the wrapper class above — the
-            // component itself accepts arbitrary className and merges
-            // it with its own padding/gap.
-          />
-        )}
-
-        {showBcc && (
-          <RecipientChipsField
-            label="Bcc"
-            values={bccChips}
-            onChange={setBccChips}
-            placeholder="Add Bcc..."
-            className="border-b"
-          />
-        )}
-
-        {/* Subject row — Pencil `GX2Po`. */}
+        {/* aiHint */}
         <div
-          className="flex items-center"
+          className="flex w-full items-center"
           style={{
-            gap: 8,
-            padding: '8px 16px',
-            borderBottom: '1px solid #1A1A1A',
+            padding: '10px 20px',
+            gap: 10,
+            background: 'var(--color-wm-accent-dim)',
+            borderTop: '1px solid var(--color-wm-border)',
+            borderBottom: '1px solid var(--color-wm-border)',
           }}
         >
-          <span
-            className="font-mono"
-            style={{ fontSize: 11, color: '#404040', minWidth: 56 }}
-          >
-            Subject
-          </span>
-          <input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="Email subject"
-            className="flex-1 bg-transparent font-sans font-medium text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-            style={{ fontSize: 13 }}
+          <Sparkles
+            style={{ width: 13, height: 13, color: 'var(--color-wm-accent)' }}
           />
+          <span
+            className="font-mono font-bold uppercase text-wm-accent"
+            style={{ fontSize: 10, letterSpacing: 1.5 }}
+          >
+            AI · Draft from prompt
+          </span>
+          <span style={{ flex: 1 }} />
+          <span
+            className="font-mono font-semibold text-wm-accent"
+            style={{ fontSize: 10 }}
+          >
+            ⌘K
+          </span>
         </div>
 
-        {/* Body — Pencil `bppiU`, padding [12,16], Inter 13/normal #999999 lh 1.6. */}
-        <div className="flex-1 overflow-y-auto" style={{ padding: '12px 16px' }}>
+        {/* body */}
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ padding: '20px 20px 12px 20px' }}
+        >
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Write your email..."
-            className="h-full w-full resize-none bg-transparent font-sans placeholder:text-wm-text-muted outline-none"
+            placeholder="Write your email…"
+            className="w-full resize-none bg-transparent font-sans outline-none placeholder:text-wm-text-muted"
             style={{
-              fontSize: 13,
+              fontSize: 14,
               lineHeight: 1.6,
-              color: '#999999',
+              color: '#FFFFFF',
+              minHeight: 120,
             }}
             autoFocus
           />
         </div>
 
-        {/* Inline error strip — out of Pencil's spec but unobtrusive. */}
+        {/* inline error */}
         {error && (
-          <div
-            style={{
-              padding: '6px 16px',
-              borderTop: '1px solid #1A1A1A',
-            }}
-          >
-            <p className="font-mono text-wm-error" style={{ fontSize: 10 }}>
+          <div style={{ padding: '0 20px 8px 20px' }}>
+            <p
+              className="font-mono text-wm-error"
+              style={{ fontSize: 11, fontWeight: 500 }}
+            >
               {error}
             </p>
           </div>
         )}
 
-        {/* toolbar — Pencil `PMTuu`, padding [8,12], gap 4, 1px top. */}
+        {/* mTool — bottom toolbar */}
         <div
-          className="flex items-center"
+          className="flex w-full items-center justify-between"
           style={{
-            gap: 4,
-            padding: '8px 12px',
-            borderTop: '1px solid #1A1A1A',
+            padding: '12px 20px 16px 20px',
+            borderTop: '1px solid var(--color-wm-border)',
           }}
         >
-          {[
-            { Icon: Bold, label: 'Bold' },
-            { Icon: Italic, label: 'Italic' },
-            { Icon: Underline, label: 'Underline' },
-          ].map(({ Icon, label }) => (
-            <button
-              key={label}
-              type="button"
-              aria-label={label}
-              className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-text-primary"
-              style={{ width: 24, height: 24, color: '#404040' }}
-            >
-              <Icon style={{ width: 16, height: 16 }} />
-            </button>
-          ))}
-          <span
-            aria-hidden
-            style={{
-              width: 1,
-              height: 16,
-              background: '#1A1A1A',
-              margin: '0 4px',
-            }}
-          />
-          {[
-            { Icon: Link2, label: 'Add link' },
-            { Icon: Paperclip, label: 'Attach file' },
-          ].map(({ Icon, label }) => (
-            <button
-              key={label}
-              type="button"
-              aria-label={label}
-              className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-text-primary"
-              style={{ width: 24, height: 24, color: '#404040' }}
-            >
-              <Icon style={{ width: 16, height: 16 }} />
-            </button>
-          ))}
-          <span style={{ flex: 1 }} />
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Discard draft"
-            className="flex cursor-pointer items-center justify-center transition-colors hover:text-wm-error"
-            style={{ width: 24, height: 24, color: '#404040' }}
-          >
-            <Trash2 style={{ width: 16, height: 16 }} />
-          </button>
-          <span
-            aria-hidden
-            style={{
-              width: 1,
-              height: 16,
-              background: '#1A1A1A',
-              margin: '0 4px',
-            }}
-          />
-
-          {/* Schedule popover */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowSchedule(!showSchedule)}
-              aria-label="Schedule send"
-              className="flex cursor-pointer items-center transition-colors hover:text-wm-text-primary"
-              style={{ gap: 2, height: 24, padding: '0 4px', color: '#404040' }}
-            >
-              <Clock style={{ width: 14, height: 14 }} />
-              <ChevronDown style={{ width: 12, height: 12 }} />
-            </button>
-            {showSchedule && (
-              <>
-                <div
-                  className="fixed inset-0 z-50"
-                  onClick={() => setShowSchedule(false)}
-                />
-                <div
-                  className="absolute z-50"
-                  style={{
-                    bottom: 36,
-                    right: 0,
-                    width: 240,
-                    background: '#111111',
-                    border: '1px solid #1A1A1A',
-                    boxShadow: '0 8px 24px 0 rgba(0,0,0,0.4)',
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: '8px 12px',
-                      borderBottom: '1px solid #1A1A1A',
-                    }}
-                  >
-                    <span
-                      className="font-mono font-bold uppercase"
-                      style={{
-                        fontSize: 10,
-                        letterSpacing: 1.5,
-                        color: 'var(--color-wm-text-tertiary)',
-                      }}
-                    >
-                      Schedule send
-                    </span>
-                  </div>
-                  {[
-                    { label: 'Tomorrow morning', time: getScheduleTime(1, 9) },
-                    {
-                      label: 'Tomorrow afternoon',
-                      time: getScheduleTime(1, 13),
-                    },
-                    { label: 'Monday morning', time: getScheduleTime('monday', 9) },
-                  ].map((opt) => (
-                    <button
-                      key={opt.label}
-                      type="button"
-                      onClick={() => {
-                        setScheduledAt(opt.time)
-                        setShowSchedule(false)
-                      }}
-                      className="flex w-full cursor-pointer items-center text-left text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
-                      style={{
-                        gap: 8,
-                        padding: '8px 12px',
-                        fontSize: 12,
-                      }}
-                    >
-                      <Clock
-                        style={{
-                          width: 12,
-                          height: 12,
-                          color: 'var(--color-wm-text-muted)',
-                        }}
-                      />
-                      {opt.label}
-                      <span style={{ flex: 1 }} />
-                      <span
-                        className="font-mono"
-                        style={{
-                          fontSize: 10,
-                          color: 'var(--color-wm-text-muted)',
-                        }}
-                      >
-                        {formatSchedulePreview(opt.time)}
-                      </span>
-                    </button>
-                  ))}
-                  <div
-                    style={{
-                      padding: '8px 12px',
-                      borderTop: '1px solid #1A1A1A',
-                    }}
-                  >
-                    <label
-                      className="font-mono"
-                      style={{
-                        fontSize: 10,
-                        color: 'var(--color-wm-text-muted)',
-                      }}
-                    >
-                      Pick date &amp; time
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(e) => setScheduledAt(e.target.value)}
-                      className="mt-1 w-full bg-wm-bg font-mono text-wm-text-primary outline-none"
-                      style={{
-                        padding: '6px 8px',
-                        border: '1px solid #1A1A1A',
-                        fontSize: 12,
-                      }}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
+          <div className="flex items-center" style={{ gap: 4 }}>
+            <ToolIc label="Attach"><Paperclip style={{ width: 14, height: 14 }} /></ToolIc>
+            <ToolIc label="Image"><ImageIcon style={{ width: 14, height: 14 }} /></ToolIc>
+            <ToolIc label="Emoji"><Smile style={{ width: 14, height: 14 }} /></ToolIc>
+            <ToolIc label="Calendar"><CalendarIcon style={{ width: 14, height: 14 }} /></ToolIc>
           </div>
 
-          {/* sendBtn — Pencil `az3d4`. Sharp 0-radius lime pill. */}
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={sending}
-            className={cn(
-              'flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover',
-              sending && 'opacity-50',
-            )}
-            style={{
-              gap: 6,
-              padding: '6px 14px',
-              color: '#000000',
-            }}
-          >
-            <Send style={{ width: 14, height: 14 }} />
-            <span
-              className="font-mono font-semibold"
-              style={{ fontSize: 12 }}
+          <div className="flex items-center" style={{ gap: 8 }}>
+            {/* Schedule pill — opens the schedule menu, otherwise inert. */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowSchedule((v) => !v)}
+                className="inline-flex cursor-pointer items-center transition-colors hover:bg-wm-surface-hover"
+                style={{
+                  padding: '8px 14px',
+                  gap: 6,
+                  borderRadius: 18,
+                  background: '#000000',
+                  border: '1px solid var(--color-wm-border)',
+                }}
+              >
+                <AlarmClock style={{ width: 12, height: 12, color: '#999999' }} />
+                <span
+                  className="font-mono font-bold uppercase"
+                  style={{ fontSize: 11, letterSpacing: 1, color: '#999999' }}
+                >
+                  Schedule
+                </span>
+              </button>
+              {showSchedule && (
+                <>
+                  <div
+                    className="fixed inset-0 z-50"
+                    onClick={() => setShowSchedule(false)}
+                  />
+                  <div
+                    className="absolute z-50"
+                    style={{
+                      bottom: 'calc(100% + 6px)',
+                      right: 0,
+                      width: 240,
+                      background: '#111111',
+                      border: '1px solid var(--color-wm-border)',
+                      borderRadius: 10,
+                      boxShadow: '0 -12px 32px 0 rgba(0,0,0,0.5)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: '8px 12px',
+                        borderBottom: '1px solid var(--color-wm-border)',
+                      }}
+                    >
+                      <span
+                        className="font-mono font-bold uppercase"
+                        style={{
+                          fontSize: 10,
+                          letterSpacing: 1.5,
+                          color: '#6e6e6e',
+                        }}
+                      >
+                        Schedule send
+                      </span>
+                    </div>
+                    {[
+                      { label: 'Tomorrow morning', time: getScheduleTime(1, 9) },
+                      { label: 'Tomorrow afternoon', time: getScheduleTime(1, 13) },
+                      { label: 'Monday morning', time: getScheduleTime('monday', 9) },
+                    ].map((opt) => (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => {
+                          setScheduledAt(opt.time)
+                          setShowSchedule(false)
+                        }}
+                        className="flex w-full cursor-pointer items-center text-left text-wm-text-secondary hover:bg-wm-surface-hover hover:text-wm-text-primary"
+                        style={{
+                          gap: 8,
+                          padding: '8px 12px',
+                          fontSize: 12,
+                        }}
+                      >
+                        <AlarmClock style={{ width: 12, height: 12, color: '#999999' }} />
+                        {opt.label}
+                        <span style={{ flex: 1 }} />
+                        <span
+                          className="font-mono"
+                          style={{ fontSize: 10, color: '#999999' }}
+                        >
+                          {formatSchedulePreview(opt.time)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={sending}
+              className={cn(
+                'inline-flex items-center transition-colors',
+                sending
+                  ? 'cursor-wait opacity-60'
+                  : 'cursor-pointer hover:bg-wm-accent-hover',
+              )}
+              style={{
+                padding: '8px 16px',
+                gap: 7,
+                borderRadius: 18,
+                background: 'var(--color-wm-accent)',
+                boxShadow: '0 4px 16px 0 rgba(191,255,0,0.25)',
+              }}
             >
-              {sending ? 'Sending…' : scheduledAt ? 'Schedule' : 'Send'}
-            </span>
-          </button>
+              <Send style={{ width: 13, height: 13, color: '#000000' }} />
+              <span
+                className="font-mono font-bold uppercase"
+                style={{ fontSize: 11, letterSpacing: 1, color: '#000000' }}
+              >
+                {sending ? 'Sending…' : scheduledAt ? 'Schedule' : 'Send'}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </>
+  )
+}
+
+/// One round-square 28×28 button used in the popup header (mHead.mHR).
+function HeaderIc({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex cursor-pointer items-center justify-center text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+      style={{ width: 28, height: 28, borderRadius: 8 }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/// One transparent 32×32 round-square button used in the bottom toolbar
+/// (mTool.toolL).  No background, just an icon on hover-tinted bg.
+function ToolIc({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className="flex cursor-pointer items-center justify-center text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+      style={{ width: 32, height: 32, borderRadius: 8 }}
+    >
+      {children}
+    </button>
   )
 }
