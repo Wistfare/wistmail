@@ -259,14 +259,17 @@ function TodayEmpty({
         </div>
       </header>
 
-      {/* eTrCard */}
+      {/* eTrCard — Pencil `L8Emz` has cornerRadius 14 and a stroke
+          declared with `thickness: 1` but no `fill` colour, which
+          renders as no visible border. The card is just a centered
+          container; the only painted surfaces are the sun-icon tile,
+          the copy, and the "Add a task" button. */}
       <div
         className="flex flex-1 flex-col items-center justify-center"
         style={{
           gap: 18,
           padding: '36px 18px',
           borderRadius: 14,
-          border: '1px solid var(--color-wm-border)',
         }}
       >
         {/* eTrIco — sun on dark tile. */}
