@@ -8,9 +8,6 @@ import {
   AlarmClock,
   Trash2,
   Tag,
-  Reply,
-  ReplyAll,
-  Forward,
   Loader2,
   AlertTriangle,
   RefreshCw,
@@ -18,12 +15,10 @@ import {
   MessageSquare,
   MoreHorizontal,
 } from 'lucide-react'
-import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useCompose } from '@/components/email/compose-provider'
-import { EmailBody } from '@/components/email/email-body'
 import { LabelAssignPopover } from '@/components/email/label-assign-popover'
-import { AttachmentsStrip } from '@/components/email/attachments-strip'
+import { ThreadReader } from '@/components/email/thread-reader'
 import { EmailRowV3 } from '@/components/email/email-row-v3'
 import { InboxSectionHeader } from '@/components/email/inbox-section-header'
 import { NewDropdown } from '@/components/email/new-dropdown'
@@ -432,15 +427,6 @@ export default function InboxPage() {
     }
   }
 
-  function extractDisplayName(address: string): string {
-    if (address.includes('<')) return address.split('<')[0].trim().replace(/"/g, '')
-    const local = address.split('@')[0]
-    return local
-      .split(/[._-]/)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ')
-  }
-
   const folderName = folderParam.charAt(0).toUpperCase() + folderParam.slice(1)
 
   /// Idempotent subject prefix — "Re: Hello" stays "Re: Hello".
@@ -573,20 +559,6 @@ export default function InboxPage() {
     })
     toast.show({ message: 'Sent.' })
     closeComposer()
-  }
-
-  /// Renders the email body via the sandboxed iframe component, which
-  /// handles HTML sanitization, cid: attachment resolution, and the
-  /// remote-image privacy gate. Plain-text emails are rendered by the
-  /// EmailBody component's text-fallback path.
-  function renderEmailBody(email: FullEmail) {
-    return (
-      <EmailBody
-        htmlBody={email.htmlBody}
-        textBody={email.textBody}
-        attachments={email.attachments}
-      />
-    )
   }
 
   /// Pencil InboxV3 segmented control (`InboxV3.segWrap`):
@@ -1038,85 +1010,18 @@ export default function InboxPage() {
                   {selectedFull.subject || '(no subject)'}
                 </h2>
               </div>
-              <div className="flex w-full items-center" style={{ gap: 12 }}>
-                <Avatar name={extractDisplayName(selectedFull.fromAddress)} size="lg" />
-                <div className="flex min-w-0 flex-1 flex-col" style={{ gap: 2 }}>
-                  <p
-                    className="truncate font-mono font-semibold text-wm-text-primary"
-                    style={{ fontSize: 13 }}
-                  >
-                    {extractDisplayName(selectedFull.fromAddress)}
-                  </p>
-                  <p
-                    className="truncate font-mono"
-                    style={{ fontSize: 11, color: '#6e6e6e' }}
-                  >
-                    {extractAddress(selectedFull.fromAddress)}
-                    {(selectedFull.toAddresses ?? []).length > 0 && (
-                      <>  →  {(selectedFull.toAddresses ?? []).map(extractAddress).join(', ')}</>
-                    )}
-                  </p>
-                </div>
-                <div className="flex items-center" style={{ gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={handleReply}
-                    className="inline-flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover"
-                    style={{
-                      gap: 6,
-                      padding: '8px 14px',
-                      borderRadius: 18,
-                      color: '#000000',
-                    }}
-                    aria-label="Reply"
-                  >
-                    <Reply style={{ width: 13, height: 13 }} />
-                    <span
-                      className="font-mono font-bold uppercase"
-                      style={{ fontSize: 11, letterSpacing: 1 }}
-                    >
-                      Reply
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleReplyAll}
-                    className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-primary transition-colors hover:bg-wm-surface-hover"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      border: '1px solid var(--color-wm-border)',
-                    }}
-                    aria-label="Reply all"
-                  >
-                    <ReplyAll style={{ width: 14, height: 14 }} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleForward}
-                    className="flex cursor-pointer items-center justify-center bg-wm-surface text-wm-text-primary transition-colors hover:bg-wm-surface-hover"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      border: '1px solid var(--color-wm-border)',
-                    }}
-                    aria-label="Forward"
-                  >
-                    <Forward style={{ width: 14, height: 14 }} />
-                  </button>
-                </div>
-              </div>
             </div>
 
-            <AttachmentsStrip
-              emailId={selectedFull.id}
-              attachments={selectedFull.attachments ?? []}
-            />
+            {/* Thread reader — Pencil `Screen/InboxV3-Thread.Reading`
+                (`srVZO`).  Renders the participant stack, every prior
+                message as a compact card, and the current anchor
+                fully expanded.  Clicking a prior card switches the
+                anchor by updating `selectedId`, which triggers a
+                fresh `useEmailDetail` fetch and re-renders the
+                thread with that message expanded. */}
             <div
               className="flex-1 overflow-y-auto"
-              style={{ padding: '20px 28px 32px 28px' }}
+              style={{ padding: '4px 0 32px 0' }}
             >
               {/* The Pencil V3 AI Brief block (`Hyivo`) — sparkles
                   header, summary paragraph, and the three action chips
@@ -1124,9 +1029,14 @@ export default function InboxPage() {
                   intentionally hidden for now.  The AIBrief component
                   itself is preserved in `components/email/ai-brief.tsx`
                   so it can be wired back in once the AI pipeline emits
-                  per-thread summaries. Until then the reading pane
-                  shows the email body directly. */}
-              {renderEmailBody(selectedFull)}
+                  per-thread summaries. */}
+              <ThreadReader
+                anchor={selectedFull}
+                onPickMessage={(id) => setSelectedId(id)}
+                onReply={handleReply}
+                onReplyAll={handleReplyAll}
+                onForward={handleForward}
+              />
             </div>
 
             {/* Inline composer — Pencil V3 anchors `composerWrap` at
