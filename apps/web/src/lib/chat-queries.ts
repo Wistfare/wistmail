@@ -4,9 +4,11 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type InfiniteData,
   type QueryClient,
 } from '@tanstack/react-query'
 import { api } from './api-client'
+import type { FeedItem, FeedPage } from './feed-queries'
 
 /// TanStack Query bindings for the chat module. Mirrors the shape of
 /// `email-queries.ts`: a single `chatKeys` namespace + thin wrappers
@@ -82,6 +84,64 @@ export interface ChatSearchHit {
   senderName: string
   content: string
   createdAt: string
+}
+
+/// Walk every cached `useFeedList` page and patch the chat row whose
+/// `id` matches `conversationId` with the latest message + activityAt
+/// + unread bump.  We touch every (folder, kind, q) variant of the
+/// feed because the user might be looking at any of them — limiting
+/// to one would silently leave the other tabs stale.
+///
+/// `incrementUnread` lets the caller tell us this is an incoming
+/// message (bump the badge) vs a self-send (clear it / no-op since
+/// the user's looking at the thread).  Re-sorts each page's data by
+/// `activityAt` so the bumped row floats to the top of its page.
+function bumpFeedRow(
+  qc: QueryClient,
+  conversationId: string,
+  patch: { activityAt: string; snippet: string },
+  incrementUnread: boolean,
+) {
+  const matches = qc.getQueriesData<InfiniteData<FeedPage>>({
+    queryKey: ['inbox', 'feed'],
+  })
+  for (const [key, data] of matches) {
+    if (!data) continue
+    let touched = false
+    const nextPages: FeedPage[] = data.pages.map((page) => {
+      const nextData = page.data.map((it: FeedItem) => {
+        if (
+          (it.kind === 'chat-direct' || it.kind === 'chat-group') &&
+          it.id === conversationId
+        ) {
+          touched = true
+          return {
+            ...it,
+            activityAt: patch.activityAt,
+            lastMessageAt: patch.activityAt,
+            snippet: patch.snippet,
+            isRead: incrementUnread ? false : it.isRead,
+            unreadCount: incrementUnread
+              ? it.unreadCount + 1
+              : it.unreadCount,
+          } as FeedItem
+        }
+        return it
+      })
+      // Re-sort within the page so the bumped row floats to the top.
+      nextData.sort(
+        (a, b) =>
+          new Date(b.activityAt).getTime() - new Date(a.activityAt).getTime(),
+      )
+      return { ...page, data: nextData }
+    })
+    if (touched) {
+      qc.setQueryData<InfiniteData<FeedPage>>(key, {
+        ...data,
+        pages: nextPages,
+      })
+    }
+  }
 }
 
 export const chatKeys = {
@@ -265,6 +325,20 @@ export function useSendMessage(conversationId: string) {
           return next
         },
       )
+      // The inbox screen reads from the unified feed cache, not the
+      // conversations cache — bump the row there too so the chat
+      // list reorders the moment the user hits Send.  Prefix "You: "
+      // to match the snippet shape the server returns on refetch
+      // (avoids a flash when the canonical row lands).
+      bumpFeedRow(
+        qc,
+        conversationId,
+        {
+          activityAt: now,
+          snippet: `You: ${previewFor(input.content)}`,
+        },
+        false,
+      )
       return { prevMessages, prevConversations }
     },
     onSuccess: (res) => {
@@ -372,6 +446,9 @@ export function useMarkConversationRead() {
           )
         },
       )
+      // Clear the unread badge on the inbox feed row immediately so
+      // the user sees the count drop the moment they open the chat.
+      applyChatConversationRead(qc, { conversationId })
     },
   })
 }
@@ -543,6 +620,26 @@ export function applyChatMessageNew(
       return [...old, incoming]
     },
   )
+  // Also bump the unified inbox feed cache so the chat row jumps to
+  // the top with the new snippet — same code path the optimistic
+  // sender uses, just with `incrementUnread=true` since the message
+  // arrived from someone else (the bus only fires for non-self
+  // messages by design).
+  bumpFeedRow(
+    qc,
+    evt.conversationId,
+    { activityAt: evt.createdAt, snippet: previewFor(evt.content) },
+    true,
+  )
+}
+
+/// Truncate to the same shape the server uses for `snippet` on the
+/// unified feed (~120 chars, single line).  Keeps the optimistic /
+/// realtime preview visually consistent with the canonical row that
+/// arrives on the next refetch.
+function previewFor(content: string): string {
+  const single = content.replace(/\s+/g, ' ').trim()
+  return single.length > 120 ? single.slice(0, 117) + '…' : single
 }
 
 export function applyChatMessageUpdated(
@@ -591,6 +688,36 @@ export function applyChatConversationRead(
   // The seen-by avatars rely on the reads query — the simplest and
   // correct thing is to invalidate so it refetches on next render.
   qc.invalidateQueries({ queryKey: chatKeys.reads(evt.conversationId) })
+  // Also clear the unread badge on the inbox feed row so the count
+  // drops the moment the read event fires (without waiting for the
+  // next /inbox/list refetch).
+  const matches = qc.getQueriesData<InfiniteData<FeedPage>>({
+    queryKey: ['inbox', 'feed'],
+  })
+  for (const [key, data] of matches) {
+    if (!data) continue
+    let touched = false
+    const nextPages: FeedPage[] = data.pages.map((page) => ({
+      ...page,
+      data: page.data.map((it: FeedItem) => {
+        if (
+          (it.kind === 'chat-direct' || it.kind === 'chat-group') &&
+          it.id === evt.conversationId &&
+          (!it.isRead || it.unreadCount > 0)
+        ) {
+          touched = true
+          return { ...it, isRead: true, unreadCount: 0 } as FeedItem
+        }
+        return it
+      }),
+    }))
+    if (touched) {
+      qc.setQueryData<InfiniteData<FeedPage>>(key, {
+        ...data,
+        pages: nextPages,
+      })
+    }
+  }
 }
 
 export function applyChatConversationUpdated(
