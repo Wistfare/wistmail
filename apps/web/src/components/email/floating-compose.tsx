@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   AlarmClock,
   Calendar as CalendarIcon,
@@ -288,7 +288,6 @@ export function FloatingCompose({
           className="flex w-full items-center justify-between"
           style={{
             padding: '16px 20px 14px 20px',
-            borderBottom: '1px solid var(--color-wm-border)',
           }}
         >
           <div className="flex items-center" style={{ gap: 10 }}>
@@ -330,7 +329,6 @@ export function FloatingCompose({
             style={{
               padding: '12px 0',
               gap: 14,
-              borderBottom: '1px solid var(--color-wm-border)',
             }}
           >
             <span
@@ -380,67 +378,23 @@ export function FloatingCompose({
           </div>
 
           {showCc && (
-            <div
-              className="flex items-center"
-              style={{
-                padding: '12px 0',
-                gap: 14,
-                borderBottom: '1px solid var(--color-wm-border)',
-              }}
-            >
-              <span
-                className="font-mono font-bold uppercase shrink-0"
-                style={{
-                  fontSize: 10,
-                  letterSpacing: 1.5,
-                  color: '#6e6e6e',
-                  width: 48,
-                }}
-              >
-                Cc
-              </span>
-              <div className="flex-1 min-w-0">
-                <RecipientChipsField
-                  label=""
-                  values={ccChips}
-                  onChange={setCcChips}
-                  placeholder="cc@example.com"
-                  className="!p-0"
-                />
-              </div>
-            </div>
+            <CollapsibleRecipientRow
+              label="Cc"
+              values={ccChips}
+              onChange={setCcChips}
+              placeholder="cc@example.com"
+              onCollapse={() => setShowCc(false)}
+            />
           )}
 
           {showBcc && (
-            <div
-              className="flex items-center"
-              style={{
-                padding: '12px 0',
-                gap: 14,
-                borderBottom: '1px solid var(--color-wm-border)',
-              }}
-            >
-              <span
-                className="font-mono font-bold uppercase shrink-0"
-                style={{
-                  fontSize: 10,
-                  letterSpacing: 1.5,
-                  color: '#6e6e6e',
-                  width: 48,
-                }}
-              >
-                Bcc
-              </span>
-              <div className="flex-1 min-w-0">
-                <RecipientChipsField
-                  label=""
-                  values={bccChips}
-                  onChange={setBccChips}
-                  placeholder="bcc@example.com"
-                  className="!p-0"
-                />
-              </div>
-            </div>
+            <CollapsibleRecipientRow
+              label="Bcc"
+              values={bccChips}
+              onChange={setBccChips}
+              placeholder="bcc@example.com"
+              onCollapse={() => setShowBcc(false)}
+            />
           )}
 
           {/* SUBJECT row */}
@@ -449,7 +403,6 @@ export function FloatingCompose({
             style={{
               padding: '12px 0',
               gap: 14,
-              borderBottom: '1px solid var(--color-wm-border)',
             }}
           >
             <span
@@ -566,15 +519,16 @@ export function FloatingCompose({
           </div>
         </div>
 
-        {/* aiHint */}
+        {/* aiHint — Pencil `qxyXq` declares stroke top + bottom with
+            no fill, so the borders aren't visible.  The lime-tinted
+            `bg #1A2200` is the only thing separating this row from
+            the fields above and the body below. */}
         <div
           className="flex w-full items-center"
           style={{
             padding: '10px 20px',
             gap: 10,
             background: 'var(--color-wm-accent-dim)',
-            borderTop: '1px solid var(--color-wm-border)',
-            borderBottom: '1px solid var(--color-wm-border)',
           }}
         >
           <Sparkles
@@ -627,12 +581,13 @@ export function FloatingCompose({
           </div>
         )}
 
-        {/* mTool — bottom toolbar */}
+        {/* mTool — bottom toolbar.  Pencil `RCjSS` declares a stroke
+            top with the fill explicitly disabled, so no visible
+            separator: the toolbar floats over the body's white-space. */}
         <div
           className="flex w-full items-center justify-between"
           style={{
             padding: '12px 20px 16px 20px',
-            borderTop: '1px solid var(--color-wm-border)',
           }}
         >
           <div className="flex items-center" style={{ gap: 4 }}>
@@ -809,5 +764,70 @@ function ToolIc({
     >
       {children}
     </button>
+  )
+}
+
+/// Cc / Bcc recipient row that auto-collapses when empty and the user
+/// clicks outside it. Mirrors the design intent the user called out:
+/// once Cc/Bcc is revealed, the user can dismiss it by clicking
+/// elsewhere as long as no chips were added. Once the user adds a
+/// chip the row stays open.
+function CollapsibleRecipientRow({
+  label,
+  values,
+  onChange,
+  placeholder,
+  onCollapse,
+}: {
+  label: string
+  values: string[]
+  onChange: (next: string[]) => void
+  placeholder: string
+  onCollapse: () => void
+}) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+
+  // focusout (bubbles, unlike blur) lets us listen on the wrapper
+  // itself: if focus is moving to an element inside the wrapper, do
+  // nothing; otherwise, collapse iff the user hasn't added any chips.
+  useEffect(() => {
+    const node = wrapperRef.current
+    if (!node) return
+    function onFocusOut(e: FocusEvent) {
+      const next = e.relatedTarget as Node | null
+      if (next && node && node.contains(next)) return
+      if (values.length === 0) onCollapse()
+    }
+    node.addEventListener('focusout', onFocusOut)
+    return () => node.removeEventListener('focusout', onFocusOut)
+  }, [values.length, onCollapse])
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="flex items-center"
+      style={{ padding: '12px 0', gap: 14 }}
+    >
+      <span
+        className="font-mono font-bold uppercase shrink-0"
+        style={{
+          fontSize: 10,
+          letterSpacing: 1.5,
+          color: '#6e6e6e',
+          width: 48,
+        }}
+      >
+        {label}
+      </span>
+      <div className="flex-1 min-w-0">
+        <RecipientChipsField
+          label=""
+          values={values}
+          onChange={onChange}
+          placeholder={placeholder}
+          className="!p-0"
+        />
+      </div>
+    </div>
   )
 }

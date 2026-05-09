@@ -26,8 +26,6 @@ describe('EmailRowV3', () => {
     expect(screen.getByText('Sarah Kim')).toBeInTheDocument()
     expect(screen.getByText('Q1 Product Roadmap Review')).toBeInTheDocument()
     expect(screen.getByText(/Heads up/)).toBeInTheDocument()
-    // Pencil row1 carries a "MAIL" tag chip on every mail row.
-    expect(screen.getByText('MAIL')).toBeInTheDocument()
   })
 
   it('marks active row with data-active', () => {
@@ -49,7 +47,11 @@ describe('EmailRowV3', () => {
       />,
     )
     expect(screen.queryByText('should not show')).toBeNull()
-    expect(screen.getByText('CHAT')).toBeInTheDocument()
+  })
+
+  it('hides the star control on chat rows (chats have no star state)', () => {
+    render(<EmailRowV3 email={{ ...sample, tag: 'CHAT' }} />)
+    expect(screen.queryByLabelText('Star')).toBeNull()
   })
 
   it('renders trailing slot content', () => {

@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Mail, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useContactSuggestions, type ContactSuggestion } from '@/lib/contacts-search'
-import { cn } from '@/lib/utils'
+import { cn, getInitials, stringToColor } from '@/lib/utils'
 
 interface RecipientChipsFieldProps {
   label: string
@@ -177,51 +177,86 @@ export function RecipientChipsField({
 
       {focused && suggestions.length > 0 && (
         <div
-          // z-[60] beats every existing modal layer (z-50 max), so the
-          // dropdown stays visible above the floating-compose chrome.
-          className="absolute left-20 top-full z-[60] mt-1 w-[calc(100%-6rem)] max-w-md border border-wm-border bg-wm-surface shadow-lg"
+          // Contact picker — surfaces below the chip input. z-[60] beats
+          // every existing modal layer so the dropdown stays visible
+          // above the floating-compose chrome.  Width 320 gives every
+          // row room for a 32-px avatar + name + email + role chip
+          // without truncating, and the radius/border match the
+          // newDropdown chrome (`cZcJ2`).
+          className="absolute left-0 top-full z-[60]"
+          style={{
+            marginTop: 6,
+            width: 320,
+            background: '#111111',
+            borderRadius: 12,
+            border: '1px solid var(--color-wm-border)',
+            padding: 6,
+            boxShadow: '0 12px 32px 0 rgba(0,0,0,0.5)',
+          }}
           // Prevent the input's onBlur from firing on click — we
           // commit explicitly via onMouseDown below.
           onMouseDown={(e) => e.preventDefault()}
         >
-          {suggestions.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              className={cn(
-                'flex w-full items-center gap-3 px-3 py-2 text-left transition-colors',
-                i === highlighted
-                  ? 'bg-wm-surface-hover'
-                  : 'hover:bg-wm-surface-hover',
-              )}
-              onMouseEnter={() => setHighlighted(i)}
-              onClick={() => {
-                commitSuggestion(s)
-                inputRef.current?.focus()
-              }}
-            >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center bg-wm-accent/15">
-                <Mail className="h-3.5 w-3.5 text-wm-accent" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-medium text-wm-text-primary">
-                  {s.name || s.email}
-                </p>
-                {s.name && (
-                  <p className="truncate font-mono text-[10px] text-wm-text-muted">
-                    {s.email}
-                  </p>
+          {suggestions.map((s, i) => {
+            const name = s.name || s.email
+            const initials = getInitials(name)
+            const bg = stringToColor(name)
+            return (
+              <button
+                key={s.id}
+                type="button"
+                className={cn(
+                  'flex w-full items-center text-left transition-colors',
+                  i === highlighted ? 'bg-wm-surface-hover' : 'hover:bg-wm-surface-hover',
                 )}
-              </div>
-              <span className="font-mono text-[9px] uppercase text-wm-text-muted">
-                {s.source === 'org_member'
-                  ? 'team'
-                  : s.source === 'recent'
-                    ? 'recent'
-                    : 'contact'}
-              </span>
-            </button>
-          ))}
+                style={{ gap: 12, padding: 8, borderRadius: 8 }}
+                onMouseEnter={() => setHighlighted(i)}
+                onClick={() => {
+                  commitSuggestion(s)
+                  inputRef.current?.focus()
+                }}
+              >
+                <span
+                  aria-hidden
+                  className="flex shrink-0 items-center justify-center rounded-full font-mono font-bold text-white"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    fontSize: 12,
+                    backgroundColor: bg,
+                  }}
+                >
+                  {initials || '?'}
+                </span>
+                <span className="min-w-0 flex-1 flex flex-col" style={{ gap: 1 }}>
+                  <span
+                    className="truncate font-mono font-semibold text-wm-text-primary"
+                    style={{ fontSize: 12 }}
+                  >
+                    {s.name || s.email}
+                  </span>
+                  {s.name && (
+                    <span
+                      className="truncate font-mono"
+                      style={{ fontSize: 10, color: '#6e6e6e' }}
+                    >
+                      {s.email}
+                    </span>
+                  )}
+                </span>
+                <span
+                  className="shrink-0 font-mono font-bold uppercase"
+                  style={{ fontSize: 9, letterSpacing: 1, color: '#6e6e6e' }}
+                >
+                  {s.source === 'org_member'
+                    ? 'team'
+                    : s.source === 'recent'
+                      ? 'recent'
+                      : 'contact'}
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

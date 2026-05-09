@@ -6,36 +6,44 @@ import { ChevronDown, Mail, MessageSquare, Plus, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCompose } from '@/components/email/compose-provider'
 
+export type NewDropdownContext = 'all' | 'mail' | 'chats'
+
+export interface NewDropdownProps {
+  /// Filter context.  Mirrors the inbox segmented control:
+  ///   'all'   → full menu (Email + Chat + Group)            — Pencil cZcJ2
+  ///   'mail'  → no menu; clicking the pill opens compose directly
+  ///   'chats' → menu trimmed to (Chat + Group)              — Pencil lglRd
+  context?: NewDropdownContext
+}
+
 /**
  * "+ NEW ▾" pill + dropdown menu — Pencil reference:
- * `Screen/InboxV3.composePill` (`vsugi`) + `newDropdown` (`cZcJ2`).
+ * `Screen/InboxV3.composePill` (`vsugi`) + `newDropdown` (`cZcJ2`/`lglRd`).
  *
  * Pill (`vsugi`):
  *   cornerRadius 19, fill lime, padding [8, 14], gap 7
  *   drop-shadow blur 16 #BFFF0040 offset y=4
  *   plus 14 black + "NEW" 11/700 black tracking 1 + chevron-down 11 black
  *
- * Menu (`cZcJ2`, anchored beneath the pill):
+ * Menu container:
  *   width 288, cornerRadius 14, fill #111111, 1px #1A1A1A border,
  *   padding 6, gap 2, drop-shadow blur 32 #00000080 offset y=12
  *
- *   ddHead (`colp7`, padding [6, 10, 4, 10]):
- *     "CREATE NEW" 9/700 #6e6e6e tracking 1.5
+ *   ddHead — "CREATE NEW" 9/700 #6e6e6e tracking 1.5
  *
- *   3 items, all cornerRadius 10, padding 10, gap 12 horizontal:
- *     ic — 32×32 cornerRadius 10 fill #000000, centered 15-px lucide icon
- *     col — gap 2 vertical: title 13/600 white + subtitle 10/normal #6e6e6e
- *     kbd — cornerRadius 5, padding [3, 6], fill #000000, 1px #1A1A1A
- *           border, "⌘N" 10/600 #6e6e6e
+ *   Items (radius 10, padding 10, gap 12):
+ *     ic   — 32×32 round-square fill #000 with centered 15-px lucide icon
+ *     col  — title 13/600 white + subtitle 10/normal #6e6e6e
+ *     kbd  — radius 5 #000 1px #1A1A1A border 10/600 #6e6e6e
  *
- *   Item 1 "New email"   — mail icon LIME (active state) — ⌘N
- *   Item 2 "New chat"    — message-square icon #999999     — ⌘D
- *   Item 3 "New group"   — users icon #999999              — ⌘G
- *
- *   Hover behaviour: row gets bg #1A1A1A and the icon flips to lime,
- *   matching Pencil's `i1Email` filled state.
+ *   Pencil ships two variants of the menu:
+ *     `cZcJ2` (NewAll)  — Email + Chat + Group  → context='all'
+ *     `lglRd` (NewChat) — Chat + Group          → context='chats'
+ *   `context='mail'` doesn't open a menu — Pencil shows the pill
+ *   directly opening the compose modal because there's only one
+ *   thing the user could create on a mail-filtered inbox.
  */
-export function NewDropdown() {
+export function NewDropdown({ context = 'all' }: NewDropdownProps) {
   const router = useRouter()
   const { openCompose } = useCompose()
   const [open, setOpen] = useState(false)
@@ -105,7 +113,9 @@ export function NewDropdown() {
     return () => document.removeEventListener('keydown', onKey)
   }, [openCompose, router])
 
-  const items = [
+  // Pencil ships the dropdown items in this order; the chats-only
+  // variant (`lglRd`) just drops the email entry.
+  const allItems = [
     {
       key: 'email',
       icon: Mail,
@@ -141,6 +151,11 @@ export function NewDropdown() {
     },
   ] as const
 
+  const items =
+    context === 'chats'
+      ? allItems.filter((it) => it.key !== 'email')
+      : allItems
+
   function onTriggerKey(e: React.KeyboardEvent<HTMLButtonElement>) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -174,17 +189,30 @@ export function NewDropdown() {
     }
   }
 
+  // On the MAIL filter the pill is a single-action button — no
+  // dropdown, no chevron — because compose is the only thing the
+  // user could create from a mail-only view.
+  const isMailOnly = context === 'mail'
+
+  function handleTriggerClick() {
+    if (isMailOnly) {
+      openCompose()
+      return
+    }
+    setOpen((v) => !v)
+  }
+
   return (
     <div ref={wrapperRef} className="relative">
       {/* Pill trigger — Pencil `vsugi`. */}
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        onKeyDown={onTriggerKey}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="New message or chat"
+        onClick={handleTriggerClick}
+        onKeyDown={isMailOnly ? undefined : onTriggerKey}
+        aria-haspopup={isMailOnly ? undefined : 'menu'}
+        aria-expanded={isMailOnly ? undefined : open}
+        aria-label={isMailOnly ? 'New email' : 'New message or chat'}
         className="inline-flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover"
         style={{
           gap: 7,
@@ -203,14 +231,14 @@ export function NewDropdown() {
         >
           New
         </span>
-        <ChevronDown style={{ width: 11, height: 11 }} />
+        {!isMailOnly && <ChevronDown style={{ width: 11, height: 11 }} />}
       </button>
 
       {/* Menu — Pencil `cZcJ2`. Anchored to the right edge of the pill
           so the menu drops below it without overflowing the inbox list
           column. Pencil places it at x=184, y=70 relative to the inbox
           frame; relative-to-pill we just sit it `top: calc(100% + 6)`. */}
-      {open && (
+      {open && !isMailOnly && (
         <div
           role="menu"
           aria-label="Create new"

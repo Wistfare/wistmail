@@ -604,7 +604,7 @@ export default function InboxPage() {
                 (`cZcJ2`).  The chevron-down on the pill opens a 288-px
                 menu with three create actions (New email / New chat /
                 New group) plus their kbd shortcuts. */}
-            <NewDropdown />
+            <NewDropdown context={contentType} />
           </div>
           <p
             className="font-mono uppercase"
@@ -1089,26 +1089,33 @@ export default function InboxPage() {
                   per-thread summaries. Until then the reading pane
                   shows the email body directly. */}
               {renderEmailBody(selectedFull)}
-
-              {/* Inline composer — Pencil V3 puts reply / reply-all
-                  / forward right inside the thread reading pane
-                  (Components/V3-ComposerVariants).  When the user
-                  hasn't engaged any of those actions, this slot is
-                  empty and the body holds the full reading area. */}
-              {composerMode && (
-                <div style={{ marginTop: 24 }}>
-                  <InlineComposer
-                    mode={composerMode}
-                    to={composerTo}
-                    cc={composerCc}
-                    subject={composerSubject}
-                    initialBody={composerBody}
-                    onCancel={closeComposer}
-                    onSend={sendInlineComposer}
-                  />
-                </div>
-              )}
             </div>
+
+            {/* Inline composer — Pencil V3 anchors `composerWrap` at
+                the BOTTOM of the reading column (InboxV3-Thread
+                `z5ASRq`, padding [0,28,20,28]).  Living outside the
+                scrolling body slot keeps the composer anchored as the
+                user scrolls long threads — they don't have to scroll
+                past the body to find their reply. */}
+            {composerMode && (
+              <div
+                style={{
+                  padding: '0 28px 20px 28px',
+                  borderTop: '1px solid var(--color-wm-border)',
+                  paddingTop: 16,
+                }}
+              >
+                <InlineComposer
+                  mode={composerMode}
+                  to={composerTo}
+                  cc={composerCc}
+                  subject={composerSubject}
+                  initialBody={composerBody}
+                  onCancel={closeComposer}
+                  onSend={sendInlineComposer}
+                />
+              </div>
+            )}
           </>
         )}
       </div>
