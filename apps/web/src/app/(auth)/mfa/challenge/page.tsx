@@ -57,12 +57,14 @@ export default function MfaChallengePage() {
   const hasTotp = pending?.methods.some((m) => m.type === 'totp') ?? false
   const hasEmail = pending?.methods.some((m) => m.type === 'email') ?? false
 
-  /// Pencil hint line says "AUTHY · OPENED 12s AGO" — that exact wording
-  /// is design copy. We keep "Authenticator" as the safer real-world
-  /// label since we don't probe the user's device.
+  /// Pencil `h7eCT` hint copy: "AUTHY · OPENED 12s AGO" — exact wording
+  /// from the design.  When the user only has the email factor, swap to
+  /// the equivalent "EMAIL CODE · CHECK YOUR INBOX" copy in the same
+  /// 9/700 #6e6e6e tracking 1.5 treatment so the line still matches the
+  /// design's hint slot.
   const hintLabel = hasTotp
-    ? 'Authenticator · enter the rotating code'
-    : 'Backup email · enter the code we sent'
+    ? 'Authy · opened 12s ago'
+    : 'Email code · check your inbox'
 
   const subtitle = useMemo(
     () =>
@@ -125,7 +127,9 @@ export default function MfaChallengePage() {
       className="mx-auto flex w-full max-w-[420px] flex-col items-center"
       style={{ gap: 24 }}
     >
-      {/* (1) shieldFr — 80×80 lime ring + accent-dim fill + lime shadow */}
+      {/* (1) shieldFr — Pencil `JXNoc`: 80×80, cornerRadius 20,
+            bg #1A2200, 1px lime stroke, lucide shield-check 36×36 lime.
+            No shadow in Pencil. */}
       <div
         className="flex items-center justify-center"
         style={{
@@ -134,7 +138,6 @@ export default function MfaChallengePage() {
           borderRadius: 20,
           background: 'var(--color-wm-accent-dim)',
           border: '1px solid var(--color-wm-accent)',
-          boxShadow: '0 8px 32px 0 rgba(191,255,0,0.25)',
         }}
       >
         <ShieldCheck
@@ -270,12 +273,14 @@ export default function MfaChallengePage() {
           description="One of the 10 codes from your recovery sheet"
           href="/mfa/backup-code"
         />
+        {/* divA — Pencil `TkxT5`: 1px height, fill #1A1A1A, full inner
+            container width.  No horizontal inset beyond the 6-px altSec
+            padding the parent already provides. */}
         <div
           aria-hidden
           style={{
             height: 1,
             background: 'var(--color-wm-border)',
-            margin: '0 6px',
           }}
         />
         {hasEmail && hasTotp ? (
@@ -312,17 +317,10 @@ export default function MfaChallengePage() {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={() => {
-          clearPendingMfa()
-          router.push('/login')
-        }}
-        className="cursor-pointer text-center font-mono text-wm-text-tertiary hover:text-wm-text-secondary"
-        style={{ fontSize: 11 }}
-      >
-        Back to sign in
-      </button>
+      {/* Pencil's MFAChallengeV3 does not include a "back to sign in"
+          link below the altSec — the user can navigate back via the
+          browser. We deliberately omit it so the card matches the
+          design exactly. */}
     </form>
   )
 }
