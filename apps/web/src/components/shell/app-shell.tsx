@@ -3,15 +3,9 @@
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import {
-  Activity,
   Calendar as CalendarIcon,
-  FileText,
   FolderKanban,
-  Mail,
-  MessageSquare,
-  Settings,
-  ShieldCheck,
-  Video,
+  Inbox as InboxIcon,
 } from 'lucide-react'
 import { IconRail, type IconRailItem } from './icon-rail'
 import { MailSidebar } from './mail-sidebar'
@@ -78,29 +72,46 @@ export function AppShell({ user, children }: AppShellProps) {
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
-  // Module list shown on the rail. Admin only appears when the user has the role.
+  // Pencil InboxV3 iconRail (`heGq7`) shows exactly three nav tiles:
+  // Inbox / Calendar / Work. Chat is folded into Inbox via the
+  // segmented control (ALL · MAIL · CHATS), so it does not get its
+  // own rail entry. Settings + Admin stay reachable from the user
+  // menu and from direct routes (/settings, /admin) — Pencil simply
+  // doesn't surface them on the rail. We honour that 1:1.
   const topItems: IconRailItem[] = [
-    { href: '/inbox', icon: <Mail className="h-5 w-5" />, label: 'Mail', match: (p) => p === '/' || p.startsWith('/inbox') || p.startsWith('/compose') || p.startsWith('/search') || p.startsWith('/sent') || p.startsWith('/drafts') || p.startsWith('/scheduled') || p.startsWith('/snoozed') || p.startsWith('/starred') || p.startsWith('/spam') || p.startsWith('/trash') },
-    { href: '/chat', icon: <MessageSquare className="h-5 w-5" />, label: 'Chat' },
-    { href: '/meetings', icon: <Video className="h-5 w-5" />, label: 'Meetings' },
-    { href: '/calendar', icon: <CalendarIcon className="h-5 w-5" />, label: 'Calendar' },
-    { href: '/work', icon: <FolderKanban className="h-5 w-5" />, label: 'Work' },
-    { href: '/docs', icon: <FileText className="h-5 w-5" />, label: 'Docs' },
+    {
+      href: '/inbox',
+      icon: <InboxIcon style={{ width: 20, height: 20 }} />,
+      label: 'Inbox',
+      match: (p) =>
+        p === '/' ||
+        p.startsWith('/inbox') ||
+        p.startsWith('/chat') ||
+        p.startsWith('/compose') ||
+        p.startsWith('/search') ||
+        p.startsWith('/sent') ||
+        p.startsWith('/drafts') ||
+        p.startsWith('/scheduled') ||
+        p.startsWith('/snoozed') ||
+        p.startsWith('/starred') ||
+        p.startsWith('/spam') ||
+        p.startsWith('/trash'),
+    },
+    {
+      href: '/calendar',
+      icon: <CalendarIcon style={{ width: 20, height: 20 }} />,
+      label: 'Calendar',
+    },
+    {
+      href: '/work',
+      icon: <FolderKanban style={{ width: 20, height: 20 }} />,
+      label: 'Work',
+    },
   ]
-  if (isAdmin) {
-    topItems.push({ href: '/admin', icon: <Activity className="h-5 w-5" />, label: 'Admin' })
-  }
-  const bottomItems: IconRailItem[] = [
-    { href: '/settings/account', icon: <Settings className="h-5 w-5" />, label: 'Settings' },
-  ]
-  if (isAdmin && pathname.startsWith('/admin')) {
-    // Show shield highlight when in admin module.
-    bottomItems.unshift({
-      href: '/admin/security',
-      icon: <ShieldCheck className="h-5 w-5" />,
-      label: 'Security',
-    })
-  }
+  // Pencil's rail has no bottom-area items beyond the avatar — keep
+  // bottomItems empty so the only thing under the spacer is the
+  // avatar / user-menu trigger.
+  const bottomItems: IconRailItem[] = []
 
   return (
     <div className="flex h-screen overflow-hidden bg-wm-bg text-wm-text-primary">
@@ -112,12 +123,17 @@ export function AppShell({ user, children }: AppShellProps) {
         onAvatarClick={() => setUserMenuOpen((v) => !v)}
       />
 
-      {/* Floating user menu anchored next to the rail. We keep it absolute
-          so it never reflows the layout grid. */}
+      {/* Floating user menu anchored next to the rail. The rail is
+          72-px wide (Pencil iconRail), so the panel sits at left:80
+          (72 + 8-px gutter). */}
       {userMenuOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} aria-hidden />
-          <div className="fixed bottom-3 left-16 z-50 w-64">
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setUserMenuOpen(false)}
+            aria-hidden
+          />
+          <div className="fixed bottom-3 z-50 w-64" style={{ left: 80 }}>
             <UserMenuPanel user={user} onClose={() => setUserMenuOpen(false)} />
           </div>
         </>

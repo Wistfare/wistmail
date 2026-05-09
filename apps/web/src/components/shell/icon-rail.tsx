@@ -1,23 +1,31 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Tooltip } from '@/components/ui'
 
 /**
- * IconRail — left-most 56px column on every authenticated screen.
+ * IconRail — Pencil reference: `Screen/InboxV3.iconRail` (`heGq7`).
  *
- * Pencil reference: `Component/SidebarV2.iconRail` (`JFvLu`).
- * - 56px wide, bg #000000, padding [12, 0], gap 2 vertical
- * - 1px right border #1A1A1A
- * - Logo at top: 32×32 lime square, "W" in Inter 14px 700 black
- * - 1px hairline separator
- * - IconRailItem(Active): 56×48 frame; inner 40×36 frame with icon 20×20
- *   - Active: inner bg #1A2200, icon #BFFF00
- *   - Inactive: inner bg transparent, icon #6E6E6E
- * - Spacer (fill_container) pushes settings + avatar to bottom
- * - Settings IconRailItem
- * - User avatar at very bottom: 32×32 round, lime fill, white initial
+ *   container: width 72, fill #111111, padding [20, 0], gap 8,
+ *     vertical layout, 1px right hairline #1A1A1A, alignItems center.
+ *
+ *   children (top → bottom):
+ *     1. logo (`nCoRJ`) — 40×40, cornerRadius 12, image fill
+ *        `wistfare_mail_logo.png` (mode fit). Linked to /inbox.
+ *     2. sp1 (`AkpDt`) — 1×20 spacer (extra 20-px gap below logo).
+ *     3. nav tiles (`wSw6C` / `cxjrY` / `dEP5y`) — 48×48, cornerRadius 14:
+ *          active → fill lime, icon 20 BLACK
+ *          idle   → fill #111111 (flat with rail), icon 20 #999999
+ *          hover  → icon lifts to #FFFFFF
+ *     4. flex spacer pushes the avatar to the bottom.
+ *     5. avatar (`QK4fW`) — 40×40 fully rounded, fill #1B6FE0, centered
+ *        initials in JetBrains Mono 14/700 white.
+ *
+ * The Pencil mock shows three nav items (Inbox / Calendar / Work). The
+ * component itself just renders whatever the parent passes via
+ * `topItems` so callers control the list.
  */
 
 export interface IconRailItem {
@@ -41,62 +49,103 @@ function isActive(item: IconRailItem, pathname: string): boolean {
   return pathname === item.href || pathname.startsWith(item.href + '/')
 }
 
-export function IconRail({ topItems, bottomItems = [], pathname, user, onAvatarClick }: IconRailProps) {
+export function IconRail({
+  topItems,
+  bottomItems = [],
+  pathname,
+  user,
+  onAvatarClick,
+}: IconRailProps) {
   return (
     <nav
       aria-label="Modules"
-      className="flex w-14 shrink-0 flex-col items-center gap-0.5 border-r border-wm-border bg-wm-bg py-3"
+      className="flex shrink-0 flex-col items-center"
+      style={{
+        width: 72,
+        background: '#111111',
+        padding: '20px 0',
+        gap: 8,
+        borderRight: '1px solid var(--color-wm-border)',
+      }}
     >
-      {/* Logo — links to root */}
+      {/* (1) logo — Pencil `nCoRJ`: 40×40, cornerRadius 12, fit image. */}
       <Tooltip side="right" content="Wistfare Mail">
         <Link
-          href="/"
+          href="/inbox"
           aria-label="Wistfare Mail home"
-          className="mb-2 flex h-8 w-8 items-center justify-center bg-wm-accent text-wm-text-on-accent"
+          className="relative shrink-0 overflow-hidden"
+          style={{ width: 40, height: 40, borderRadius: 12 }}
         >
-          <span className="font-sans text-sm font-bold">W</span>
+          <Image
+            src="/wistfare_mail_logo.png"
+            alt=""
+            fill
+            sizes="40px"
+            className="object-contain"
+            priority
+          />
         </Link>
       </Tooltip>
 
-      {/* 1px hairline separator (Pencil railSpacer1: 32×1 #1A1A1A) */}
-      <div className="mb-1 h-px w-8 bg-wm-border" aria-hidden />
+      {/* (2) sp1 — Pencil `AkpDt`: 1×20 spacer. The parent gap is 8,
+          so adding a 20-px-tall invisible block pushes the next item
+          down by 20px (8 gap above + 8 gap below + 20 spacer = 36px
+          between logo and first nav tile, same as Pencil). */}
+      <span aria-hidden style={{ height: 20, width: 1 }} />
 
-      <div className="flex flex-col items-center gap-0.5">
-        {topItems.map((it) => (
-          <IconRailLink key={it.href} item={it} active={isActive(it, pathname)} />
-        ))}
-      </div>
+      {/* (3) top nav tiles */}
+      {topItems.map((it) => (
+        <NavTile key={it.href} item={it} active={isActive(it, pathname)} />
+      ))}
 
-      <div className="flex-1" />
+      {/* (4) flex spacer pushes the rest to the bottom. */}
+      <span aria-hidden style={{ flex: 1 }} />
 
-      <div className="flex flex-col items-center gap-0.5">
-        {bottomItems.map((it) => (
-          <IconRailLink key={it.href} item={it} active={isActive(it, pathname)} />
-        ))}
-      </div>
+      {/* Optional bottom nav tiles. Pencil's static InboxV3 frame has
+          none, but other modules (e.g. admin) may want secondary
+          actions in the same shape — we render them just above the
+          avatar. */}
+      {bottomItems.map((it) => (
+        <NavTile key={it.href} item={it} active={isActive(it, pathname)} />
+      ))}
 
-      {/* User avatar — round 32×32 lime */}
-      <Tooltip side="right" content={user.name}>
+      {/* (5) avatar — Pencil `QK4fW`: 40×40 round, fill #1B6FE0, "V" 14/700 white. */}
+      <Tooltip side="right" content={user.name || 'Account'}>
         <button
           type="button"
           onClick={onAvatarClick}
-          aria-label={`Account: ${user.name}`}
-          className="mt-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-wm-accent font-sans text-xs font-semibold text-wm-text-on-accent"
+          aria-label={`Account: ${user.name || 'guest'}`}
+          className="flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full font-mono font-bold text-white transition-opacity hover:opacity-90"
+          style={{
+            width: 40,
+            height: 40,
+            fontSize: 14,
+            background: '#1B6FE0',
+          }}
         >
-          {user.name
-            .split(' ')
-            .map((p) => p[0])
-            .filter(Boolean)
-            .slice(0, 2)
-            .join('')
-            .toUpperCase() || 'U'}
+          {user.avatarUrl ? (
+            <Image
+              src={user.avatarUrl}
+              alt=""
+              width={40}
+              height={40}
+              className="object-cover"
+            />
+          ) : (
+            initials(user.name)
+          )}
         </button>
       </Tooltip>
     </nav>
   )
 }
 
-function IconRailLink({ item, active }: { item: IconRailItem; active: boolean }) {
+/**
+ * Pencil nav tile (`wSw6C` / `cxjrY` / `dEP5y`): 48×48 cornerRadius 14
+ * with centered 20-px icon. Active = lime fill + black icon, idle =
+ * #111111 fill + #999999 icon, hover lifts the icon to white.
+ */
+function NavTile({ item, active }: { item: IconRailItem; active: boolean }) {
   return (
     <Tooltip side="right" content={item.label}>
       <Link
@@ -104,23 +153,23 @@ function IconRailLink({ item, active }: { item: IconRailItem; active: boolean })
         aria-label={item.label}
         aria-current={active ? 'page' : undefined}
         className={cn(
-          // Pencil: outer 56×48 frame; we use w-14 from parent fixed width
-          // and a 48px tall click target.
-          'flex h-12 w-14 items-center justify-center',
+          'flex shrink-0 items-center justify-center transition-colors',
+          active
+            ? 'bg-wm-accent text-wm-text-on-accent'
+            : 'bg-wm-surface text-wm-text-secondary hover:text-wm-text-primary',
         )}
+        style={{ width: 48, height: 48, borderRadius: 14 }}
       >
-        <span
-          className={cn(
-            // Inner 40×36 frame
-            'flex h-9 w-10 items-center justify-center transition-colors',
-            active
-              ? 'bg-wm-accent-dim text-wm-accent'
-              : 'text-wm-text-tertiary hover:bg-wm-surface-hover hover:text-wm-text-secondary',
-          )}
-        >
-          {item.icon}
-        </span>
+        {item.icon}
       </Link>
     </Tooltip>
   )
+}
+
+function initials(name: string): string {
+  const parts = name
+    .split(' ')
+    .map((p) => p[0])
+    .filter(Boolean)
+  return parts.slice(0, 2).join('').toUpperCase() || 'U'
 }

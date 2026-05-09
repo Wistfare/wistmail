@@ -18,14 +18,12 @@ import {
   RefreshCw,
   CalendarPlus,
   CheckSquare,
-  ChevronDown,
   ListChecks,
   Square,
   MailOpen,
   Mail,
   MessageSquare,
   MoreHorizontal,
-  Plus,
   FolderInput,
   X,
 } from 'lucide-react'
@@ -40,6 +38,7 @@ import { EmailRowV3 } from '@/components/email/email-row-v3'
 import { FilterPills } from '@/components/email/filter-pills'
 import { InboxSectionHeader } from '@/components/email/inbox-section-header'
 import { AIBrief } from '@/components/email/ai-brief'
+import { NewDropdown } from '@/components/email/new-dropdown'
 import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
 import {
   rangeForWeek,
@@ -668,28 +667,11 @@ export default function InboxPage() {
             >
               {folderName}
             </h1>
-            <button
-              type="button"
-              onClick={() => openCompose()}
-              className="inline-flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover"
-              style={{
-                gap: 7,
-                padding: '8px 14px',
-                borderRadius: 19,
-                boxShadow: '0 4px 16px 0 rgba(191,255,0,0.25)',
-                color: '#000000',
-              }}
-              aria-label="New message"
-            >
-              <Plus style={{ width: 14, height: 14 }} />
-              <span
-                className="font-mono font-bold uppercase"
-                style={{ fontSize: 11, letterSpacing: 1 }}
-              >
-                New
-              </span>
-              <ChevronDown style={{ width: 11, height: 11 }} />
-            </button>
+            {/* NewDropdown — Pencil composePill (`vsugi`) + newDropdown
+                (`cZcJ2`).  The chevron-down on the pill opens a 288-px
+                menu with three create actions (New email / New chat /
+                New group) plus their kbd shortcuts. */}
+            <NewDropdown />
           </div>
           <p
             className="font-mono uppercase"
