@@ -218,23 +218,44 @@ function restoreLists(
   }
 }
 
+/// Invalidate every cached unified-feed page so the inbox view picks
+/// up the latest state after a mail-row mutation. The feed cache uses
+/// `feed-queries.feedKeys.all === ['inbox', 'feed']`; we match on the
+/// prefix array so all (folder, kind, q) variants invalidate together.
+/// Optimistic updates are still applied to the legacy `inboxKeys`
+/// cache via `applyToAllLists` for callers that haven't migrated.
+function invalidateFeed(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['inbox', 'feed'] })
+}
+
+/// `useToggleStar` only needs the row's id — the optimistic update
+/// reads `isStarred` straight off the cached row, so callers don't
+/// have to round-trip the full EmailListItem shape just to flip a
+/// flag. Both the legacy (EmailListItem-shaped) and feed (FeedItem-
+/// shaped) call paths can pass `{ id }`.
+export interface ToggleStarInput {
+  id: string
+}
+
 export function useToggleStar() {
   const qc = useQueryClient()
-  return useMutation<{ starred: boolean }, Error, EmailListItem, OptimisticContext>({
-    mutationFn: (email) =>
-      api.post<{ starred: boolean }>(`/api/v1/inbox/emails/${email.id}/star`),
-    onMutate: async (email) => {
+  return useMutation<{ starred: boolean }, Error, ToggleStarInput, OptimisticContext>({
+    mutationFn: ({ id }) =>
+      api.post<{ starred: boolean }>(`/api/v1/inbox/emails/${id}/star`),
+    onMutate: async ({ id }) => {
       await qc.cancelQueries({ queryKey: inboxKeys.all })
       const ctx = snapshotLists(qc)
-      applyToAllLists(qc, email.id, (row) => ({ ...row, isStarred: !row.isStarred }))
-      qc.setQueryData<FullEmail>(inboxKeys.detail(email.id), (old) =>
+      applyToAllLists(qc, id, (row) => ({ ...row, isStarred: !row.isStarred }))
+      qc.setQueryData<FullEmail>(inboxKeys.detail(id), (old) =>
         old ? { ...old, isStarred: !old.isStarred } : old,
       )
       return ctx
     },
     onError: (_err, _email, ctx) => restoreLists(qc, ctx),
-    // No onSuccess invalidate — the WS event will reconcile if the
-    // server's truth differs from our optimistic flip.
+    // Feed cache lives under a different key tree and isn't covered by
+    // applyToAllLists — invalidate it so the unified inbox refetches
+    // with the new starred state.
+    onSettled: () => invalidateFeed(qc),
   })
 }
 
@@ -249,6 +270,7 @@ export function useMarkRead() {
       return ctx
     },
     onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: () => invalidateFeed(qc),
   })
 }
 
@@ -263,6 +285,7 @@ export function useMarkUnread() {
       return ctx
     },
     onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: () => invalidateFeed(qc),
   })
 }
 
@@ -279,6 +302,7 @@ export function useArchive() {
       return ctx
     },
     onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: () => invalidateFeed(qc),
   })
 }
 
@@ -293,6 +317,7 @@ export function useDelete() {
       return ctx
     },
     onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: () => invalidateFeed(qc),
   })
 }
 
@@ -310,6 +335,7 @@ export function usePurge() {
       return ctx
     },
     onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: () => invalidateFeed(qc),
   })
 }
 
@@ -564,6 +590,7 @@ export function useMarkAllRead() {
       return ctx
     },
     onError: (_err, _vars, ctx) => restoreLists(qc, ctx),
+    onSettled: () => invalidateFeed(qc),
   })
 }
 

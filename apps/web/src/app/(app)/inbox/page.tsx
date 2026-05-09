@@ -34,26 +34,28 @@ import {
   useEventsInRange,
   type CalendarEvent,
 } from '@/lib/event-queries'
-import { groupEmailsBySection } from '@/lib/inbox-sections'
 import { api } from '@/lib/api-client'
 import { useToast } from '@/components/ui/toast'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import {
-  type EmailListItem,
   type FullEmail,
   useArchive,
   useDelete,
   useEmailDetail,
   useEmailThread,
   useFolderRetention,
-  useInboxList,
   useMarkRead,
   usePurge,
   useSnooze,
   useToggleStar,
 } from '@/lib/email-queries'
-
-type ContentType = 'all' | 'mail' | 'chat'
+import {
+  feedItemDisplayName,
+  groupFeedBySection,
+  useFeedList,
+  type FeedItem,
+  type FeedKind,
+} from '@/lib/feed-queries'
 
 export default function InboxPage() {
   const searchParams = useSearchParams()
@@ -62,14 +64,17 @@ export default function InboxPage() {
   const folderParam = searchParams.get('folder') || 'inbox'
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  /// Pencil InboxV3 segmented control: All / Mail / Chat. We gate
-  /// emails at the list level here; clicking "Chat" navigates over to
-  /// /chat — the unified inbox feed lives on mobile only for now.
-  const [contentType, setContentType] = useState<ContentType>('all')
+  /// Pencil InboxV3 segmented control filters the unified feed:
+  ///   ALL   → emails + chats
+  ///   MAIL  → emails only
+  ///   CHATS → conversations only (direct + group)
+  /// All three modes stay on /inbox — there is no separate chat
+  /// screen; the feed is a single source of truth.
+  const [contentType, setContentType] = useState<FeedKind>('all')
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  // Cache-driven data: list (paginated) + selected detail.
-  const list = useInboxList(folderParam)
+  // Cache-driven data: feed (paginated) + selected detail.
+  const list = useFeedList({ folder: folderParam, kind: contentType })
   const detail = useEmailDetail(selectedId)
   const selectedFull = detail.data ?? null
 
@@ -95,11 +100,22 @@ export default function InboxPage() {
     setSelectedId(null)
   }, [folderParam])
 
-  // Flatten the infinite-query pages into a single array for rendering.
-  const emails: EmailListItem[] = useMemo(() => {
+  // Flatten the infinite-query pages into a single FeedItem array.
+  // Items are already chronologically merged server-side; the client
+  // just concatenates pages.
+  const items: FeedItem[] = useMemo(() => {
     if (!list.data) return []
     return list.data.pages.flatMap((p) => p.data)
   }, [list.data])
+
+  /// Email-only slice for backwards-compat where the existing code
+  /// reaches into the cache (mark-read mutations, keyboard shortcuts
+  /// keyed on the selected id, etc). Chat rows never bleed into this
+  /// list.
+  const emails = useMemo(
+    () => items.filter((it): it is Extract<FeedItem, { kind: 'email' }> => it.kind === 'email'),
+    [items],
+  )
 
   // Lazy load-more on scroll. Trigger ~600px before the bottom.
   useEffect(() => {
@@ -115,30 +131,29 @@ export default function InboxPage() {
     return () => el.removeEventListener('scroll', onScroll)
   }, [list])
 
-  // Pencil InboxV3 doesn't show client-side filter pills (Unread /
-  // Starred / Has files / search) — those affordances aren't part of
-  // the V3 design. We feed the raw list straight through to the
-  // section grouping. Search lives on its own /search route.
-  const filteredEmails = emails
+  // Pencil InboxV3 doesn't show client-side filter pills — `kind` on
+  // the segmented control is the only filter and it's applied
+  // server-side. We feed the raw merged stream straight through to
+  // section grouping; search lives on /search.
+  const filteredItems = items
 
-  /// Group filtered emails into Today / Yesterday / This week / Earlier
-  /// bands so the list pane gets the V3 section dividers. Pencil
-  /// reference: `InboxV3.sec1` / `sec2` (`TB36x`). Helper lives in
-  /// `lib/inbox-sections.ts` so it can be unit-tested without dragging
-  /// the inbox page's deps in.
+  /// Group merged feed items into Today / Yesterday / This week /
+  /// Earlier bands so the list pane gets the V3 section dividers.
+  /// Pencil reference: `InboxV3.sec1` / `sec2` (`TB36x`).
   const sections = useMemo(
-    () => groupEmailsBySection(filteredEmails),
-    [filteredEmails],
+    () => groupFeedBySection(filteredItems),
+    [filteredItems],
   )
 
-  /// "23 UNREAD · 2 MENTIONS" subtitle on the inbox header. Mentions
-  /// are not yet computed server-side — `@me` matching is a future
-  /// hook, so we surface the unread count plus a `0 MENTIONS` until
-  /// then.
-  const unreadCount = useMemo(
-    () => emails.filter((e) => !e.isRead).length,
-    [emails],
-  )
+  /// "23 UNREAD · 2 MENTIONS" subtitle on the inbox header. The
+  /// server returns the per-kind unread tally on every page; we read
+  /// the freshest page so the count refreshes as the user toggles
+  /// the filter.
+  const unreadCount = useMemo(() => {
+    const pages = list.data?.pages
+    if (!pages || pages.length === 0) return 0
+    return pages[pages.length - 1].unreadCount
+  }, [list.data])
 
   /// Today's events feeding the right-hand `TodayPanel` (Pencil
   /// `InboxV3.TodayRail`). Only show on the actual `inbox` folder; the
@@ -195,9 +210,24 @@ export default function InboxPage() {
       }))
   }, [todayEvents.data])
 
-  function selectEmail(email: EmailListItem) {
-    setSelectedId(email.id)
-    if (!email.isRead) markRead.mutate({ id: email.id })
+  /// Selecting an email opens it in the right reading pane (and marks
+  /// it read).  Selecting a chat row temporarily routes to /chat/[id]
+  /// — commit 3 will replace this with an inline chat reading pane in
+  /// the same column. Until then, navigation keeps the chat experience
+  /// fully functional without forcing a frontend rewrite mid-migration.
+  function selectFeedItem(item: FeedItem) {
+    if (item.kind === 'email') {
+      setSelectedId(item.id)
+      if (!item.isRead) markRead.mutate({ id: item.id })
+      return
+    }
+    router.push(`/chat/${item.id}`)
+  }
+
+  /// Star toggling is mail-only — chat rows have no star state today.
+  /// Keep the helper narrow so the type system enforces it.
+  function handleStarItem(email: Extract<FeedItem, { kind: 'email' }>) {
+    star.mutate({ id: email.id })
   }
 
   // Global keyboard shortcuts. Modelled on Gmail so muscle memory
@@ -221,23 +251,25 @@ export default function InboxPage() {
 
       switch (e.key) {
         case 'j': {
-          if (filteredEmails.length === 0) return
+          // j/k navigate the EMAIL portion of the feed only — chat
+          // rows don't open in the right pane yet, so stepping
+          // through them doesn't make sense until commit 3 lands.
+          if (emails.length === 0) return
           const idx = selectedId
-            ? filteredEmails.findIndex((em) => em.id === selectedId)
+            ? emails.findIndex((em) => em.id === selectedId)
             : -1
-          const next =
-            idx < 0 ? 0 : Math.min(idx + 1, filteredEmails.length - 1)
-          selectEmail(filteredEmails[next])
+          const next = idx < 0 ? 0 : Math.min(idx + 1, emails.length - 1)
+          selectFeedItem(emails[next])
           e.preventDefault()
           return
         }
         case 'k': {
-          if (filteredEmails.length === 0) return
+          if (emails.length === 0) return
           const idx = selectedId
-            ? filteredEmails.findIndex((em) => em.id === selectedId)
+            ? emails.findIndex((em) => em.id === selectedId)
             : 0
           const prev = idx <= 0 ? 0 : idx - 1
-          selectEmail(filteredEmails[prev])
+          selectFeedItem(emails[prev])
           e.preventDefault()
           return
         }
@@ -257,7 +289,7 @@ export default function InboxPage() {
         case 's':
           if (selectedId) {
             const em = emails.find((m) => m.id === selectedId)
-            if (em) star.mutate(em)
+            if (em) handleStarItem(em)
             e.preventDefault()
           }
           return
@@ -277,16 +309,7 @@ export default function InboxPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    filteredEmails,
-    selectedId,
-    selectedFull,
-    emails,
-  ])
-
-  function handleStar(email: EmailListItem) {
-    star.mutate(email)
-  }
+  }, [emails, selectedId, selectedFull])
 
   function handleArchive(emailId: string) {
     archive.mutate({ id: emailId })
@@ -341,15 +364,6 @@ export default function InboxPage() {
       .split(/[._-]/)
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ')
-  }
-
-  function getEmailDisplayName(email: EmailListItem): string {
-    if (folderParam === 'sent' || folderParam === 'drafts') {
-      const to = email.toAddresses?.[0]
-      if (to) return extractDisplayName(to)
-      return '(no recipient)'
-    }
-    return extractDisplayName(email.fromAddress)
   }
 
   const folderName = folderParam.charAt(0).toUpperCase() + folderParam.slice(1)
@@ -444,12 +458,12 @@ export default function InboxPage() {
   }
 
   /// Pencil InboxV3 segmented control (`InboxV3.segWrap`):
-  ///   [All · 23] [Mail] [Chat]   [🔍]
-  /// Clicking "Chat" leaves the inbox feed entirely — the unified
-  /// inbox feed is mobile-only for now.
-  function onContentTypeChange(next: ContentType) {
+  ///   [All · 23] [Mail] [Chats]   [🔍]
+  /// All three modes stay on /inbox — clicking CHATS just toggles
+  /// the `kind` filter on the unified feed query, the same way ALL
+  /// and MAIL do.
+  function onContentTypeChange(next: FeedKind) {
     setContentType(next)
-    if (next === 'chat') router.push('/chat')
   }
 
   return (
@@ -531,8 +545,8 @@ export default function InboxPage() {
             MAIL
           </SegPill>
           <SegPill
-            active={contentType === 'chat'}
-            onClick={() => onContentTypeChange('chat')}
+            active={contentType === 'chats'}
+            onClick={() => onContentTypeChange('chats')}
             icon={<MessageSquare style={{ width: 12, height: 12 }} />}
           >
             CHATS
@@ -598,43 +612,79 @@ export default function InboxPage() {
             </div>
           )}
 
-          {!list.isPending && !list.isError && filteredEmails.length === 0 && (
+          {!list.isPending && !list.isError && filteredItems.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 py-16">
-              <p className="text-sm text-wm-text-muted">No emails yet</p>
+              <p className="text-sm text-wm-text-muted">
+                {contentType === 'mail'
+                  ? 'No emails yet'
+                  : contentType === 'chats'
+                    ? 'No conversations yet'
+                    : 'Your inbox is empty'}
+              </p>
             </div>
           )}
 
-          {/* Emails grouped into V3 date sections. */}
+          {/* Feed items grouped into V3 date sections. Each section
+              mixes mail + chat rows already merged server-side; we
+              just dispatch on `kind` to pick the right row payload
+              and click handler. EmailRowV3 renders both kinds via its
+              tag prop (MAIL / CHAT / CHANNEL). */}
           {sections.map((sec) => (
             <div key={sec.label}>
               <InboxSectionHeader label={sec.label} count={sec.items.length} />
-              {sec.items.map((email) => (
-                <EmailRowV3
-                  key={email.id}
-                  email={{
-                    id: email.id,
-                    fromAddress: email.fromAddress,
-                    displayName: getEmailDisplayName(email),
-                    subject: email.subject,
-                    snippet: email.snippet,
-                    timeLabel: formatRowTime(email.createdAt),
-                    isRead: email.isRead,
-                    isStarred: email.isStarred,
-                    hasAttachments: email.hasAttachments,
-                    tag: 'MAIL',
-                    labels: email.labels ?? [],
-                  }}
-                  selected={selectedId === email.id}
-                  onClick={() => selectEmail(email)}
-                  onToggleStar={() => handleStar(email)}
-                  trailing={
-                    <SendStatusPill
-                      status={email.status}
-                      onRetry={() => handleRetrySend(email.id)}
+              {sec.items.map((item) => {
+                if (item.kind === 'email') {
+                  return (
+                    <EmailRowV3
+                      key={`email-${item.id}`}
+                      email={{
+                        id: item.id,
+                        fromAddress: item.fromAddress,
+                        displayName: item.displayName,
+                        subject: item.subject,
+                        snippet: item.snippet,
+                        timeLabel: formatRowTime(item.activityAt),
+                        isRead: item.isRead,
+                        isStarred: item.isStarred,
+                        hasAttachments: item.hasAttachments,
+                        tag: 'MAIL',
+                        labels: item.labels ?? [],
+                      }}
+                      selected={selectedId === item.id}
+                      onClick={() => selectFeedItem(item)}
+                      onToggleStar={() => handleStarItem(item)}
+                      trailing={
+                        <SendStatusPill
+                          status={item.status}
+                          onRetry={() => handleRetrySend(item.id)}
+                        />
+                      }
                     />
-                  }
-                />
-              ))}
+                  )
+                }
+                // chat-direct or chat-group — same row shape, no
+                // subject line (Pencil row3/row4 omit the subject for
+                // chat rows). Display name reads from the item helper
+                // so groups fall back to participant lists.
+                return (
+                  <EmailRowV3
+                    key={`${item.kind}-${item.id}`}
+                    email={{
+                      id: item.id,
+                      fromAddress: '',
+                      displayName: feedItemDisplayName(item),
+                      subject: '',
+                      snippet: item.snippet,
+                      timeLabel: formatRowTime(item.activityAt),
+                      isRead: item.isRead,
+                      isStarred: false,
+                      hasAttachments: false,
+                      tag: item.tag,
+                    }}
+                    onClick={() => selectFeedItem(item)}
+                  />
+                )
+              })}
             </div>
           ))}
           {list.isFetchingNextPage && (
@@ -984,7 +1034,7 @@ function SendStatusPill({
   status,
   onRetry,
 }: {
-  status: EmailListItem['status']
+  status: 'idle' | 'sending' | 'sent' | 'failed' | 'rate_limited'
   onRetry: () => void
 }) {
   if (status === 'idle' || status === 'sent') return null
