@@ -15,7 +15,6 @@ export {
   type SidebarUserProps,
 } from './sidebar-shell'
 export { MailSidebar, type MailSidebarProps } from './mail-sidebar'
-export { ChatSidebar, type ChatSidebarProps } from './chat-sidebar'
 export { CalendarSidebar, type CalendarSidebarProps } from './calendar-sidebar'
 export { WorkSidebar, type WorkSidebarProps } from './work-sidebar'
 export { DocsSidebar, type DocsSidebarProps } from './docs-sidebar'

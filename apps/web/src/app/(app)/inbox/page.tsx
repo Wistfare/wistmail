@@ -63,6 +63,14 @@ export default function InboxPage() {
   const router = useRouter()
   const { openCompose } = useCompose()
   const folderParam = searchParams.get('folder') || 'inbox'
+  /// `?kind=` overrides the segmented-control default. Used by:
+  ///   - /chat redirect      → /inbox?kind=chats
+  ///   - command palette etc.
+  const kindParam = searchParams.get('kind')
+  /// `?chat=<id>` deep-links the inline chat reading pane. Used by:
+  ///   - /chat/<id> redirect → /inbox?chat=<id>
+  ///   - push notifications  → /inbox?chat=<id>
+  const chatParam = searchParams.get('chat')
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   /// Selected chat conversation. Mutually exclusive with selectedId
@@ -70,14 +78,29 @@ export default function InboxPage() {
   /// on which is non-null.  Stored as a plain id; the ChatThreadView
   /// hydrates the conversation summary from the cached
   /// useConversations() result.
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(
+    chatParam,
+  )
   /// Pencil InboxV3 segmented control filters the unified feed:
   ///   ALL   → emails + chats
   ///   MAIL  → emails only
   ///   CHATS → conversations only (direct + group)
   /// All three modes stay on /inbox — there is no separate chat
   /// screen; the feed is a single source of truth.
-  const [contentType, setContentType] = useState<FeedKind>('all')
+  const [contentType, setContentType] = useState<FeedKind>(
+    kindParam === 'mail' || kindParam === 'chats' ? kindParam : 'all',
+  )
+
+  // Sync external URL changes to internal state — covers the case
+  // where the user uses the back button to return to a deep-linked
+  // chat after viewing something else.
+  useEffect(() => {
+    if (chatParam && chatParam !== selectedChatId) {
+      setSelectedChatId(chatParam)
+      setSelectedId(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatParam])
   const listRef = useRef<HTMLDivElement | null>(null)
 
   // Cache-driven data: feed (paginated) + selected detail.
