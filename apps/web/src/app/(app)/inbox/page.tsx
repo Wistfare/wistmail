@@ -28,6 +28,7 @@ import { EmailRowV3 } from '@/components/email/email-row-v3'
 import { InboxSectionHeader } from '@/components/email/inbox-section-header'
 import { NewDropdown } from '@/components/email/new-dropdown'
 import { ReadingEmpty } from '@/components/email/reading-empty'
+import { ChatThreadView } from '@/components/chat/chat-thread-view'
 import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
 import {
   rangeForWeek,
@@ -64,6 +65,12 @@ export default function InboxPage() {
   const folderParam = searchParams.get('folder') || 'inbox'
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  /// Selected chat conversation. Mutually exclusive with selectedId
+  /// (email) — the right reading pane renders one or the other based
+  /// on which is non-null.  Stored as a plain id; the ChatThreadView
+  /// hydrates the conversation summary from the cached
+  /// useConversations() result.
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   /// Pencil InboxV3 segmented control filters the unified feed:
   ///   ALL   → emails + chats
   ///   MAIL  → emails only
@@ -95,9 +102,11 @@ export default function InboxPage() {
   const toast = useToast()
   const [snoozeOpen, setSnoozeOpen] = useState(false)
 
-  // Reset selection when the folder changes.
+  // Reset both selection slots when the folder changes — chat or
+  // email, whichever was active.
   useEffect(() => {
     setSelectedId(null)
+    setSelectedChatId(null)
   }, [folderParam])
 
   // Flatten the infinite-query pages into a single FeedItem array.
@@ -210,18 +219,20 @@ export default function InboxPage() {
       }))
   }, [todayEvents.data])
 
-  /// Selecting an email opens it in the right reading pane (and marks
-  /// it read).  Selecting a chat row temporarily routes to /chat/[id]
-  /// — commit 3 will replace this with an inline chat reading pane in
-  /// the same column. Until then, navigation keeps the chat experience
-  /// fully functional without forcing a frontend rewrite mid-migration.
+  /// Selecting an email or a chat row opens the matching reading
+  /// pane in the right column.  The two selection states are mutually
+  /// exclusive — picking one clears the other so the right pane only
+  /// ever renders a single conversation/email at a time.
   function selectFeedItem(item: FeedItem) {
     if (item.kind === 'email') {
+      setSelectedChatId(null)
       setSelectedId(item.id)
       if (!item.isRead) markRead.mutate({ id: item.id })
       return
     }
-    router.push(`/chat/${item.id}`)
+    // chat-direct or chat-group — render the ChatThreadView inline.
+    setSelectedId(null)
+    setSelectedChatId(item.id)
   }
 
   /// Star toggling is mail-only — chat rows have no star state today.
@@ -681,6 +692,7 @@ export default function InboxPage() {
                       hasAttachments: false,
                       tag: item.tag,
                     }}
+                    selected={selectedChatId === item.id}
                     onClick={() => selectFeedItem(item)}
                   />
                 )
@@ -703,7 +715,14 @@ export default function InboxPage() {
           the column then clips any stray inline content (HTML emails
           with absolutely-positioned elements, etc.). */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {!selectedId ? (
+        {selectedChatId ? (
+          // Chat reading pane — same column as the email reading
+          // pane, swapped via the discriminated selection state.
+          <ChatThreadView
+            conversationId={selectedChatId}
+            onBack={() => setSelectedChatId(null)}
+          />
+        ) : !selectedId ? (
           <ReadingEmpty
             unreadCount={unreadCount}
             onCompose={() => openCompose()}
