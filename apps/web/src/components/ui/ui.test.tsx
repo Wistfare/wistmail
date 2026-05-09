@@ -31,8 +31,13 @@ describe('Avatar', () => {
   })
 
   it('renders image when src provided', () => {
+    // next/image rewrites the URL to /_next/image?url=…&w=…&q=…, so we
+    // assert via alt text + a loose substring match on the rewritten src
+    // rather than the literal source URL.
     render(<Avatar name="Alex" src="/avatar.jpg" />)
-    expect(screen.getByRole('img')).toHaveAttribute('src', '/avatar.jpg')
+    const img = screen.getByRole('img', { name: 'Alex' })
+    expect(img).toBeInTheDocument()
+    expect(img.getAttribute('src')).toContain(encodeURIComponent('/avatar.jpg'))
   })
 
   it('applies size classes', () => {

@@ -8,16 +8,21 @@ export interface InputFieldProps extends React.InputHTMLAttributes<HTMLInputElem
   icon?: React.ReactNode
 }
 
+// Pencil spec: padding [10, 14] (py-2.5 px-3.5), gap 10 (gap-2.5),
+// bg #111111, 1px #1A1A1A border, value text 13px JetBrains Mono.
+// Stacked-label variant: label is "EMAIL" — JetBrains Mono 11px 500 #999, 6px below to field.
 export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
   ({ className, label, error, hint, icon, ...props }, ref) => {
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         {label && (
-          <label className="font-mono text-xs font-medium text-wm-text-secondary">{label}</label>
+          <label className="font-mono text-[11px] font-medium uppercase tracking-wider text-wm-text-secondary">
+            {label}
+          </label>
         )}
         <div
           className={cn(
-            'flex items-center gap-2.5 border bg-wm-surface px-4 py-3',
+            'flex items-center gap-2.5 border bg-wm-surface px-3.5 py-2.5',
             'transition-colors focus-within:border-wm-accent focus-within:ring-1 focus-within:ring-wm-accent/30',
             error ? 'border-wm-error' : 'border-wm-border',
           )}
@@ -26,7 +31,7 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
           <input
             ref={ref}
             className={cn(
-              'flex-1 bg-transparent font-mono text-sm text-wm-text-primary',
+              'flex-1 bg-transparent font-mono text-[13px] text-wm-text-primary',
               'placeholder:text-wm-text-muted outline-none',
               className,
             )}

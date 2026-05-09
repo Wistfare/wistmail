@@ -16,10 +16,18 @@ const changeColors = {
 
 export function StatCard({ title, value, change, changeType = 'positive', className }: StatCardProps) {
   return (
-    <div className={cn('border border-wm-border bg-wm-surface p-5', className)}>
-      <p className="font-mono text-[10px] font-semibold tracking-wider text-wm-text-muted">{title}</p>
-      <div className="mt-2 flex items-center gap-2">
-        <span className="font-mono text-2xl font-bold text-wm-text-primary">{value}</span>
+    // Pencil StatCard: padding [20, 24] = py-5 px-6, gap 8 vertical
+    // label: 10px 600 letterSpacing 1 #404040
+    // value: JetBrains Mono 28px 700 #FFFFFF
+    // change: JetBrains Mono 12px 500 (color by type)
+    <div className={cn('flex flex-col gap-2 border border-wm-border bg-wm-surface px-6 py-5', className)}>
+      <p className="font-mono text-[10px] font-semibold tracking-[1px] uppercase text-wm-text-muted">
+        {title}
+      </p>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[28px] font-bold leading-none text-wm-text-primary">
+          {value}
+        </span>
         {change && (
           <span className={cn('font-mono text-xs font-medium', changeColors[changeType])}>
             {change}

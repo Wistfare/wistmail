@@ -3,16 +3,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Loader2, MessageSquare, Plus, Search, Users } from 'lucide-react'
-import { Avatar } from '@/components/ui/avatar'
+import { Loader2, MessageSquare, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConversationListItem } from '@/components/chat'
 import {
   useChatSearch,
   useConversations,
   type ChatSearchHit,
-  type ConversationSummary,
 } from '@/lib/chat-queries'
-import { cn, formatRelativeTime } from '@/lib/utils'
+import { formatRelativeTime } from '@/lib/utils'
 
 /// Chat list landing page. Mirrors the Inbox layout — a left list
 /// of conversations and a right empty pane prompting the user to
@@ -122,15 +121,27 @@ function ConversationsList({
         </div>
       )}
 
-      {(list.data ?? []).map((c) => (
-        <ConversationRow
-          key={c.id}
-          conversation={c}
-          onClick={() => router.push(`/chat/${c.id}`)}
-        />
-      ))}
+      {(list.data ?? []).map((c) => {
+        const other = c.otherParticipants[0]
+        const isGroup = c.kind === 'group'
+        const title =
+          c.title ?? other?.name ?? other?.email ?? 'Conversation'
+        return (
+          <ConversationListItem
+            key={c.id}
+            href={`/chat/${c.id}`}
+            kind={isGroup ? 'group' : 'direct'}
+            title={title}
+            avatarUrl={other?.avatarUrl}
+            preview={c.lastMessage?.content ?? 'No messages yet'}
+            timestamp={c.lastMessageAt}
+            unread={c.unreadCount}
+          />
+        )
+      })}
     </>
   )
+  void router // router is unused after the V3 swap; kept in signature for tests
 }
 
 function SearchResults({
@@ -191,71 +202,5 @@ function SearchResults({
   )
 }
 
-function ConversationRow({
-  conversation,
-  onClick,
-}: {
-  conversation: ConversationSummary
-  onClick: () => void
-}) {
-  const other = conversation.otherParticipants[0]
-  const isGroup = conversation.kind === 'group'
-  const displayName =
-    conversation.title ??
-    other?.name ??
-    other?.email ??
-    'Conversation'
-
-  return (
-    <button
-      onClick={onClick}
-      className="group flex w-full cursor-pointer items-center gap-3 border-b border-wm-border px-5 py-3.5 text-left transition-colors hover:bg-wm-surface-hover"
-    >
-      {isGroup ? (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-wm-accent/15">
-          <Users className="h-4 w-4 text-wm-accent" />
-        </div>
-      ) : (
-        <Avatar
-          name={displayName}
-          src={other?.avatarUrl}
-          size="md"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              'flex-1 truncate text-[13px]',
-              conversation.unreadCount > 0
-                ? 'font-semibold text-wm-text-primary'
-                : 'font-normal text-wm-text-secondary',
-            )}
-          >
-            {displayName}
-          </span>
-          <span className="shrink-0 font-mono text-[10px] text-wm-text-muted">
-            {formatRelativeTime(new Date(conversation.lastMessageAt))}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              'flex-1 truncate font-mono text-[11px] leading-[1.4]',
-              conversation.unreadCount > 0
-                ? 'text-wm-text-primary'
-                : 'text-wm-text-muted',
-            )}
-          >
-            {conversation.lastMessage?.content ?? 'No messages yet'}
-          </span>
-          {conversation.unreadCount > 0 && (
-            <span className="inline-flex shrink-0 items-center justify-center bg-wm-accent px-1.5 py-0.5 font-mono text-[10px] font-semibold text-wm-text-on-accent">
-              {conversation.unreadCount}
-            </span>
-          )}
-        </div>
-      </div>
-    </button>
-  )
-}
+// `ConversationRow` was inlined into the V3 `ConversationListItem` component;
+// the legacy implementation was removed during the AUDIT-7.1 pass.

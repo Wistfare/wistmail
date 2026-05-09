@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Search,
   ArrowUpDown,
   SlidersHorizontal,
-  Star,
   Archive,
   Trash2,
   Tag,
@@ -20,6 +19,7 @@ import {
   Square,
   MailOpen,
   Mail,
+  Plus,
   FolderInput,
   Clock,
   X,
@@ -27,13 +27,22 @@ import {
 import { useLabels } from '@/lib/labels'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui'
 import { useCompose } from '@/components/email/compose-provider'
 import { EmailBody } from '@/components/email/email-body'
 import { LabelAssignPopover } from '@/components/email/label-assign-popover'
+import { AttachmentsStrip } from '@/components/email/attachments-strip'
+import { EmailRowV3 } from '@/components/email/email-row-v3'
+import { FilterPills } from '@/components/email/filter-pills'
+import { InboxSectionHeader } from '@/components/email/inbox-section-header'
+import { AIBrief } from '@/components/email/ai-brief'
+import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
 import {
-  AttachmentBadge,
-  AttachmentsStrip,
-} from '@/components/email/attachments-strip'
+  rangeForWeek,
+  useEventsInRange,
+  type CalendarEvent,
+} from '@/lib/event-queries'
+import { groupEmailsBySection } from '@/lib/inbox-sections'
 import { api } from '@/lib/api-client'
 import { useToast } from '@/components/ui/toast'
 import { cn, formatRelativeTime } from '@/lib/utils'
@@ -65,13 +74,20 @@ const FILTER_TABS = [
   { id: 'attachments', label: 'Has files' },
 ] as const
 
+type ContentType = 'all' | 'mail' | 'chat'
+
 export default function InboxPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const { openCompose } = useCompose()
   const folderParam = searchParams.get('folder') || 'inbox'
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
+  /// Pencil InboxV3 segmented control: All / Mail / Chat. We gate
+  /// emails at the list level here; clicking "Chat" navigates over to
+  /// /chat — the unified inbox feed lives on mobile only for now.
+  const [contentType, setContentType] = useState<ContentType>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
 
@@ -150,6 +166,54 @@ export default function InboxPage() {
       return true
     })
   }, [emails, activeFilter, searchQuery])
+
+  /// Group filtered emails into Today / Yesterday / This week / Earlier
+  /// bands so the list pane gets the V3 section dividers. Pencil
+  /// reference: `InboxV3.sec1` / `sec2` (`TB36x`). Helper lives in
+  /// `lib/inbox-sections.ts` so it can be unit-tested without dragging
+  /// the inbox page's deps in.
+  const sections = useMemo(
+    () => groupEmailsBySection(filteredEmails),
+    [filteredEmails],
+  )
+
+  /// "23 UNREAD · 2 MENTIONS" subtitle on the inbox header. Mentions
+  /// are not yet computed server-side — `@me` matching is a future
+  /// hook, so we surface the unread count plus a `0 MENTIONS` until
+  /// then.
+  const unreadCount = useMemo(
+    () => emails.filter((e) => !e.isRead).length,
+    [emails],
+  )
+
+  /// Today's events feeding the right-hand `TodayPanel` (Pencil
+  /// `InboxV3.TodayRail`). Only show on the actual `inbox` folder; the
+  /// other folders (sent / drafts / trash etc) keep the 2-column layout
+  /// from before.
+  const showTodayRail = folderParam === 'inbox' && !inSelectionMode
+  const todayRange = useMemo(() => rangeForWeek(new Date()), [])
+  const todayEvents = useEventsInRange(todayRange.from, todayRange.to)
+  const todayPanelEvents = useMemo<TodayEvent[]>(() => {
+    if (!todayEvents.data) return []
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return todayEvents.data
+      .filter((e: CalendarEvent) => {
+        const start = new Date(e.startAt)
+        return start >= today && start < tomorrow
+      })
+      .map((e: CalendarEvent, idx: number) => ({
+        id: e.id,
+        title: e.title,
+        startsAt: e.startAt,
+        endsAt: e.endAt,
+        location: e.location ?? undefined,
+        meetingUrl: e.meetingLink ?? undefined,
+        isNext: idx === 0,
+      }))
+  }, [todayEvents.data])
 
   function selectEmail(email: EmailListItem) {
     // In selection mode, clicking a row toggles its checkbox rather
@@ -565,22 +629,84 @@ export default function InboxPage() {
     )
   }
 
+  /// Pencil InboxV3 segmented control (`InboxV3.segWrap`):
+  ///   [All · 23] [Mail] [Chat]   [🔍]
+  /// Clicking "Chat" leaves the inbox feed entirely — the unified
+  /// inbox feed is mobile-only for now.
+  function onContentTypeChange(next: ContentType) {
+    setContentType(next)
+    if (next === 'chat') router.push('/chat')
+  }
+
   return (
     <div className="flex h-full">
       {/* ── Email list pane ── */}
-      <div className="flex w-[380px] shrink-0 flex-col border-r border-wm-border">
-        <div className="flex items-center gap-2 border-b border-wm-border bg-wm-surface px-5 py-2.5">
+      <div className="flex w-[420px] shrink-0 flex-col border-r border-wm-border bg-wm-bg">
+        {/* V3 header: title + "+ NEW" CTA + UNREAD/MENTIONS subtitle */}
+        <header className="flex flex-col gap-1.5 px-5 pb-3 pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="font-sans text-2xl font-semibold text-wm-text-primary">
+              {folderName}
+            </h1>
+            <button
+              type="button"
+              onClick={() => openCompose()}
+              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-wm-accent px-3 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New
+            </button>
+          </div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[1.5px] text-wm-text-secondary">
+            {unreadCount} unread · 0 mentions
+          </p>
+        </header>
+
+        {/* V3 content-type pill row + search button. */}
+        <div className="flex items-center gap-2 px-5 pb-3">
+          <FilterPills
+            value={contentType}
+            options={[
+              { id: 'all', label: 'All', count: unreadCount },
+              { id: 'mail', label: 'Mail' },
+              { id: 'chat', label: 'Chat' },
+            ]}
+            onChange={(v) => onContentTypeChange(v as ContentType)}
+          />
+          <button
+            type="button"
+            onClick={() => searchInputRef.current?.focus()}
+            aria-label="Search emails"
+            className="ml-auto inline-flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full border border-wm-border bg-wm-surface text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Search bar — collapses to icon-only via the pill row's button. */}
+        <div className="flex items-center gap-2 border-y border-wm-border bg-wm-surface px-5 py-2.5">
           <Search className="h-4 w-4 text-wm-text-muted" />
           <input
             ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Search ${folderName.toLowerCase()}...`}
+            placeholder={`Search ${folderName.toLowerCase()}…`}
             className="flex-1 bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
+        {/* Bulk-action toolbar (replaces the secondary chrome when 1+ rows selected). */}
         {inSelectionMode ? (
           <BulkActionToolbar
             count={selectedIds.size}
@@ -593,15 +719,13 @@ export default function InboxPage() {
             }
           />
         ) : (
-          <div className="flex items-center border-b border-wm-border px-5 py-3">
-            <span className="text-sm font-semibold text-wm-text-primary">{folderName}</span>
-            <div className="flex-1" />
+          <div className="flex items-center justify-end gap-2 border-b border-wm-border px-5 py-2">
             {emails.some((e) => !e.isRead) && (
               <button
                 type="button"
                 onClick={handleMarkAllRead}
                 disabled={markAllRead.isPending}
-                className="mr-3 inline-flex cursor-pointer items-center gap-1 border border-wm-border px-2 py-1 font-mono text-[10px] font-semibold text-wm-text-secondary transition-colors hover:bg-wm-surface-hover disabled:cursor-wait disabled:opacity-60"
+                className="inline-flex cursor-pointer items-center gap-1 border border-wm-border px-2 py-1 font-mono text-[10px] font-semibold text-wm-text-secondary transition-colors hover:bg-wm-surface-hover disabled:cursor-wait disabled:opacity-60"
                 title="Mark everything in this folder as read"
               >
                 <MailOpen className="h-3 w-3" />
@@ -613,17 +737,22 @@ export default function InboxPage() {
                 type="button"
                 onClick={handleEmptyFolder}
                 disabled={emptyFolder.isPending}
-                className="mr-3 inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20 disabled:cursor-wait disabled:opacity-60"
+                className="inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20 disabled:cursor-wait disabled:opacity-60"
                 title={`Permanently delete every email in ${folderName}`}
               >
                 <Trash2 className="h-3 w-3" />
-                {emptyFolder.isPending
-                  ? 'Emptying…'
-                  : `Empty ${folderParam}`}
+                {emptyFolder.isPending ? 'Emptying…' : `Empty ${folderParam}`}
               </button>
             )}
+            {/* Read-status filter — kept as a secondary chip strip. */}
+            <FilterPills
+              value={activeFilter}
+              options={FILTER_TABS.map((t) => ({ id: t.id, label: t.label }))}
+              onChange={(id) => setActiveFilter(id)}
+              className="text-[10px]"
+            />
             <ArrowUpDown className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
-            <SlidersHorizontal className="ml-3 h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
+            <SlidersHorizontal className="h-3.5 w-3.5 cursor-pointer text-wm-text-muted" />
           </div>
         )}
 
@@ -638,23 +767,6 @@ export default function InboxPage() {
             </p>
           </div>
         )}
-
-        <div className="flex items-center border-b border-wm-border px-5">
-          {FILTER_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveFilter(tab.id)}
-              className={cn(
-                'cursor-pointer px-3 py-2.5 font-mono text-[11px] transition-colors',
-                activeFilter === tab.id
-                  ? 'border-b-2 border-wm-accent font-medium text-wm-accent'
-                  : 'text-wm-text-muted hover:text-wm-text-secondary',
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
 
         <div ref={listRef} className="flex-1 overflow-y-auto">
           {list.isPending && (
@@ -687,98 +799,41 @@ export default function InboxPage() {
             </div>
           )}
 
-          {filteredEmails.map((email) => (
-            <button
-              key={email.id}
-              onClick={() => selectEmail(email)}
-              className={cn(
-                'group flex w-full cursor-pointer flex-col gap-1.5 border-b border-wm-border px-5 py-3.5 text-left transition-colors',
-                selectedId === email.id && !inSelectionMode
-                  ? 'border-l-2 border-l-wm-accent bg-wm-surface'
-                  : selectedIds.has(email.id)
-                    ? 'border-l-2 border-l-wm-accent bg-wm-accent/5'
-                    : 'hover:bg-wm-surface-hover',
-              )}
-            >
-              <div className="flex items-center gap-2">
-                {/* Row checkbox — hidden behind a hover reveal when
-                    nothing's selected, always visible in selection
-                    mode so the user can unselect without fumbling. */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleSelect(email.id)
+          {/* Emails grouped into V3 date sections. */}
+          {sections.map((sec) => (
+            <div key={sec.label}>
+              <InboxSectionHeader label={sec.label} count={sec.items.length} />
+              {sec.items.map((email) => (
+                <EmailRowV3
+                  key={email.id}
+                  email={{
+                    id: email.id,
+                    fromAddress: email.fromAddress,
+                    displayName: getEmailDisplayName(email),
+                    subject: email.subject,
+                    snippet: email.snippet,
+                    createdAt: email.createdAt,
+                    isRead: email.isRead,
+                    isStarred: email.isStarred,
+                    hasAttachments: email.hasAttachments,
+                    labels: email.labels ?? [],
                   }}
-                  className={cn(
-                    'flex h-4 w-4 shrink-0 items-center justify-center text-wm-text-muted transition-opacity hover:text-wm-accent',
-                    inSelectionMode || selectedIds.has(email.id)
-                      ? 'opacity-100'
-                      : 'opacity-0 group-hover:opacity-100',
-                  )}
-                  aria-label={selectedIds.has(email.id) ? 'Deselect' : 'Select'}
-                >
-                  {selectedIds.has(email.id) ? (
-                    <CheckSquare className="h-4 w-4 text-wm-accent" />
-                  ) : (
-                    <Square className="h-4 w-4" />
-                  )}
-                </button>
-                {!email.isRead && (
-                  <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-wm-accent" />
-                )}
-                <span
-                  className={cn(
-                    'flex-1 truncate text-[13px]',
-                    !email.isRead
-                      ? 'font-semibold text-wm-text-primary'
-                      : 'font-normal text-wm-text-secondary',
-                  )}
-                >
-                  {getEmailDisplayName(email)}
-                </span>
-                <Star
-                  className={cn(
-                    'h-3.5 w-3.5 shrink-0 cursor-pointer',
-                    email.isStarred ? 'fill-wm-accent text-wm-accent' : 'text-wm-text-muted',
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleStar(email)
-                  }}
+                  selected={selectedId === email.id && !inSelectionMode}
+                  selectionMode={inSelectionMode}
+                  isChecked={selectedIds.has(email.id)}
+                  onClick={() => selectEmail(email)}
+                  onToggleStar={() => handleStar(email)}
+                  onToggleCheck={() => toggleSelect(email.id)}
+                  trailing={
+                    <SendStatusPill
+                      status={email.status}
+                      onRetry={() => handleRetrySend(email.id)}
+                    />
+                  }
                 />
-                <span className="shrink-0 font-mono text-[10px] text-wm-text-muted">
-                  {formatRelativeTime(new Date(email.createdAt))}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    'flex-1 truncate text-[13px]',
-                    !email.isRead
-                      ? 'font-medium text-wm-text-primary'
-                      : 'font-normal text-wm-text-secondary',
-                  )}
-                >
-                  {email.subject || '(no subject)'}
-                </span>
-                {email.hasAttachments && <AttachmentBadge count={1} />}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="line-clamp-2 flex-1 font-mono text-[11px] leading-[1.4] text-wm-text-muted">
-                  {email.snippet}
-                </span>
-                <SendStatusPill
-                  status={email.status}
-                  onRetry={() => handleRetrySend(email.id)}
-                />
-              </div>
-              <RowLabels labels={email.labels ?? []} />
-            </button>
+              ))}
+            </div>
           ))}
-
           {list.isFetchingNextPage && (
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-4 w-4 animate-spin text-wm-accent" />
@@ -807,23 +862,32 @@ export default function InboxPage() {
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-2 border-b border-wm-border px-6 py-3">
-              <h2 className="flex-1 truncate text-base font-semibold text-wm-text-primary">
+            {/* V3 reading-pane toolbar — Pencil `InboxV3.toolbar` (`u0CIwR`).
+                Subject + status pill on the left; round Surface IconButtons
+                on the right (archive / snooze / label / delete). */}
+            <div className="flex items-center gap-2 border-b border-wm-border px-7 py-3.5">
+              <h2 className="flex-1 truncate font-sans text-lg font-semibold text-wm-text-primary">
                 {selectedFull.subject || '(no subject)'}
               </h2>
               <SendStatusPill
                 status={selectedFull.status}
                 onRetry={() => handleRetrySend(selectedFull.id)}
               />
-              <Archive
-                className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
+              <IconButton
+                aria-label="Archive"
+                variant="surface"
                 onClick={() => handleArchive(selectedFull.id)}
-              />
+              >
+                <Archive className="h-4 w-4" />
+              </IconButton>
               <div className="relative">
-                <Clock
-                  className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
+                <IconButton
+                  aria-label="Snooze"
+                  variant="surface"
                   onClick={() => setSnoozeOpen((o) => !o)}
-                />
+                >
+                  <Clock className="h-4 w-4" />
+                </IconButton>
                 {snoozeOpen && (
                   <SnoozeMenu
                     onPick={(until) => {
@@ -842,31 +906,42 @@ export default function InboxPage() {
                       })
                     }}
                     onDismiss={() => setSnoozeOpen(false)}
-                    currentlySnoozed={selectedFull.folder === 'inbox' && Boolean((selectedFull as unknown as { snoozeUntil?: string | null }).snoozeUntil)}
+                    currentlySnoozed={
+                      selectedFull.folder === 'inbox' &&
+                      Boolean(
+                        (selectedFull as unknown as { snoozeUntil?: string | null })
+                          .snoozeUntil,
+                      )
+                    }
                   />
                 )}
               </div>
               <LabelAssignPopover
                 emailId={selectedFull.id}
                 trigger={
-                  <Tag className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary" />
+                  <IconButton aria-label="Add label" variant="surface">
+                    <Tag className="h-4 w-4" />
+                  </IconButton>
                 }
               />
               {selectedFull.folder === 'trash' ? (
                 <button
                   type="button"
                   onClick={() => handlePermanentDelete(selectedFull.id)}
-                  className="inline-flex cursor-pointer items-center gap-1 border border-wm-error/40 bg-wm-error/10 px-2 py-1 font-mono text-[10px] font-semibold text-wm-error transition-colors hover:bg-wm-error/20"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-wm-error/40 bg-wm-error/10 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[1.5px] text-wm-error transition-colors hover:bg-wm-error/20"
                   title="Delete this email permanently — bypasses the 30-day trash window"
                 >
                   <Trash2 className="h-3 w-3" />
                   Delete forever
                 </button>
               ) : (
-                <Trash2
-                  className="h-4 w-4 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
+                <IconButton
+                  aria-label="Delete"
+                  variant="surface"
                   onClick={() => handleDelete(selectedFull.id)}
-                />
+                >
+                  <Trash2 className="h-4 w-4" />
+                </IconButton>
               )}
             </div>
 
@@ -916,10 +991,60 @@ export default function InboxPage() {
               anchorId={selectedFull.id}
               onPick={(id) => setSelectedId(id)}
             />
-            <div className="flex-1 overflow-y-auto px-6 py-6">{renderEmailBody(selectedFull)}</div>
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              {/* V3 AI brief block — Pencil `InboxV3.aiBrief` (`Hyivo`).
+                  Currently a deterministic placeholder; once the AI
+                  pipeline emits per-thread summaries we'll switch to
+                  reading `selectedFull.aiBrief.points`. */}
+              <AIBrief
+                className="mb-5"
+                points={[
+                  `Sender ${extractDisplayName(selectedFull.fromAddress)} sent this ${formatRelativeTime(new Date(selectedFull.createdAt))}.`,
+                  selectedFull.subject
+                    ? `Subject: ${selectedFull.subject}`
+                    : 'No subject — likely a quick follow-up.',
+                  (selectedFull.toAddresses ?? []).length > 1
+                    ? `Sent to ${(selectedFull.toAddresses ?? []).length} recipients — group thread.`
+                    : 'Direct thread to you.',
+                ]}
+                actions={[
+                  {
+                    id: 'extract-tasks',
+                    label: 'Extract tasks',
+                    onClick: () => {
+                      toast.show({
+                        message: 'Task extraction queued — we’ll surface tasks in Work.',
+                      })
+                    },
+                  },
+                  {
+                    id: 'schedule-call',
+                    label: 'Schedule call',
+                    onClick: () => {
+                      router.push('/calendar')
+                    },
+                  },
+                ]}
+              />
+              {renderEmailBody(selectedFull)}
+            </div>
           </>
         )}
       </div>
+
+      {/* ── Right rail: Today panel ── only on the inbox folder. */}
+      {showTodayRail && (
+        <TodayPanel
+          events={todayPanelEvents}
+          onJoinMeeting={(ev) => {
+            if (ev.meetingUrl) {
+              window.open(ev.meetingUrl, '_blank', 'noopener,noreferrer')
+            } else {
+              router.push('/calendar')
+            }
+          }}
+        />
+      )}
 
       <style jsx global>{`
         .email-body blockquote {
@@ -992,31 +1117,7 @@ function SendStatusPill({
   )
 }
 
-/// Tiny chip strip rendered under the row preview. Empty + collapsed
-/// when the email has no labels (the common case). Labels now ship
-/// baked into the list response — no per-row fetch — so the old
-/// QueryClient plumbing is gone.
-function RowLabels({
-  labels,
-}: {
-  labels: { id: string; name: string; color: string }[]
-}) {
-  if (labels.length === 0) return null
-  return (
-    <div className="mt-1 flex flex-wrap gap-1">
-      {labels.map((l) => (
-        <span
-          key={l.id}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase"
-          style={{ backgroundColor: `${l.color}22`, color: l.color }}
-        >
-          <span className="h-1.5 w-1.5" style={{ backgroundColor: l.color }} />
-          {l.name}
-        </span>
-      ))}
-    </div>
-  )
-}
+// Row-level label rendering moved to <EmailRowV3>; this helper is gone.
 
 type BulkActionVars =
   | { action: 'read' }

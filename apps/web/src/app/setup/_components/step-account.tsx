@@ -1,31 +1,36 @@
 'use client'
 
 import { useState } from 'react'
-import { User, Mail, Lock, Eye, EyeOff, Building2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ArrowRight, Building2, Lock, Mail, User } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import {
+  AuthButton,
+  AuthCard,
+  AuthHeading,
+  AuthInput,
+} from '@/components/auth'
 
 interface StepAccountProps {
   domain: string
   onNext: () => void
 }
 
+/** Pencil reference: `SetupV3-Account` (`m8JIs`). */
 export function StepAccount({ domain, onNext }: StepAccountProps) {
-  const [displayName, setDisplayName] = useState('')
   const [orgName, setOrgName] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [emailLocal, setEmailLocal] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const passwordChecks = {
+  const checks = {
     length: password.length >= 8,
     upper: /[A-Z]/.test(password),
     number: /\d/.test(password),
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -45,88 +50,81 @@ export function StepAccount({ domain, onNext }: StepAccountProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <h2 className="text-2xl font-semibold text-wm-text-primary">Create your account</h2>
-      <p className="font-mono text-xs text-wm-text-tertiary">
-        Set up the admin account for <span className="text-wm-accent">{domain}</span>. This will be your login email.
-      </p>
+    <form onSubmit={onSubmit}>
+      <AuthCard>
+        <AuthHeading
+          eyebrow="Step 3 · Account"
+          title="Create your account"
+          description={`Set up the admin account for ${domain}. This will be your login email.`}
+        />
 
-      <div className="flex flex-col gap-2">
-        <label className="font-mono text-sm font-medium text-wm-text-secondary">Organization name</label>
-        <div className="flex items-center border border-wm-border bg-wm-surface px-4 py-3 focus-within:border-wm-accent">
-          <Building2 className="mr-3 h-4 w-4 text-wm-text-muted" />
-          <input
-            type="text"
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
-            placeholder="Acme Inc."
-            className="min-w-0 flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-            autoFocus
-          />
-        </div>
-        <p className="font-mono text-[10px] text-wm-text-muted">Shown in invitation emails and sender names.</p>
-      </div>
+        <AuthInput
+          label="Organization name"
+          placeholder="Acme Inc."
+          value={orgName}
+          onChange={(e) => setOrgName(e.target.value)}
+          icon={<Building2 className="h-4 w-4" />}
+          autoFocus
+          autoComplete="organization"
+        />
 
-      <div className="flex flex-col gap-2">
-        <label className="font-mono text-sm font-medium text-wm-text-secondary">Display name</label>
-        <div className="flex items-center border border-wm-border bg-wm-surface px-4 py-3 focus-within:border-wm-accent">
-          <User className="mr-3 h-4 w-4 text-wm-text-muted" />
-          <input
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Your Name"
-            className="min-w-0 flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-          />
-        </div>
-      </div>
+        <AuthInput
+          label="Display name"
+          placeholder="Your name"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          icon={<User className="h-4 w-4" />}
+          autoComplete="name"
+          required
+        />
 
-      <div className="flex flex-col gap-2">
-        <label className="font-mono text-sm font-medium text-wm-text-secondary">Email address</label>
-        <div className="flex items-center border border-wm-border bg-wm-surface focus-within:border-wm-accent">
-          <div className="flex flex-1 items-center px-4 py-3">
-            <Mail className="mr-3 h-4 w-4 text-wm-text-muted" />
+        <div className="flex flex-col gap-2">
+          <label className="font-mono text-[9px] font-bold uppercase tracking-[1.5px] text-wm-text-tertiary">
+            Email address
+          </label>
+          <div className="flex h-[46px] items-stretch overflow-hidden rounded-[10px] border border-wm-accent bg-wm-surface focus-within:border-wm-accent">
+            <span className="flex items-center gap-2.5 pl-3.5 text-wm-text-muted">
+              <Mail className="h-4 w-4" />
+            </span>
             <input
               type="text"
               value={emailLocal}
               onChange={(e) => setEmailLocal(e.target.value)}
               placeholder="you"
-              className="flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+              autoComplete="username"
+              className="min-w-0 flex-1 bg-transparent px-3 font-mono text-[13px] text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+              required
             />
+            <span className="flex items-center border-l border-wm-border bg-wm-bg px-4 font-mono text-[13px] text-wm-text-tertiary">
+              @{domain}
+            </span>
           </div>
-          <span className="border-l border-wm-border bg-wm-bg px-4 py-3 font-mono text-sm text-wm-text-muted">
-            @{domain}
-          </span>
         </div>
-      </div>
 
-      <div className="flex flex-col gap-2">
-        <label className="font-mono text-sm font-medium text-wm-text-secondary">Password</label>
-        <div className="flex items-center border border-wm-border bg-wm-surface px-4 py-3 focus-within:border-wm-accent">
-          <Lock className="mr-3 h-4 w-4 text-wm-text-muted" />
-          <input
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Minimum 8 characters"
-            className="flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-          />
-          <button type="button" onClick={() => setShowPassword(!showPassword)} className="cursor-pointer text-wm-text-muted">
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
+        <AuthInput
+          label="Password"
+          type="password"
+          reveal
+          placeholder="Minimum 8 characters"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          icon={<Lock className="h-4 w-4" />}
+          autoComplete="new-password"
+          required
+        />
+
+        <div className="flex flex-wrap gap-3 font-mono text-[10px]">
+          <span className={checks.length ? 'text-wm-accent' : 'text-wm-text-muted'}>✓ 8+ chars</span>
+          <span className={checks.upper ? 'text-wm-accent' : 'text-wm-text-muted'}>✓ Uppercase</span>
+          <span className={checks.number ? 'text-wm-accent' : 'text-wm-text-muted'}>✓ Number</span>
         </div>
-        <div className="flex gap-3 font-mono text-[10px]">
-          <span className={passwordChecks.length ? 'text-wm-accent' : 'text-wm-text-muted'}>&#10003; 8+ chars</span>
-          <span className={passwordChecks.upper ? 'text-wm-accent' : 'text-wm-text-muted'}>&#10003; Uppercase</span>
-          <span className={passwordChecks.number ? 'text-wm-accent' : 'text-wm-text-muted'}>&#10003; Number</span>
-        </div>
-      </div>
 
-      {error && <p className="font-mono text-xs text-wm-error">{error}</p>}
+        {error && <p className="font-mono text-[11px] text-wm-error">{error}</p>}
 
-      <Button type="submit" variant="primary" loading={loading}>
-        Create Account
-      </Button>
+        <AuthButton type="submit" loading={loading} trailingIcon={<ArrowRight className="h-4 w-4" />}>
+          Create account
+        </AuthButton>
+      </AuthCard>
     </form>
   )
 }

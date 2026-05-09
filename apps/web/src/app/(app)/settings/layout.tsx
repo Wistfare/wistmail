@@ -1,9 +1,11 @@
+/**
+ * Settings layout — pure passthrough.
+ *
+ * The V3 settings pages each render their own `<PageHeader>` and own
+ * the chrome around it; the layout only exists so the route group keeps
+ * a stable shell and so we can scope styles here in the future without
+ * touching every page.
+ */
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
-  // Settings side panel is now handled by the main Sidebar component (Panel 2)
-  // This layout just passes through children
-  return (
-    <div className="flex-1 overflow-y-auto p-8">
-      {children}
-    </div>
-  )
+  return <div className="flex h-full flex-col">{children}</div>
 }

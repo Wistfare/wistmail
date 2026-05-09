@@ -1,238 +1,210 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Search, Filter, UserPlus, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { InputField } from '@/components/ui/input-field'
-import { Avatar } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { Plus, Search } from 'lucide-react'
+import { PageHeader } from '@/components/shell'
+import { Avatar, Button, EmptyState } from '@/components/ui'
+import { FilterPills } from '@/components/email/filter-pills'
 import { api } from '@/lib/api-client'
-import { formatRelativeTime } from '@/lib/utils'
+import { cn, formatRelativeTime } from '@/lib/utils'
 
-type Member = {
+interface Member {
   id: string
   userId: string
-  role: string
   name: string
   email: string
   avatarUrl: string | null
-  joinedAt: string
+  role: string
+  joinedAt?: string
+  createdAt?: string
+  /** Optional, surfaced when the backend exposes it. */
+  lastActiveAt?: string | null
 }
 
+type StatusFilter = 'all' | 'active' | 'pending' | 'suspended'
+
+/**
+ * `/admin/users` — Pencil reference: `AdminV3-Users` (`hxB5G`).
+ *
+ * V3 chrome: PageHeader + filter pill row + search input + table.
+ * Reads `/api/v1/admin/members`. Suspended/pending tabs reserve room
+ * for when the backend gains a status column — today they return zero.
+ */
 export default function AdminUsersPage() {
   const [members, setMembers] = useState<Member[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showCreatePanel, setShowCreatePanel] = useState(false)
-  const [createForm, setCreateForm] = useState({ firstName: '', lastName: '', email: '', displayName: '', role: 'member', storageQuota: 5 })
-  const [creating] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<StatusFilter>('all')
+  const [query, setQuery] = useState('')
 
-  const fetchMembers = useCallback(async () => {
-    try {
-      const res = await api.get<{ data: Member[] }>('/api/v1/admin/members')
-      setMembers(res.data)
-    } catch {}
+  useEffect(() => {
+    let cancelled = false
+    api
+      .get<{ members?: Member[]; data?: Member[] }>('/api/v1/admin/members')
+      .then((res) => {
+        if (cancelled) return
+        // Backwards-compat with both response shapes.
+        setMembers(res.members ?? res.data ?? [])
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  useEffect(() => { fetchMembers() }, [fetchMembers])
-
-  const stats = {
-    total: members.length,
-    active: members.filter((m) => m.role !== 'suspended').length,
-    inactive: 0,
-    suspended: 0,
-  }
-
-  const filtered = members.filter(
-    (m) =>
-      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.email.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return members.filter((m) => {
+      // Filter pill — until the backend gains a status column, all
+      // members count as "active" and we show none in pending/suspended.
+      if (filter === 'pending' || filter === 'suspended') return false
+      if (!q) return true
+      return (
+        (m.name ?? '').toLowerCase().includes(q) ||
+        (m.email ?? '').toLowerCase().includes(q)
+      )
+    })
+  }, [members, filter, query])
 
   return (
-    <div className="flex h-full">
-      {/* Main content */}
-      <div className="flex flex-1 flex-col">
-        {/* Header */}
-        <div className="flex items-center gap-4 border-b border-wm-border bg-wm-surface px-8 py-4">
-          <h1 className="text-lg font-semibold text-wm-text-primary">User Management</h1>
-          <span className="font-mono text-xs text-wm-text-muted">{stats.total} users</span>
-          <div className="flex-1" />
-          <div className="flex items-center gap-2 border border-wm-border bg-wm-bg px-3 py-2">
-            <Search className="h-4 w-4 text-wm-text-muted" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search users..."
-              className="bg-transparent font-mono text-xs text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-            />
+    <div className="flex h-full flex-col">
+      <PageHeader
+        eyebrow="Admin"
+        title="Users"
+        subtitle={
+          loading
+            ? undefined
+            : `${members.length} member${members.length === 1 ? '' : 's'}`
+        }
+        actions={
+          <>
+            <SearchField value={query} onChange={setQuery} />
+            <Link href="/admin/users/new">
+              <Button icon={<Plus className="h-3.5 w-3.5" />}>Invite user</Button>
+            </Link>
+          </>
+        }
+        toolbar={
+          <FilterPills<StatusFilter>
+            value={filter}
+            options={[
+              { id: 'all', label: 'All', count: members.length },
+              { id: 'active', label: 'Active', count: members.length },
+              { id: 'pending', label: 'Pending' },
+              { id: 'suspended', label: 'Suspended' },
+            ]}
+            onChange={setFilter}
+          />
+        }
+      />
+
+      <div className="flex-1 overflow-y-auto px-8 py-6">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-wm-accent border-t-transparent" />
           </div>
-          <button className="flex items-center gap-1 border border-wm-border px-3 py-2 font-mono text-xs text-wm-text-secondary hover:bg-wm-surface-hover">
-            <Filter className="h-3.5 w-3.5" />
-            Filter
-          </button>
-        </div>
-
-        {/* Stats row */}
-        <div className="flex gap-0 border-b border-wm-border">
-          {[
-            { label: 'Total Users', value: stats.total },
-            { label: 'Active', value: stats.active },
-            { label: 'Inactive', value: stats.inactive },
-            { label: 'Suspended', value: stats.suspended },
-          ].map((stat) => (
-            <div key={stat.label} className="flex flex-1 flex-col border-r border-wm-border px-8 py-5 last:border-r-0">
-              <span className="font-mono text-2xl font-bold text-wm-text-primary">{stat.value}</span>
-              <span className="font-mono text-[10px] text-wm-text-muted">{stat.label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Table */}
-        <div className="flex-1 overflow-y-auto px-8 py-4">
-          {/* Table header */}
-          <div className="flex items-center border-b border-wm-border px-4 py-2 font-mono text-[10px] font-semibold text-wm-text-muted">
-            <span className="w-64">User</span>
-            <span className="w-24">Role</span>
-            <span className="w-24">Status</span>
-            <span className="flex-1">Domain</span>
-            <span className="w-24 text-right">Created</span>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title={
+              filter === 'all'
+                ? 'No members yet'
+                : `No ${filter} members${query ? ` match "${query}"` : ''}`
+            }
+            description="Invite your first teammate to get started."
+            action={
+              <Link href="/admin/users/new">
+                <Button icon={<Plus className="h-3.5 w-3.5" />}>Invite user</Button>
+              </Link>
+            }
+          />
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-wm-border bg-wm-surface">
+            <table className="w-full font-mono text-[12px]">
+              <thead className="border-b border-wm-border bg-wm-bg/50 text-left">
+                <tr className="text-[10px] font-bold uppercase tracking-[1.5px] text-wm-text-tertiary">
+                  <th className="px-5 py-3">Member</th>
+                  <th className="px-5 py-3">Role</th>
+                  <th className="px-5 py-3">Storage</th>
+                  <th className="px-5 py-3">Last active</th>
+                  <th className="px-5 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((m) => (
+                  <tr
+                    key={m.id}
+                    className="border-b border-wm-border last:border-b-0 transition-colors hover:bg-wm-surface-hover"
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar
+                          name={m.name || m.email}
+                          src={m.avatarUrl}
+                          size="sm"
+                        />
+                        <div className="flex flex-col">
+                          <span className="font-sans text-[13px] font-medium text-wm-text-primary">
+                            {m.name || '—'}
+                          </span>
+                          <span className="text-wm-text-tertiary">{m.email}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span
+                        className={
+                          m.role === 'owner' || m.role === 'admin'
+                            ? 'font-bold uppercase tracking-[1.5px] text-wm-accent'
+                            : 'text-wm-text-secondary'
+                        }
+                      >
+                        {m.role}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-wm-text-secondary">—</td>
+                    <td className="px-5 py-3 text-wm-text-tertiary">
+                      {m.lastActiveAt
+                        ? formatRelativeTime(new Date(m.lastActiveAt))
+                        : '—'}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <Link
+                        href={`/admin/members#${m.id}`}
+                        className="font-mono text-[10px] font-bold uppercase tracking-[1.5px] text-wm-accent hover:underline"
+                      >
+                        Manage
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-
-          {/* Table rows */}
-          {filtered.map((member) => (
-            <div
-              key={member.id}
-              className="flex items-center border-b border-wm-border px-4 py-3 transition-colors hover:bg-wm-surface-hover"
-            >
-              <div className="flex w-64 items-center gap-3">
-                <Avatar name={member.name} size="md" />
-                <div>
-                  <p className="text-sm font-medium text-wm-text-primary">{member.name}</p>
-                  <p className="font-mono text-[10px] text-wm-text-muted">{member.email}</p>
-                </div>
-              </div>
-              <div className="w-24">
-                <Badge
-                  variant={
-                    member.role === 'owner' ? 'accent' : member.role === 'admin' ? 'info' : 'default'
-                  }
-                  size="sm"
-                >
-                  {member.role}
-                </Badge>
-              </div>
-              <div className="w-24">
-                <Badge variant="accent" size="sm">Active</Badge>
-              </div>
-              <div className="flex-1">
-                <span className="font-mono text-xs text-wm-text-secondary">
-                  {member.email.split('@')[1]}
-                </span>
-              </div>
-              <span className="w-24 text-right font-mono text-xs text-wm-text-muted">
-                {formatRelativeTime(new Date(member.joinedAt))}
-              </span>
-            </div>
-          ))}
-
-          {filtered.length === 0 && (
-            <div className="flex items-center justify-center py-16">
-              <p className="font-mono text-sm text-wm-text-muted">No users found.</p>
-            </div>
-          )}
-        </div>
+        )}
       </div>
+    </div>
+  )
+}
 
-      {/* Create User slide-in panel */}
-      {showCreatePanel && (
-        <div className="flex w-[360px] shrink-0 flex-col border-l border-wm-border bg-wm-bg">
-          <div className="flex items-center justify-between border-b border-wm-border px-6 py-4">
-            <h2 className="text-base font-semibold text-wm-text-primary">Create User</h2>
-            <button onClick={() => setShowCreatePanel(false)} className="cursor-pointer text-wm-text-muted hover:text-wm-text-secondary">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
-            {/* Profile photo placeholder */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="flex h-16 w-16 items-center justify-center border border-wm-border bg-wm-surface">
-                <UserPlus className="h-6 w-6 text-wm-text-muted" />
-              </div>
-              <span className="font-mono text-[10px] text-wm-text-muted">Profile photo</span>
-            </div>
-
-            <div className="flex gap-3">
-              <InputField
-                label="First name"
-                placeholder="John"
-                value={createForm.firstName}
-                onChange={(e) => setCreateForm((f) => ({ ...f, firstName: e.target.value }))}
-                className="flex-1"
-              />
-              <InputField
-                label="Last name"
-                placeholder="Doe"
-                value={createForm.lastName}
-                onChange={(e) => setCreateForm((f) => ({ ...f, lastName: e.target.value }))}
-                className="flex-1"
-              />
-            </div>
-
-            <InputField
-              label="Email address"
-              placeholder="john.doe@wistfare.com"
-              value={createForm.email}
-              onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
-            />
-
-            <InputField
-              label="Display name"
-              placeholder="John Doe"
-              value={createForm.displayName}
-              onChange={(e) => setCreateForm((f) => ({ ...f, displayName: e.target.value }))}
-            />
-
-            {/* Role selector */}
-            <div className="flex flex-col gap-1.5">
-              <label className="font-mono text-sm font-medium text-wm-text-secondary">Role</label>
-              <select
-                value={createForm.role}
-                onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value }))}
-                className="border border-wm-border bg-wm-surface px-4 py-3 font-mono text-sm text-wm-text-primary outline-none focus:border-wm-accent"
-              >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-
-            {/* Storage quota slider */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <label className="font-mono text-sm font-medium text-wm-text-secondary">Storage quota</label>
-                <span className="font-mono text-xs text-wm-accent">{createForm.storageQuota} GB</span>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={50}
-                value={createForm.storageQuota}
-                onChange={(e) => setCreateForm((f) => ({ ...f, storageQuota: parseInt(e.target.value) }))}
-                className="accent-wm-accent"
-              />
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-3 border-t border-wm-border px-6 py-4">
-            <Button variant="ghost" onClick={() => setShowCreatePanel(false)}>Cancel</Button>
-            <Button variant="primary" loading={creating} icon={<UserPlus className="h-4 w-4" />}>
-              Create User
-            </Button>
-          </div>
-        </div>
+function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div
+      className={cn(
+        'flex h-9 w-64 items-center gap-2 rounded-md border border-wm-border bg-wm-surface px-3',
+        'transition-colors focus-within:border-wm-accent',
       )}
+    >
+      <Search className="h-3.5 w-3.5 text-wm-text-muted" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Search by name or email"
+        className="flex-1 bg-transparent font-mono text-[12px] text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+      />
     </div>
   )
 }

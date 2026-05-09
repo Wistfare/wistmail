@@ -1,9 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Globe, Check, AlertTriangle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ArrowRight, AlertTriangle, CheckCircle2, Globe } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import {
+  AuthButton,
+  AuthCard,
+  AuthHeading,
+  AuthInput,
+} from '@/components/auth'
 
 type DnsRecord = { type: string; name: string; value: string; priority?: number; verified: boolean }
 
@@ -11,33 +16,32 @@ interface StepDomainProps {
   onNext: (data: { domain: string; domainId: string; records: DnsRecord[]; serverIp: string }) => void
 }
 
+/** Pencil reference: `SetupV3-Domain` (`Jon4p`). */
 export function StepDomain({ onNext }: StepDomainProps) {
   const [domain, setDomain] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [checkResult, setCheckResult] = useState<{
+  const [check, setCheck] = useState<{
     domainExists: boolean
     resolvedIps: string[]
     serverIp: string
   } | null>(null)
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!domain.trim()) return
-
     setLoading(true)
     setError('')
-    setCheckResult(null)
-
+    setCheck(null)
     try {
-      // Step 1: Check domain
-      const check = await api.post<{ domainExists: boolean; resolvedIps: string[]; serverIp: string }>(
-        '/api/v1/setup/domain/check',
-        { name: domain.trim() },
-      )
-      setCheckResult(check)
+      const checkRes = await api.post<{
+        domainExists: boolean
+        resolvedIps: string[]
+        serverIp: string
+      }>('/api/v1/setup/domain/check', { name: domain.trim() })
+      setCheck(checkRes)
 
-      // Step 2: Create domain (or resume if already registered)
+      // Create domain (or resume existing record).
       let res: { id: string; name: string; records: DnsRecord[]; serverIp: string }
       try {
         res = await api.post<{ id: string; name: string; records: DnsRecord[]; serverIp: string }>(
@@ -45,10 +49,12 @@ export function StepDomain({ onNext }: StepDomainProps) {
           { name: domain.trim() },
         )
       } catch {
-        // Domain already registered — try to resume existing setup
-        const existing = await api.get<{ id: string; name: string; records: DnsRecord[]; serverIp: string }>(
-          '/api/v1/setup/domain/records',
-        )
+        const existing = await api.get<{
+          id: string
+          name: string
+          records: DnsRecord[]
+          serverIp: string
+        }>('/api/v1/setup/domain/records')
         res = existing
       }
 
@@ -56,7 +62,7 @@ export function StepDomain({ onNext }: StepDomainProps) {
         domain: res.name,
         domainId: res.id,
         records: res.records,
-        serverIp: res.serverIp || check.serverIp,
+        serverIp: res.serverIp || checkRes.serverIp,
       })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to add domain')
@@ -66,60 +72,57 @@ export function StepDomain({ onNext }: StepDomainProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <h2 className="text-2xl font-semibold text-wm-text-primary">Add your domain</h2>
-      <p className="font-mono text-xs text-wm-text-tertiary">
-        Enter the domain you want to use for email. We&apos;ll verify it exists and detect your server IP for DNS configuration.
-      </p>
+    <form onSubmit={onSubmit}>
+      <AuthCard>
+        <AuthHeading
+          eyebrow="Step 1 · Domain"
+          title="Add your domain"
+          description="Enter the domain you want to use for email. We'll verify it exists and detect your server IP for DNS configuration."
+        />
 
-      <div className="flex flex-col gap-2">
-        <label className="font-mono text-sm font-medium text-wm-text-secondary">Domain name</label>
-        <div className="flex items-center border border-wm-border bg-wm-surface px-4 py-3 focus-within:border-wm-accent">
-          <Globe className="mr-3 h-4 w-4 text-wm-text-muted" />
-          <input
-            type="text"
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            placeholder="example.com"
-            className="flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-            autoFocus
-          />
-        </div>
-      </div>
+        <AuthInput
+          label="Domain name"
+          placeholder="example.com"
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          icon={<Globe className="h-4 w-4" />}
+          autoFocus
+          autoComplete="off"
+          spellCheck={false}
+          required
+        />
 
-      {checkResult && (
-        <div className="flex flex-col gap-2 border border-wm-border bg-wm-surface p-4">
-          <div className="flex items-center gap-2">
-            {checkResult.domainExists ? (
-              <>
-                <Check className="h-4 w-4 text-wm-accent" />
-                <span className="font-mono text-xs text-wm-accent">
-                  Domain resolves to {checkResult.resolvedIps.slice(0, 3).join(', ')}
-                </span>
-              </>
-            ) : (
-              <>
-                <AlertTriangle className="h-4 w-4 text-wm-warning" />
-                <span className="font-mono text-xs text-wm-warning">
-                  Domain does not resolve yet. You can still proceed — DNS records will need to be configured.
-                </span>
-              </>
-            )}
+        {check && (
+          <div className="rounded-[12px] border border-wm-accent bg-wm-accent-dim px-4 py-3.5">
+            <div className="flex items-center gap-2">
+              {check.domainExists ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-wm-accent" />
+                  <p className="font-mono text-[12px] font-medium text-wm-text-primary">
+                    {domain.trim()} → {check.resolvedIps.slice(0, 3).join(', ')}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-4 w-4 text-wm-warning" />
+                  <p className="font-mono text-[12px] font-medium text-wm-warning">
+                    Domain does not resolve yet — DNS records will fix this.
+                  </p>
+                </>
+              )}
+            </div>
+            <p className="mt-1 pl-6 font-mono text-[11px] text-wm-text-tertiary">
+              Server IP detected: {check.serverIp}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Globe className="h-4 w-4 text-wm-text-muted" />
-            <span className="font-mono text-xs text-wm-text-secondary">
-              Server IP: <span className="text-wm-text-primary">{checkResult.serverIp}</span>
-            </span>
-          </div>
-        </div>
-      )}
+        )}
 
-      {error && <p className="font-mono text-xs text-wm-error">{error}</p>}
+        {error && <p className="font-mono text-[11px] text-wm-error">{error}</p>}
 
-      <Button type="submit" variant="primary" loading={loading}>
-        Continue
-      </Button>
+        <AuthButton type="submit" loading={loading} trailingIcon={<ArrowRight className="h-4 w-4" />}>
+          Continue
+        </AuthButton>
+      </AuthCard>
     </form>
   )
 }

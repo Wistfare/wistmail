@@ -24,6 +24,7 @@ import { chatRoutes } from './routes/chat.js'
 import { labelRoutes } from './routes/labels.js'
 import { calendarRoutes } from './routes/calendar.js'
 import { projectRoutes } from './routes/projects.js'
+import { docsRoutes } from './routes/docs.js'
 import { todayRoutes } from './routes/today.js'
 import { searchRoutes } from './routes/search.js'
 import { mfaRoutes } from './routes/mfa.js'
@@ -133,6 +134,7 @@ v1.route('/chat', chatRoutes)
 v1.route('/labels', labelRoutes)
 v1.route('/calendar', calendarRoutes)
 v1.route('/projects', projectRoutes)
+v1.route('/docs', docsRoutes)
 v1.route('/today', todayRoutes)
 v1.route('/search', searchRoutes)
 v1.route('/mfa', mfaRoutes)

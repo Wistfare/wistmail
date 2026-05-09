@@ -365,19 +365,36 @@ async function ensureSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS project_tasks_project_idx ON project_tasks(project_id)`,
     `CREATE INDEX IF NOT EXISTS project_tasks_assignee_idx ON project_tasks(assignee_id) WHERE assignee_id IS NOT NULL`,
-    // Docs — stub for Work screen's "Recent docs" block. Full docs
-    // feature (editor, collab) is scheduled for a later phase; for
-    // now we just store a row per doc with title + project link.
+    // Docs — V3 docs feature. The "Recent docs" block on the Work
+    // screen reads the same table; the editor at /docs/[id] reads/writes
+    // the body column. The body field was added later — the ALTER below
+    // is the migration path for environments created before phase 8.
     `CREATE TABLE IF NOT EXISTS docs (
       id varchar(64) PRIMARY KEY,
       owner_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       project_id varchar(64) REFERENCES projects(id) ON DELETE SET NULL,
       title varchar(500) NOT NULL,
       icon varchar(32),
+      body text,
       updated_at timestamptz NOT NULL DEFAULT now(),
       created_at timestamptz NOT NULL DEFAULT now()
     )`,
+    `ALTER TABLE docs ADD COLUMN IF NOT EXISTS body text`,
+    `ALTER TABLE docs ADD COLUMN IF NOT EXISTS status varchar(20) NOT NULL DEFAULT 'draft'`,
+    `ALTER TABLE docs ADD COLUMN IF NOT EXISTS share_token varchar(64)`,
     `CREATE INDEX IF NOT EXISTS docs_owner_updated_idx ON docs(owner_id, updated_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS docs_share_token_idx ON docs(share_token) WHERE share_token IS NOT NULL`,
+    // Doc comments — Phase 8 right-rail comments thread on DocsV3-Editor.
+    `CREATE TABLE IF NOT EXISTS doc_comments (
+      id varchar(64) PRIMARY KEY,
+      doc_id varchar(64) NOT NULL REFERENCES docs(id) ON DELETE CASCADE,
+      author_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      body text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz
+    )`,
+    `CREATE INDEX IF NOT EXISTS doc_comments_doc_created_idx ON doc_comments(doc_id, created_at)`,
     // ── Hot-path indexes (idempotent). Every authenticated request resolves
     // the user's mailboxes; every inbox open paginates emails by folder.
     `CREATE INDEX IF NOT EXISTS mailboxes_user_id_idx ON mailboxes(user_id)`,

@@ -3,18 +3,29 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ShieldCheck, ArrowRight } from 'lucide-react'
+import { ArrowRight, KeyRound, Mail, ShieldCheck } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import {
   clearPendingMfa,
   readPendingMfa,
   type PendingMfa,
 } from '@/lib/mfa-storage'
-import { Button } from '@/components/ui/button'
+import {
+  AuthButton,
+  AuthCard,
+  AuthHeading,
+  AuthHeroIcon,
+  OtpInput,
+} from '@/components/auth'
+import { cn } from '@/lib/utils'
 
-/// Step 2 of the 2-step login. Reads the pending challenge from
-/// sessionStorage and submits the user's TOTP / email / backup code via
-/// /auth/login/verify. The backend dispatcher tries every factor.
+/**
+ * `/mfa/challenge` — Pencil `Screen/MFAChallengeV3` (`XTWjb`).
+ *
+ * Step 2 of the 2-step login. Reads the pending challenge from
+ * sessionStorage and verifies the user's TOTP / email / backup code via
+ * `POST /api/v1/auth/login/verify`. Backend dispatcher tries every factor.
+ */
 export default function MfaChallengePage() {
   const router = useRouter()
   const [pending, setPending] = useState<PendingMfa | null>(null)
@@ -36,12 +47,10 @@ export default function MfaChallengePage() {
   const hasTotp = pending?.methods.some((m) => m.type === 'totp') ?? false
   const hasEmail = pending?.methods.some((m) => m.type === 'email') ?? false
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
+  async function verify(c: string) {
     if (!pending) return
-    const trimmed = code.replace(/\s+/g, '')
-    if (trimmed.length < 6) {
-      setError('Enter the 6-digit code.')
+    if (c.length < 6) {
+      setError('Enter the 6-digit code')
       return
     }
     setLoading(true)
@@ -50,7 +59,7 @@ export default function MfaChallengePage() {
       type VerifyResponse = { user: { setupComplete: boolean } }
       const res = await api.post<VerifyResponse>('/api/v1/auth/login/verify', {
         pendingToken: pending.pendingToken,
-        code: trimmed,
+        code: c,
       })
       clearPendingMfa()
       router.push(res.user.setupComplete ? '/inbox' : '/setup')
@@ -59,6 +68,11 @@ export default function MfaChallengePage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    await verify(code.replace(/\s+/g, ''))
   }
 
   async function sendEmailCode() {
@@ -77,75 +91,73 @@ export default function MfaChallengePage() {
     }
   }
 
-  if (!pending) {
-    return null
-  }
+  if (!pending) return null
 
   return (
-    <form onSubmit={submit} className="flex w-full max-w-sm flex-col items-center gap-7">
-      <div className="flex h-16 w-16 items-center justify-center bg-wm-accent/10">
-        <ShieldCheck className="h-7 w-7 text-wm-accent" />
-      </div>
-
-      <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-2xl font-semibold text-wm-text-primary">
-          Two-factor required
-        </h1>
-        <p className="font-mono text-xs text-wm-text-tertiary">
-          {hasTotp
-            ? 'Enter the 6-digit code from your authenticator app.'
-            : 'Enter the 6-digit code we sent to your backup email.'}
-        </p>
-      </div>
-
-      <div className="flex w-full items-center gap-2.5 border border-wm-accent bg-wm-surface px-4 py-3">
-        <input
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          autoFocus
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="123 456"
-          className="min-w-0 flex-1 bg-transparent text-center font-mono text-xl font-semibold tracking-[0.4em] text-wm-text-primary placeholder:text-wm-text-muted outline-none"
+    <form onSubmit={onSubmit} className="w-full">
+      <AuthCard className="items-stretch">
+        <AuthHeroIcon>
+          <ShieldCheck className="h-9 w-9" />
+        </AuthHeroIcon>
+        <AuthHeading
+          eyebrow="Two-factor · required"
+          title="Verify it's you"
+          description={
+            hasTotp
+              ? 'Enter the 6-digit code from your authenticator app.'
+              : 'Enter the 6-digit code we sent to your backup email.'
+          }
         />
-      </div>
 
-      {error && <p className="font-mono text-xs text-wm-error">{error}</p>}
-      {emailSent && !error && (
-        <p className="font-mono text-xs text-wm-accent">
-          Code sent. Check your backup email.
-        </p>
-      )}
+        <OtpInput
+          value={code}
+          onChange={setCode}
+          onComplete={(c) => verify(c)}
+          autoFocus
+          status={error ? 'error' : 'default'}
+        />
 
-      <Button
-        type="submit"
-        size="lg"
-        loading={loading}
-        icon={<ArrowRight className="h-4 w-4" />}
-        className="w-full py-3.5"
-      >
-        Verify
-      </Button>
-
-      <div className="flex flex-col items-center gap-3">
-        <Link
-          href="/mfa/backup-code"
-          className="font-mono text-xs font-semibold text-wm-accent hover:underline"
-        >
-          Use a backup code
-        </Link>
-
-        {hasEmail && hasTotp && (
-          <button
-            type="button"
-            onClick={sendEmailCode}
-            disabled={emailSending}
-            className="cursor-pointer font-mono text-[11px] text-wm-text-muted hover:text-wm-text-secondary disabled:opacity-50"
-          >
-            {emailSending ? 'Sending email...' : 'Email me a code instead'}
-          </button>
+        {error && <p className="text-center font-mono text-[11px] text-wm-error">{error}</p>}
+        {emailSent && !error && (
+          <p className="text-center font-mono text-[11px] text-wm-accent">
+            Code sent. Check your backup email.
+          </p>
         )}
+
+        <AuthButton type="submit" loading={loading} trailingIcon={<ArrowRight className="h-4 w-4" />}>
+          Verify
+        </AuthButton>
+
+        <div className="rounded-[12px] border border-wm-border bg-wm-surface p-1.5">
+          <Link
+            href="/mfa/backup-code"
+            className={cn(
+              'flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2.5 font-mono text-[12px] text-wm-text-secondary transition-colors',
+              'hover:bg-wm-surface-hover hover:text-wm-text-primary',
+            )}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            Use a backup code
+          </Link>
+          {hasEmail && hasTotp && (
+            <>
+              <div className="h-px bg-wm-border" />
+              <button
+                type="button"
+                onClick={sendEmailCode}
+                disabled={emailSending}
+                className={cn(
+                  'flex w-full cursor-pointer items-center gap-2.5 rounded-[8px] px-3 py-2.5 font-mono text-[12px] text-wm-text-secondary transition-colors',
+                  'hover:bg-wm-surface-hover hover:text-wm-text-primary',
+                  'disabled:opacity-50',
+                )}
+              >
+                <Mail className="h-3.5 w-3.5" />
+                {emailSending ? 'Sending email…' : 'Email me a code instead'}
+              </button>
+            </>
+          )}
+        </div>
 
         <button
           type="button"
@@ -153,11 +165,11 @@ export default function MfaChallengePage() {
             clearPendingMfa()
             router.push('/login')
           }}
-          className="cursor-pointer font-mono text-[11px] text-wm-text-muted hover:text-wm-text-secondary"
+          className="cursor-pointer text-center font-mono text-[11px] text-wm-text-tertiary hover:text-wm-text-secondary"
         >
           Back to sign in
         </button>
-      </div>
+      </AuthCard>
     </form>
   )
 }

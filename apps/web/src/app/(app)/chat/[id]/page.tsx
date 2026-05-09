@@ -304,12 +304,15 @@ export default function ConversationPage({
               {uploadError}
             </p>
           )}
+          {/* V3 composer — Pencil ChatViewV3 (`X1Safv`) bottom bar.
+              Round attach button on the left, rounded text input,
+              lime pill Send button on the right. */}
           <form
             onSubmit={(e) => {
               e.preventDefault()
               void handleSend()
             }}
-            className="flex items-center gap-2"
+            className="flex items-end gap-2"
           >
             <input
               ref={fileInputRef}
@@ -322,9 +325,9 @@ export default function ConversationPage({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={upload.isPending}
-              className="cursor-pointer text-wm-text-muted hover:text-wm-text-primary disabled:opacity-50"
               aria-label="Attach file"
               title="Attach file"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary disabled:opacity-50"
             >
               {upload.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -345,7 +348,7 @@ export default function ConversationPage({
                 }
               }}
               placeholder="Type a message…"
-              className="flex-1 border border-wm-border bg-wm-surface px-3 py-2 font-mono text-[13px] text-wm-text-primary placeholder:text-wm-text-muted outline-none focus:border-wm-accent"
+              className="min-h-10 flex-1 rounded-md border border-wm-border bg-wm-surface px-3.5 py-2 font-sans text-[13px] text-wm-text-primary placeholder:text-wm-text-muted outline-none focus:border-wm-accent"
               disabled={send.isPending}
             />
             <button
@@ -353,7 +356,8 @@ export default function ConversationPage({
               disabled={
                 (!draft.trim() && pending.length === 0) || send.isPending
               }
-              className="inline-flex cursor-pointer items-center gap-1 bg-wm-accent px-3 py-2 font-mono text-[12px] font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Send message"
+              className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full bg-wm-accent px-4 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {send.isPending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -480,10 +484,10 @@ function MessageBubble({
           {editing ? (
             <div
               className={cn(
-                'flex flex-col gap-1 border px-2 py-1.5',
+                'flex flex-col gap-1 rounded-2xl border px-3 py-2',
                 isMine
-                  ? 'border-wm-accent/40 bg-wm-accent/5'
-                  : 'border-wm-border bg-wm-surface',
+                  ? 'rounded-br-md border-wm-accent bg-wm-accent-dim'
+                  : 'rounded-bl-md border-wm-border bg-wm-surface',
               )}
             >
               <textarea
@@ -537,12 +541,17 @@ function MessageBubble({
               {(message.content || isDeleted) && (
                 <div
                   className={cn(
-                    'whitespace-pre-wrap break-words px-3 py-2 text-[13px]',
+                    // V3 chrome — Pencil ChatViewV3 (`X1Safv`):
+                    // self bubble = rounded-2xl with squared bottom-right
+                    // corner, lime fill, black text. Other = rounded-2xl
+                    // with squared bottom-left corner, surface fill,
+                    // 1-px border. Deleted = subdued italic.
+                    'whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 font-sans text-[13px] leading-[1.5]',
                     isDeleted
-                      ? 'bg-wm-surface text-wm-text-muted border border-wm-border italic'
+                      ? 'rounded-bl-md border border-wm-border bg-wm-surface italic text-wm-text-muted'
                       : isMine
-                        ? 'bg-wm-accent text-wm-text-on-accent'
-                        : 'bg-wm-surface text-wm-text-primary border border-wm-border',
+                        ? 'rounded-br-md bg-wm-accent text-wm-text-on-accent'
+                        : 'rounded-bl-md border border-wm-border bg-wm-surface text-wm-text-primary',
                   )}
                 >
                   {isDeleted ? 'Message deleted' : message.content}

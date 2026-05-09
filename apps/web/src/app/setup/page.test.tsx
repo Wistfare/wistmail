@@ -22,41 +22,46 @@ vi.mock('@/lib/api-client', () => ({
 describe('SetupPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Default: fresh install, no users
-    mockGet.mockResolvedValue({ hasUsers: false, inProgress: false, step: null, domainId: null })
+    // Default: fresh install, no session yet — V3 status response shape:
+    // `{ hasSession, inProgress, step, domainId }`.
+    mockGet.mockResolvedValue({
+      hasSession: false,
+      inProgress: false,
+      step: null,
+      domainId: null,
+    })
   })
 
   it('renders domain step initially', () => {
     render(<SetupPage />)
-    // "Add your domain" appears both as sidebar step desc and as form heading
-    const headings = screen.getAllByText('Add your domain')
-    expect(headings.length).toBe(2)
-    // The h2 heading is the form title
+    // V3 layout: heading "Add your domain" lives only in the form pane;
+    // sidebar uses step labels (Domain / DNS / Account / Done) + descs
+    // (Verify your domain / Configure DNS records / …).
     expect(screen.getByRole('heading', { name: 'Add your domain' })).toBeInTheDocument()
   })
 
-  it('shows domain input field with placeholder', () => {
+  it('shows domain input with placeholder', () => {
     render(<SetupPage />)
     expect(screen.getByPlaceholderText('example.com')).toBeInTheDocument()
   })
 
-  it('shows the domain name label', () => {
+  it('shows the Domain name label', () => {
     render(<SetupPage />)
     expect(screen.getByText('Domain name')).toBeInTheDocument()
   })
 
-  it('shows Continue button', () => {
+  it('shows the Continue CTA', () => {
     render(<SetupPage />)
     expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument()
   })
 
-  it('does not submit when domain is empty', async () => {
+  it('does not submit when domain is empty', () => {
     render(<SetupPage />)
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
     expect(mockPost).not.toHaveBeenCalled()
   })
 
-  it('shows all 4 steps in sidebar', () => {
+  it('renders all 4 step labels in the wizard sidebar', () => {
     render(<SetupPage />)
     expect(screen.getByText('Domain')).toBeInTheDocument()
     expect(screen.getByText('DNS')).toBeInTheDocument()
@@ -64,53 +69,95 @@ describe('SetupPage', () => {
     expect(screen.getByText('Done')).toBeInTheDocument()
   })
 
-  it('shows step descriptions in sidebar', () => {
+  it('renders the V3 step descriptions in the wizard sidebar', () => {
     render(<SetupPage />)
-    // "Add your domain" appears in both sidebar desc and form heading
-    expect(screen.getAllByText('Add your domain').length).toBeGreaterThanOrEqual(1)
-    // "Configure DNS records" appears only in sidebar desc when on step 0
+    expect(screen.getByText('Verify your domain')).toBeInTheDocument()
     expect(screen.getByText('Configure DNS records')).toBeInTheDocument()
     expect(screen.getByText('Create admin account')).toBeInTheDocument()
     expect(screen.getByText('Setup complete')).toBeInTheDocument()
   })
 
-  it('redirects to login if system already has users', async () => {
-    mockGet.mockResolvedValue({ hasUsers: true, inProgress: false, step: null, domainId: null })
+  it('redirects to /inbox if a session already exists', async () => {
+    mockGet.mockResolvedValue({
+      hasSession: true,
+      inProgress: false,
+      step: null,
+      domainId: null,
+    })
     render(<SetupPage />)
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith('/login')
+      expect(mockReplace).toHaveBeenCalledWith('/inbox')
     })
   })
 
-  it('submits domain and moves to DNS step', async () => {
-    mockPost.mockResolvedValue({
-      id: 'dom_1',
-      name: 'example.com',
-      records: [
-        { type: 'MX', name: 'example.com', value: 'mx.example.com', priority: 10, verified: false },
-      ],
-    })
+  it('submits domain via /domain/check + /domain and moves to DNS step', async () => {
+    mockPost
+      .mockResolvedValueOnce({
+        domainExists: true,
+        resolvedIps: ['1.2.3.4'],
+        serverIp: '1.2.3.4',
+      })
+      .mockResolvedValueOnce({
+        id: 'dom_1',
+        name: 'example.com',
+        records: [
+          {
+            type: 'MX',
+            name: 'example.com',
+            value: 'mx.example.com',
+            priority: 10,
+            verified: false,
+          },
+        ],
+        serverIp: '1.2.3.4',
+      })
 
     render(<SetupPage />)
-    fireEvent.change(screen.getByPlaceholderText('example.com'), { target: { value: 'example.com' } })
+    fireEvent.change(screen.getByPlaceholderText('example.com'), {
+      target: { value: 'example.com' },
+    })
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
 
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith('/api/v1/setup/domain', { name: 'example.com' })
+      expect(mockPost).toHaveBeenCalledWith('/api/v1/setup/domain/check', {
+        name: 'example.com',
+      })
+      expect(mockPost).toHaveBeenCalledWith('/api/v1/setup/domain', {
+        name: 'example.com',
+      })
     })
 
     await waitFor(() => {
-      // On DNS step, heading "Configure DNS records" appears in both sidebar and form
-      const headings = screen.getAllByText('Configure DNS records')
-      expect(headings.length).toBe(2)
+      expect(
+        screen.getByRole('heading', { name: 'Configure DNS records' }),
+      ).toBeInTheDocument()
     })
   })
 
   it('shows error message when domain submission fails', async () => {
-    mockPost.mockRejectedValue(new Error('Domain already in use'))
+    mockPost
+      .mockResolvedValueOnce({
+        domainExists: true,
+        resolvedIps: [],
+        serverIp: '1.2.3.4',
+      })
+      .mockRejectedValueOnce(new Error('Domain already in use'))
+    mockGet.mockImplementation((path: string) => {
+      if (path === '/api/v1/setup/status') {
+        return Promise.resolve({
+          hasSession: false,
+          inProgress: false,
+          step: null,
+          domainId: null,
+        })
+      }
+      return Promise.reject(new Error('Domain already in use'))
+    })
 
     render(<SetupPage />)
-    fireEvent.change(screen.getByPlaceholderText('example.com'), { target: { value: 'bad.com' } })
+    fireEvent.change(screen.getByPlaceholderText('example.com'), {
+      target: { value: 'bad.com' },
+    })
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
 
     await waitFor(() => {
@@ -118,25 +165,36 @@ describe('SetupPage', () => {
     })
   })
 
-  it('renders WISTFARE MAIL branding', () => {
+  it('renders the V3 brandmark', () => {
     render(<SetupPage />)
-    expect(screen.getByText('WISTFARE MAIL')).toBeInTheDocument()
+    // V3 BrandMark renders the literal text "Wistfare Mail" with CSS
+    // uppercase + tracking; the rendered glyphs read "WISTFARE MAIL".
+    expect(screen.getByText('Wistfare Mail')).toBeInTheDocument()
     expect(screen.getByText('W')).toBeInTheDocument()
   })
 
-  it('resumes setup if in progress', async () => {
+  it('resumes setup if it is in progress', async () => {
     mockGet.mockImplementation((path: string) => {
       if (path === '/api/v1/setup/status') {
-        return Promise.resolve({ hasUsers: false, inProgress: true, step: 'dns', domainId: 'dom_1' })
+        return Promise.resolve({
+          hasSession: false,
+          inProgress: true,
+          step: 'dns',
+          domainId: 'dom_1',
+        })
       }
       if (path === '/api/v1/setup/domain/records') {
         return Promise.resolve({
           name: 'example.com',
-          records: [{ type: 'MX', name: 'example.com', value: 'mx.example.com', verified: false }],
-          mx: false,
-          spf: false,
-          dkim: false,
-          dmarc: false,
+          records: [
+            {
+              type: 'MX',
+              name: 'example.com',
+              value: 'mx.example.com',
+              verified: false,
+            },
+          ],
+          serverIp: '1.2.3.4',
         })
       }
       return Promise.resolve({})
@@ -145,9 +203,9 @@ describe('SetupPage', () => {
     render(<SetupPage />)
 
     await waitFor(() => {
-      // Should show DNS step heading (the second "Configure DNS records" heading in the right panel)
-      const headings = screen.getAllByText('Configure DNS records')
-      expect(headings.length).toBeGreaterThanOrEqual(1)
+      expect(
+        screen.getByRole('heading', { name: 'Configure DNS records' }),
+      ).toBeInTheDocument()
     })
   })
 })

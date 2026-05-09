@@ -16,39 +16,42 @@ vi.mock('@/lib/api-client', () => ({
   },
 }))
 
+/**
+ * V3 root-route gating. The Home page calls `/api/v1/setup/status` and
+ * decides where to send the user:
+ *
+ * - hasSession: true            → /inbox
+ * - inProgress: true            → /setup (resume)
+ * - else: ask /api/v1/auth/session
+ *   - session.user present       → /inbox
+ *   - session.user null         → /login
+ * - any error                   → /login
+ */
 describe('Home', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('renders loading spinner initially', () => {
-    // Never-resolving promise so the component stays in loading state
+    // Never-resolving promise so the component stays in loading state.
     mockGet.mockReturnValue(new Promise(() => {}))
     const { container } = render(<Home />)
     const spinner = container.querySelector('.animate-spin')
     expect(spinner).toBeInTheDocument()
   })
 
-  it('redirects to setup when no users exist', async () => {
-    mockGet.mockResolvedValue({ hasUsers: false, inProgress: false })
+  it('redirects to /setup when setup is still in progress', async () => {
+    mockGet.mockResolvedValue({ hasSession: false, inProgress: true })
     render(<Home />)
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/setup')
     })
   })
 
-  it('redirects to setup when setup is in progress', async () => {
-    mockGet.mockResolvedValue({ hasUsers: false, inProgress: true })
-    render(<Home />)
-    await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith('/setup')
-    })
-  })
-
-  it('redirects to login when users exist but no session', async () => {
+  it('redirects to /login when there is no session and no setup in progress', async () => {
     mockGet.mockImplementation((path: string) => {
       if (path === '/api/v1/setup/status') {
-        return Promise.resolve({ hasUsers: true, inProgress: false })
+        return Promise.resolve({ hasSession: false, inProgress: false })
       }
       if (path === '/api/v1/auth/session') {
         return Promise.resolve({ user: null })
@@ -61,10 +64,18 @@ describe('Home', () => {
     })
   })
 
-  it('redirects to inbox when user is logged in', async () => {
+  it('redirects to /inbox when status reports an active session', async () => {
+    mockGet.mockResolvedValue({ hasSession: true, inProgress: false })
+    render(<Home />)
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/inbox')
+    })
+  })
+
+  it('redirects to /inbox when /auth/session resolves to a user', async () => {
     mockGet.mockImplementation((path: string) => {
       if (path === '/api/v1/setup/status') {
-        return Promise.resolve({ hasUsers: true, inProgress: false })
+        return Promise.resolve({ hasSession: false, inProgress: false })
       }
       if (path === '/api/v1/auth/session') {
         return Promise.resolve({ user: { setupComplete: true } })
@@ -77,7 +88,7 @@ describe('Home', () => {
     })
   })
 
-  it('redirects to login when API call fails', async () => {
+  it('redirects to /login when the API call fails', async () => {
     mockGet.mockRejectedValue(new Error('API is down'))
     render(<Home />)
     await waitFor(() => {

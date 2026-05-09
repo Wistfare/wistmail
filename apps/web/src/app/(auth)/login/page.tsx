@@ -3,63 +3,61 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Mail, Lock, EyeOff, Eye, ArrowRight } from 'lucide-react'
+import { ArrowRight, KeyRound, Lock, Mail } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { writePendingMfa } from '@/lib/mfa-storage'
-import { InputField } from '@/components/ui/input-field'
-import { Button } from '@/components/ui/button'
+import {
+  AuthButton,
+  AuthCard,
+  AuthDivider,
+  AuthHeading,
+  AuthInput,
+} from '@/components/auth'
 
+/**
+ * `/login` — Pencil `Screen/LoginV3` (`Ar0aI`).
+ *
+ * Wired to the existing API:
+ * - `POST /api/v1/auth/login` returns either `{ user }` or
+ *   `{ mfaRequired: true, pendingToken, methods }`.
+ *   We forward the user to `/mfa/challenge` for the second step.
+ * - SSO is a placeholder (no backend handler today). The button is here
+ *   because the design includes it; clicking it surfaces a hint until the
+ *   API ships.
+ */
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({})
   const router = useRouter()
 
   function validate() {
-    const newErrors: typeof errors = {}
-    if (!email.trim()) {
-      newErrors.email = 'Email is required'
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = 'Enter a valid email address'
-    }
-    if (!password) {
-      newErrors.password = 'Password is required'
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters'
-    }
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    const next: typeof errors = {}
+    if (!email.trim()) next.email = 'Email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = 'Enter a valid email'
+    if (!password) next.password = 'Password is required'
+    else if (password.length < 8) next.password = 'At least 8 characters'
+    setErrors(next)
+    return Object.keys(next).length === 0
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validate()) return
-
     setLoading(true)
     setErrors({})
-
     try {
       type LoginResponse =
-        | {
-            user: { setupComplete: boolean }
-            mfaRequired?: undefined
-          }
+        | { user: { setupComplete: boolean }; mfaRequired?: undefined }
         | {
             mfaRequired: true
             pendingToken: string
             methods: { type: string; label?: string | null }[]
           }
-      const res = await api.post<LoginResponse>('/api/v1/auth/login', {
-        email,
-        password,
-      })
+      const res = await api.post<LoginResponse>('/api/v1/auth/login', { email, password })
       if ('mfaRequired' in res && res.mfaRequired) {
-        writePendingMfa({
-          pendingToken: res.pendingToken,
-          methods: res.methods,
-        })
+        writePendingMfa({ pendingToken: res.pendingToken, methods: res.methods })
         router.push('/mfa/challenge')
         return
       }
@@ -73,87 +71,76 @@ export default function LoginPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-7">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold text-wm-text-primary">Sign in</h1>
-        <p className="font-mono text-xs text-wm-text-tertiary">
-          Enter your credentials to access your inbox
-        </p>
-      </div>
+    <form onSubmit={onSubmit} className="w-full">
+      <AuthCard>
+        <AuthHeading
+          eyebrow="Sign in"
+          title="Welcome back"
+          description="Enter your credentials to access your inbox."
+        />
 
-      {errors.form && (
-        <div className="border border-wm-error/30 bg-wm-error/10 px-4 py-3">
-          <p className="font-mono text-xs text-wm-error">{errors.form}</p>
-        </div>
-      )}
+        {errors.form && (
+          <div className="rounded-[10px] border border-wm-error/30 bg-wm-error/10 px-4 py-3">
+            <p className="font-mono text-[12px] text-wm-error">{errors.form}</p>
+          </div>
+        )}
 
-      <div className="flex flex-col gap-5">
-        <InputField
+        <AuthInput
           label="Email address"
           type="email"
           placeholder="you@yourdomain.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
-          icon={<Mail className="h-4.5 w-4.5" />}
+          icon={<Mail className="h-4 w-4" />}
           autoComplete="email"
           autoFocus
+          required
         />
 
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <label className="font-mono text-xs font-medium text-wm-text-secondary">
-              Password
-            </label>
+        <AuthInput
+          label="Password"
+          type="password"
+          reveal
+          placeholder="Enter your password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          error={errors.password}
+          icon={<Lock className="h-4 w-4" />}
+          autoComplete="current-password"
+          required
+          trailingLabel={
             <Link
               href="/forgot-password"
-              className="font-mono text-[11px] text-wm-accent hover:underline"
+              className="font-mono text-[10px] font-bold uppercase tracking-[1.5px] text-wm-accent hover:underline"
             >
-              Forgot password?
+              Forgot?
             </Link>
-          </div>
-          <div
-            className={`flex items-center gap-2.5 border bg-wm-surface px-4 py-3 transition-colors focus-within:border-wm-accent focus-within:ring-1 focus-within:ring-wm-accent/30 ${errors.password ? 'border-wm-error' : 'border-wm-border'}`}
-          >
-            <Lock className="h-4.5 w-4.5 text-wm-text-muted" />
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              className="flex-1 bg-transparent font-mono text-sm text-wm-text-primary placeholder:text-wm-text-muted outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="text-wm-text-muted hover:text-wm-text-secondary cursor-pointer"
-            >
-              {showPassword ? <Eye className="h-4.5 w-4.5" /> : <EyeOff className="h-4.5 w-4.5" />}
-            </button>
-          </div>
-          {errors.password && (
-            <p className="font-mono text-xs text-wm-error">{errors.password}</p>
-          )}
-        </div>
+          }
+        />
 
-        <Button
-          type="submit"
-          size="lg"
-          loading={loading}
-          icon={<ArrowRight className="h-4 w-4" />}
-          className="w-full py-3.5"
+        <AuthButton type="submit" loading={loading} trailingIcon={<ArrowRight className="h-4 w-4" />}>
+          Sign in
+        </AuthButton>
+
+        <AuthDivider />
+
+        <AuthButton
+          type="button"
+          variant="secondary"
+          icon={<KeyRound className="h-4 w-4" />}
+          onClick={() => setErrors({ form: 'SSO is not enabled for this workspace yet.' })}
         >
-          Sign In
-        </Button>
+          Continue with SSO
+        </AuthButton>
 
-        <p className="text-center font-mono text-xs text-wm-text-muted">
+        <p className="pt-2 text-center font-mono text-[11px] text-wm-text-tertiary">
           First time?{' '}
-          <Link href="/setup" className="font-medium text-wm-accent hover:underline">
-            Set up your domain
+          <Link href="/setup" className="font-bold text-wm-accent hover:underline">
+            Set up your domain →
           </Link>
         </p>
-      </div>
+      </AuthCard>
     </form>
   )
 }

@@ -2,18 +2,24 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Mail, ArrowRight, ArrowLeft, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Mail } from 'lucide-react'
 import { api } from '@/lib/api-client'
-import { InputField } from '@/components/ui/input-field'
-import { Button } from '@/components/ui/button'
+import {
+  AuthButton,
+  AuthCard,
+  AuthHeading,
+  AuthHeroIcon,
+  AuthInput,
+} from '@/components/auth'
 
+/** `/forgot-password` — V3 split layout. Backend: `POST /api/v1/auth/forgot-password`. */
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError('Enter a valid email address')
@@ -25,7 +31,7 @@ export default function ForgotPasswordPage() {
       await api.post('/api/v1/auth/forgot-password', { email: email.trim() })
       setSubmitted(true)
     } catch (err: unknown) {
-      // Endpoint always returns ok to prevent enumeration; only network errors land here.
+      // Endpoint returns 200 to prevent enumeration; only network errors land here.
       setError(err instanceof Error ? err.message : 'Something went wrong. Try again.')
     } finally {
       setLoading(false)
@@ -34,68 +40,63 @@ export default function ForgotPasswordPage() {
 
   if (submitted) {
     return (
-      <div className="flex w-full max-w-sm flex-col gap-7">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <CheckCircle2 className="h-10 w-10 text-wm-accent" />
-          <h1 className="text-2xl font-semibold text-wm-text-primary">Check your email</h1>
-          <p className="font-mono text-xs text-wm-text-tertiary">
-            If <span className="text-wm-text-secondary">{email}</span> matches an account, we&apos;ve sent a password reset link. The link expires in 30 minutes.
-          </p>
-          <p className="font-mono text-[11px] text-wm-text-muted">
-            Don&apos;t see it? Check spam, or try again with a different address.
-          </p>
-        </div>
+      <AuthCard className="items-center text-center">
+        <AuthHeroIcon>
+          <CheckCircle2 className="h-9 w-9" />
+        </AuthHeroIcon>
+        <AuthHeading
+          eyebrow="Check your inbox"
+          title="Reset link sent"
+          description={`If an account exists for ${email}, we sent a password reset link. The link expires in 30 minutes.`}
+        />
+        <p className="font-mono text-[11px] text-wm-text-tertiary">
+          Don&apos;t see it? Check spam, or try again with a different address.
+        </p>
         <Link
           href="/login"
-          className="flex items-center justify-center gap-2 font-mono text-xs text-wm-accent hover:underline"
+          className="inline-flex items-center justify-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-accent hover:underline"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
+          <ArrowLeft className="h-3 w-3" />
           Back to sign in
         </Link>
-      </div>
+      </AuthCard>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-7">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold text-wm-text-primary">Forgot password?</h1>
-        <p className="font-mono text-xs text-wm-text-tertiary">
-          Enter the email you sign in with and we&apos;ll send you a reset link.
-        </p>
-      </div>
+    <form onSubmit={onSubmit} className="w-full">
+      <AuthCard>
+        <AuthHeading
+          eyebrow="Reset password"
+          title="Forgot password?"
+          description="Enter the email you sign in with and we'll send a reset link."
+        />
 
-      <div className="flex flex-col gap-4">
-        <InputField
+        <AuthInput
           label="Email address"
           type="email"
           placeholder="you@yourdomain.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={error}
-          icon={<Mail className="h-4.5 w-4.5" />}
+          icon={<Mail className="h-4 w-4" />}
           autoComplete="email"
           autoFocus
+          required
         />
 
-        <Button
-          type="submit"
-          size="lg"
-          loading={loading}
-          icon={<ArrowRight className="h-4 w-4" />}
-          className="w-full py-3.5"
-        >
+        <AuthButton type="submit" loading={loading} trailingIcon={<ArrowRight className="h-4 w-4" />}>
           Send reset link
-        </Button>
+        </AuthButton>
 
         <Link
           href="/login"
-          className="flex items-center justify-center gap-2 font-mono text-xs text-wm-text-muted hover:text-wm-accent"
+          className="inline-flex items-center justify-center gap-2 font-mono text-[11px] text-wm-text-tertiary hover:text-wm-text-secondary"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
+          <ArrowLeft className="h-3 w-3" />
           Back to sign in
         </Link>
-      </div>
+      </AuthCard>
     </form>
   )
 }

@@ -16,6 +16,7 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
     return (
       <div
         className={cn(
+          // Pencil: padding [10, 16], gap 10, bg #111, 1px #1A1A1A border
           'flex items-center gap-2.5 border border-wm-border bg-wm-surface px-4 py-2.5',
           'focus-within:border-wm-accent focus-within:ring-1 focus-within:ring-wm-accent/30',
           className,

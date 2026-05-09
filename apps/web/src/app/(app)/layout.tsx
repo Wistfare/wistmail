@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
-import { Sidebar } from '@/components/layout/sidebar'
+import { AppShell } from '@/components/shell'
 import { ComposeProvider } from '@/components/email/compose-provider'
 import { QueryProvider } from '@/components/providers/query-provider'
 import { ToastProvider } from '@/components/ui/toast'
@@ -45,19 +45,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <ComposeProvider>
             <TypingBusProvider>
               <ChatRealtimeBridge />
-              <div className="flex h-screen overflow-hidden">
-              <Sidebar
+              <AppShell
                 user={{
+                  id: user.id,
                   name: user.name,
                   email: user.email,
-                  avatarUrl: user.avatarUrl ?? undefined,
+                  avatarUrl: user.avatarUrl ?? null,
                   role: user.role,
                 }}
-                activeRoute={pathname}
-                unreadCounts={{ inbox: 0 }}
-              />
-              <main className="flex-1 overflow-y-auto">{children}</main>
-            </div>
+              >
+                {children}
+              </AppShell>
             </TypingBusProvider>
           </ComposeProvider>
         </SessionUserProvider>

@@ -128,9 +128,12 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
   }
 
   const isExpanded = mode === 'expanded'
+  // V3 chrome: rounded corners on the floating panel, expanded variant
+  // covers the screen with a backdrop. Pencil reference: `tYDXb`
+  // FloatingCompose + `D1EUTv` InboxV3-NewMail.
   const containerClass = isExpanded
-    ? 'fixed inset-4 z-50 flex flex-col border border-wm-border bg-wm-surface shadow-2xl'
-    : 'fixed bottom-0 right-6 z-50 flex w-[480px] flex-col border border-wm-border bg-wm-surface shadow-2xl'
+    ? 'fixed inset-4 z-50 flex flex-col rounded-xl border border-wm-border bg-wm-surface shadow-2xl'
+    : 'fixed bottom-0 right-6 z-50 flex w-[480px] flex-col rounded-t-xl border border-wm-border border-b-0 bg-wm-surface shadow-2xl'
   const bodyHeight = isExpanded ? 'flex-1' : 'h-[280px]'
 
   return (
@@ -139,19 +142,31 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
       {isExpanded && <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setMode('open')} />}
 
       <div className={containerClass}>
-        {/* Title bar */}
-        <div className="flex items-center gap-2 bg-wm-accent-dim px-4 py-2.5 border-b border-wm-border">
-          <span className="flex-1 text-xs font-semibold text-wm-text-primary">
-            {inReplyTo ? 'Reply' : 'New Message'}
+        {/* Title bar — V3 lime-dim accent strip with rounded chrome buttons. */}
+        <div className={`flex items-center gap-1 bg-wm-accent-dim px-4 py-2.5 border-b border-wm-border ${isExpanded ? 'rounded-t-xl' : 'rounded-t-xl'}`}>
+          <span className="flex-1 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-accent">
+            {inReplyTo ? 'Reply' : 'New message'}
           </span>
-          <button onClick={() => setMode('minimized')} className="cursor-pointer text-wm-text-muted hover:text-wm-text-secondary">
-            <Minus className="h-4 w-4" />
+          <button
+            onClick={() => setMode('minimized')}
+            aria-label="Minimize"
+            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+          >
+            <Minus className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => setMode(isExpanded ? 'open' : 'expanded')} className="cursor-pointer text-wm-text-muted hover:text-wm-text-secondary">
+          <button
+            onClick={() => setMode(isExpanded ? 'open' : 'expanded')}
+            aria-label={isExpanded ? 'Restore' : 'Expand'}
+            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+          >
             {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </button>
-          <button onClick={onClose} className="cursor-pointer text-wm-text-muted hover:text-wm-text-secondary">
-            <X className="h-4 w-4" />
+          <button
+            onClick={onClose}
+            aria-label="Close compose"
+            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-error/15 hover:text-wm-error"
+          >
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
@@ -258,40 +273,59 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
           </div>
         )}
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-1 border-t border-wm-border px-3 py-2">
+        {/* V3 toolbar — round chrome buttons + lime Send button. */}
+        <div className="flex items-center gap-0.5 border-t border-wm-border px-3 py-2">
           {[Bold, Italic, Underline].map((Icon, i) => (
-            <button key={i} className="cursor-pointer p-1.5 text-wm-text-muted hover:text-wm-text-secondary">
-              <Icon className="h-4 w-4" />
+            <button
+              key={i}
+              type="button"
+              aria-label={['Bold', 'Italic', 'Underline'][i]}
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+            >
+              <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
-          <div className="h-4 w-px bg-wm-border" />
+          <span aria-hidden className="mx-1 h-4 w-px bg-wm-border" />
           {[Link2, Paperclip].map((Icon, i) => (
-            <button key={i} className="cursor-pointer p-1.5 text-wm-text-muted hover:text-wm-text-secondary">
-              <Icon className="h-4 w-4" />
+            <button
+              key={i}
+              type="button"
+              aria-label={['Add link', 'Attach file'][i]}
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
+            >
+              <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
           <div className="flex-1" />
-          <button onClick={onClose} className="cursor-pointer p-1.5 text-wm-text-muted hover:text-wm-error">
-            <Trash2 className="h-4 w-4" />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Discard draft"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-wm-text-secondary transition-colors hover:bg-wm-error/15 hover:text-wm-error"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
-          <div className="h-4 w-px bg-wm-border" />
+          <span aria-hidden className="mx-1 h-4 w-px bg-wm-border" />
 
           {/* Schedule */}
           <div className="relative">
             <button
+              type="button"
               onClick={() => setShowSchedule(!showSchedule)}
-              className="flex cursor-pointer items-center gap-1 p-1.5 text-wm-text-muted hover:text-wm-text-secondary"
+              aria-label="Schedule send"
+              className="flex h-8 cursor-pointer items-center gap-1 rounded-full px-2 text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
             >
-              <Clock className="h-4 w-4" />
+              <Clock className="h-3.5 w-3.5" />
               <ChevronDown className="h-3 w-3" />
             </button>
             {showSchedule && (
               <>
                 <div className="fixed inset-0 z-50" onClick={() => setShowSchedule(false)} />
-                <div className="absolute bottom-8 right-0 z-50 w-56 border border-wm-border bg-wm-surface shadow-lg">
-                  <div className="px-3 py-2 border-b border-wm-border">
-                    <span className="font-mono text-[10px] font-semibold text-wm-text-muted">SCHEDULE SEND</span>
+                <div className="absolute bottom-9 right-0 z-50 w-60 rounded-lg border border-wm-border bg-wm-surface shadow-2xl">
+                  <div className="border-b border-wm-border px-3 py-2">
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-[1.5px] text-wm-text-tertiary">
+                      Schedule send
+                    </span>
                   </div>
                   {[
                     { label: 'Tomorrow morning', time: getScheduleTime(1, 9) },
@@ -300,22 +334,30 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
                   ].map((opt) => (
                     <button
                       key={opt.label}
-                      onClick={() => { setScheduledAt(opt.time); setShowSchedule(false) }}
-                      className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-wm-text-secondary hover:bg-wm-surface-hover"
+                      type="button"
+                      onClick={() => {
+                        setScheduledAt(opt.time)
+                        setShowSchedule(false)
+                      }}
+                      className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-wm-text-secondary transition-colors hover:bg-wm-surface-hover hover:text-wm-text-primary"
                     >
                       <Clock className="h-3 w-3 text-wm-text-muted" />
                       {opt.label}
                       <span className="flex-1" />
-                      <span className="font-mono text-[10px] text-wm-text-muted">{formatSchedulePreview(opt.time)}</span>
+                      <span className="font-mono text-[10px] text-wm-text-muted">
+                        {formatSchedulePreview(opt.time)}
+                      </span>
                     </button>
                   ))}
                   <div className="border-t border-wm-border px-3 py-2">
-                    <label className="font-mono text-[10px] text-wm-text-muted">Pick date & time</label>
+                    <label className="font-mono text-[10px] text-wm-text-muted">
+                      Pick date &amp; time
+                    </label>
                     <input
                       type="datetime-local"
                       value={scheduledAt}
                       onChange={(e) => setScheduledAt(e.target.value)}
-                      className="mt-1 w-full bg-wm-bg border border-wm-border px-2 py-1.5 font-mono text-xs text-wm-text-primary outline-none"
+                      className="mt-1 w-full rounded-md border border-wm-border bg-wm-bg px-2 py-1.5 font-mono text-xs text-wm-text-primary outline-none"
                     />
                   </div>
                 </div>
@@ -324,10 +366,11 @@ export function FloatingCompose({ initialData, onClose, onSent }: FloatingCompos
           </div>
 
           <button
+            type="button"
             onClick={handleSend}
             disabled={sending}
             className={cn(
-              'flex items-center gap-1.5 bg-wm-accent px-3.5 py-1.5 font-mono text-xs font-semibold text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover',
+              'flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-wm-accent px-3.5 font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-text-on-accent transition-colors hover:bg-wm-accent-hover',
               sending && 'opacity-50',
             )}
           >
