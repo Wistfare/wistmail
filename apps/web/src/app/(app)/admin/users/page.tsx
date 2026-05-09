@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Plus, Search } from 'lucide-react'
-import { PageHeader } from '@/components/shell'
+import { SettingsTopBar } from '@/components/shell'
 import { Avatar, Button, EmptyState } from '@/components/ui'
 import { FilterPills } from '@/components/email/filter-pills'
 import { api } from '@/lib/api-client'
@@ -70,38 +70,69 @@ export default function AdminUsersPage() {
   }, [members, filter, query])
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader
-        eyebrow="Admin"
-        title="Users"
-        subtitle={
-          loading
-            ? undefined
-            : `${members.length} member${members.length === 1 ? '' : 's'}`
-        }
-        actions={
-          <>
-            <SearchField value={query} onChange={setQuery} />
-            <Link href="/admin/users/new">
-              <Button icon={<Plus className="h-3.5 w-3.5" />}>Invite user</Button>
-            </Link>
-          </>
-        }
-        toolbar={
-          <FilterPills<StatusFilter>
-            value={filter}
-            options={[
-              { id: 'all', label: 'All', count: members.length },
-              { id: 'active', label: 'Active', count: members.length },
-              { id: 'pending', label: 'Pending' },
-              { id: 'suspended', label: 'Suspended' },
-            ]}
-            onChange={setFilter}
-          />
+    <div className="flex h-full flex-col" style={{ background: '#000000' }}>
+      <SettingsTopBar
+        scope="Admin"
+        page="Users"
+        rightSlot={
+          <Link
+            href="/admin/users/new"
+            className="inline-flex cursor-pointer items-center bg-wm-accent transition-colors hover:bg-wm-accent-hover"
+            style={{
+              gap: 6,
+              padding: '8px 14px',
+              borderRadius: 18,
+              boxShadow: '0 3px 14px 0 rgba(191,255,0,0.25)',
+              color: '#000000',
+            }}
+          >
+            <Plus style={{ width: 13, height: 13 }} />
+            <span
+              className="font-mono font-bold uppercase"
+              style={{ fontSize: 11, letterSpacing: 1 }}
+            >
+              Invite user
+            </span>
+          </Link>
         }
       />
 
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      <div
+        className="flex flex-col"
+        style={{ gap: 16, padding: '28px 32px 16px 32px' }}
+      >
+        <div className="flex items-end justify-between" style={{ gap: 16 }}>
+          <div className="flex flex-col" style={{ gap: 6 }}>
+            <h1
+              className="font-mono font-bold text-wm-text-primary"
+              style={{ fontSize: 30 }}
+            >
+              Users
+            </h1>
+            <p
+              className="font-mono"
+              style={{ fontSize: 12, color: '#6e6e6e' }}
+            >
+              {loading
+                ? '…'
+                : `${members.length} member${members.length === 1 ? '' : 's'}`}
+            </p>
+          </div>
+          <SearchField value={query} onChange={setQuery} />
+        </div>
+        <FilterPills<StatusFilter>
+          value={filter}
+          options={[
+            { id: 'all', label: 'All', count: members.length },
+            { id: 'active', label: 'Active', count: members.length },
+            { id: 'pending', label: 'Pending' },
+            { id: 'suspended', label: 'Suspended' },
+          ]}
+          onChange={setFilter}
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto" style={{ padding: '0 32px 24px 32px' }}>
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-wm-accent border-t-transparent" />

@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, Plus, ScrollText } from 'lucide-react'
-import { PageHeader } from '@/components/shell'
-import { Button, StatCard } from '@/components/ui'
+import { SettingsTopBar } from '@/components/shell'
+import { StatCard } from '@/components/ui'
 import { api } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 
@@ -71,22 +71,51 @@ export default function AdminOverviewPage() {
   const verifiedDomains = domains.filter((d) => d.verified).length
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader
-        eyebrow="Admin"
-        title="Overview"
-        subtitle="Workspace activity, usage and health"
-        actions={
-          <Link href="/admin/users">
-            <Button variant="secondary">
+    <div className="flex h-full flex-col" style={{ background: '#000000' }}>
+      <SettingsTopBar
+        scope="Admin"
+        page="Overview"
+        rightSlot={
+          <Link
+            href="/admin/users"
+            className="inline-flex cursor-pointer items-center bg-wm-surface text-wm-text-primary transition-colors hover:bg-wm-surface-hover"
+            style={{
+              gap: 6,
+              padding: '8px 14px',
+              borderRadius: 18,
+              border: '1px solid var(--color-wm-border)',
+            }}
+          >
+            <span
+              className="font-mono font-bold uppercase"
+              style={{ fontSize: 11, letterSpacing: 1 }}
+            >
               Manage users
-              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-            </Button>
+            </span>
+            <ArrowRight style={{ width: 13, height: 13 }} />
           </Link>
         }
       />
 
-      <div className="flex flex-col gap-6 overflow-y-auto px-8 py-6">
+      <div
+        className="flex flex-col overflow-y-auto"
+        style={{ gap: 24, padding: '28px 32px' }}
+      >
+        <div className="flex flex-col" style={{ gap: 6 }}>
+          <h1
+            className="font-mono font-bold text-wm-text-primary"
+            style={{ fontSize: 30 }}
+          >
+            Overview
+          </h1>
+          <p
+            className="font-mono"
+            style={{ fontSize: 12, color: '#6e6e6e' }}
+          >
+            Workspace activity, usage and health.
+          </p>
+        </div>
+
         {/* Stat strip — Pencil shows 24 / 6 GB / 12,847 / 3 etc. */}
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
