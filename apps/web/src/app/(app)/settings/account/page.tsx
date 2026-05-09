@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Lock, Save, User as UserIcon } from 'lucide-react'
-import { PageHeader } from '@/components/shell'
+import { SettingsTopBar } from '@/components/shell'
 import {
   Avatar,
   Button,
@@ -89,13 +89,23 @@ export default function AccountSettingsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader
-        eyebrow="Settings"
-        title="Account"
-        subtitle={user?.email ?? undefined}
+    <div className="flex h-full flex-col" style={{ background: '#000000' }}>
+      <SettingsTopBar
+        scope="Settings"
+        page="Account"
+        onSave={handleSaveProfile}
+        saving={saving}
       />
-      <div className="flex flex-col gap-6 overflow-y-auto px-8 py-6">
+      <div
+        className="flex flex-col overflow-y-auto"
+        style={{ gap: 24, padding: '28px 32px' }}
+      >
+        <h1
+          className="font-mono font-bold text-wm-text-primary"
+          style={{ fontSize: 30 }}
+        >
+          Account
+        </h1>
         {/* Pencil PROFILE card — large avatar + name + email row. */}
         <SettingsCard title="Profile" description="Manage your account information.">
           <div className="flex flex-col gap-5">

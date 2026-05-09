@@ -23,5 +23,9 @@ export { MeetingsSidebar, type MeetingsSidebarProps } from './meetings-sidebar'
 export { SettingsSidebar, type SettingsSidebarProps } from './settings-sidebar'
 export { AdminSidebar, type AdminSidebarProps } from './admin-sidebar'
 export { PageHeader, type PageHeaderProps } from './page-header'
+export {
+  SettingsTopBar,
+  type SettingsTopBarProps,
+} from './settings-top-bar'
 export { CommandPalette, type CommandPaletteProps, type Command } from './command-palette'
 export { UserMenuPanel, type UserMenuPanelProps } from './user-menu'
