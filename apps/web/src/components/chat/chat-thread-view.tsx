@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
+import { MessageStackSkeleton } from './chat-skeletons'
 import {
   chatAttachmentUrl,
   useAddParticipants,
@@ -210,11 +211,7 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
-          {messagesQ.isPending && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-wm-accent" />
-            </div>
-          )}
+          {messagesQ.isPending && <MessageStackSkeleton />}
 
           {!messagesQ.isPending && (messagesQ.data ?? []).length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">

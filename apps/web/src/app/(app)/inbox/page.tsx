@@ -33,6 +33,10 @@ import {
   type InlineComposerMode,
   type RecipientChip,
 } from '@/components/email/inline-composer'
+import {
+  FeedListSkeleton,
+  EmailReadingSkeleton,
+} from '@/components/email/feed-skeletons'
 import { ChatThreadView } from '@/components/chat/chat-thread-view'
 import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
 import {
@@ -698,11 +702,7 @@ export default function InboxPage() {
         )}
 
         <div ref={listRef} className="flex-1 overflow-y-auto">
-          {list.isPending && (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-5 w-5 animate-spin text-wm-accent" />
-            </div>
-          )}
+          {list.isPending && <FeedListSkeleton rows={6} />}
 
           {list.isError && (
             <div className="flex flex-col items-center justify-center gap-2 py-16">
@@ -824,9 +824,7 @@ export default function InboxPage() {
             onSearch={() => router.push('/search')}
           />
         ) : !selectedFull ? (
-          <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-wm-accent" />
-          </div>
+          <EmailReadingSkeleton />
         ) : (
           <>
             {/* V3 reading-pane toolbar — Pencil `InboxV3.toolbar` (`u0CIwR`):
