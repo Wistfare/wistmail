@@ -4,9 +4,11 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type InfiniteData,
   type QueryClient,
 } from '@tanstack/react-query'
 import { api } from './api-client'
+import type { FeedItem, FeedPage } from './feed-queries'
 
 /// TanStack Query bindings for the chat module. Mirrors the shape of
 /// `email-queries.ts`: a single `chatKeys` namespace + thin wrappers
@@ -46,6 +48,12 @@ export interface ChatMessage {
   editedAt?: string | null
   deletedAt?: string | null
   attachments?: ChatAttachment[]
+  /// Client-side delivery status — populated for the user's own
+  /// outgoing messages so the bubble can render the sending /
+  /// sent / failed indicator.  The server never sends this field;
+  /// it's derived locally during optimistic send and replaced by
+  /// the server payload (which is treated as `sent` by default).
+  _status?: 'sending' | 'sent' | 'failed'
 }
 
 export interface ChatAttachment {
@@ -76,6 +84,64 @@ export interface ChatSearchHit {
   senderName: string
   content: string
   createdAt: string
+}
+
+/// Walk every cached `useFeedList` page and patch the chat row whose
+/// `id` matches `conversationId` with the latest message + activityAt
+/// + unread bump.  We touch every (folder, kind, q) variant of the
+/// feed because the user might be looking at any of them — limiting
+/// to one would silently leave the other tabs stale.
+///
+/// `incrementUnread` lets the caller tell us this is an incoming
+/// message (bump the badge) vs a self-send (clear it / no-op since
+/// the user's looking at the thread).  Re-sorts each page's data by
+/// `activityAt` so the bumped row floats to the top of its page.
+function bumpFeedRow(
+  qc: QueryClient,
+  conversationId: string,
+  patch: { activityAt: string; snippet: string },
+  incrementUnread: boolean,
+) {
+  const matches = qc.getQueriesData<InfiniteData<FeedPage>>({
+    queryKey: ['inbox', 'feed'],
+  })
+  for (const [key, data] of matches) {
+    if (!data) continue
+    let touched = false
+    const nextPages: FeedPage[] = data.pages.map((page) => {
+      const nextData = page.data.map((it: FeedItem) => {
+        if (
+          (it.kind === 'chat-direct' || it.kind === 'chat-group') &&
+          it.id === conversationId
+        ) {
+          touched = true
+          return {
+            ...it,
+            activityAt: patch.activityAt,
+            lastMessageAt: patch.activityAt,
+            snippet: patch.snippet,
+            isRead: incrementUnread ? false : it.isRead,
+            unreadCount: incrementUnread
+              ? it.unreadCount + 1
+              : it.unreadCount,
+          } as FeedItem
+        }
+        return it
+      })
+      // Re-sort within the page so the bumped row floats to the top.
+      nextData.sort(
+        (a, b) =>
+          new Date(b.activityAt).getTime() - new Date(a.activityAt).getTime(),
+      )
+      return { ...page, data: nextData }
+    })
+    if (touched) {
+      qc.setQueryData<InfiniteData<FeedPage>>(key, {
+        ...data,
+        pages: nextPages,
+      })
+    }
+  }
 }
 
 export const chatKeys = {
@@ -193,25 +259,123 @@ export function useDeleteMessage(conversationId: string) {
 export function useSendMessage(conversationId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: string | { content: string; attachmentIds?: string[] }) => {
-      const body =
-        typeof input === 'string'
-          ? { content: input }
-          : { content: input.content, attachmentIds: input.attachmentIds }
+    mutationFn: async (input: {
+      content: string
+      attachmentIds?: string[]
+      senderId: string
+      tempId: string
+    }) => {
       const res = await api.post<{ id: string; createdAt: string }>(
         `/api/v1/chat/conversations/${conversationId}/messages`,
-        body,
+        { content: input.content, attachmentIds: input.attachmentIds },
       )
-      return res
+      return { ...res, tempId: input.tempId }
     },
-    onSuccess: () => {
-      // The realtime bridge will fold incoming messages into the
-      // cache for *other* participants, but the sender doesn't get
-      // a `chat.message.new` event back (by design — we don't want
-      // every client deduping). So invalidate locally so the row
-      // we just sent appears.
-      qc.invalidateQueries({ queryKey: chatKeys.messages(conversationId) })
-      qc.invalidateQueries({ queryKey: chatKeys.conversations() })
+    /// Optimistic insert so the bubble renders the moment the user
+    /// hits Send.  We push a temporary message into the messages
+    /// cache (status='sending') AND bump the conversation list's
+    /// last-message + ordering so the inbox row reorders too.  When
+    /// the server replies we swap the temp id for the real one and
+    /// flip status to 'sent'; on error we mark it 'failed' so the
+    /// caller can offer retry.
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: chatKeys.messages(conversationId) })
+      const prevMessages = qc.getQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+      )
+      const prevConversations = qc.getQueryData<ConversationSummary[]>(
+        chatKeys.conversations(),
+      )
+      const now = new Date().toISOString()
+      const optimistic: ChatMessage = {
+        id: input.tempId,
+        conversationId,
+        senderId: input.senderId,
+        content: input.content,
+        createdAt: now,
+        _status: 'sending',
+      }
+      qc.setQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+        (old) => (old ? [...old, optimistic] : [optimistic]),
+      )
+      qc.setQueryData<ConversationSummary[]>(
+        chatKeys.conversations(),
+        (old) => {
+          if (!old) return old
+          const next = old.map((c) =>
+            c.id === conversationId
+              ? {
+                  ...c,
+                  lastMessageAt: now,
+                  lastMessage: {
+                    id: input.tempId,
+                    content: input.content,
+                    senderId: input.senderId,
+                    createdAt: now,
+                  },
+                }
+              : c,
+          )
+          next.sort(
+            (a, b) =>
+              new Date(b.lastMessageAt).getTime() -
+              new Date(a.lastMessageAt).getTime(),
+          )
+          return next
+        },
+      )
+      // The inbox screen reads from the unified feed cache, not the
+      // conversations cache — bump the row there too so the chat
+      // list reorders the moment the user hits Send.  Prefix "You: "
+      // to match the snippet shape the server returns on refetch
+      // (avoids a flash when the canonical row lands).
+      bumpFeedRow(
+        qc,
+        conversationId,
+        {
+          activityAt: now,
+          snippet: `You: ${previewFor(input.content)}`,
+        },
+        false,
+      )
+      return { prevMessages, prevConversations }
+    },
+    onSuccess: (res) => {
+      // Replace the optimistic temp message with the server payload
+      // and mark it sent.  Avoids a full refetch — the server only
+      // returns id+createdAt so we patch in place.
+      qc.setQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+        (old) => {
+          if (!old) return old
+          return old.map((m) =>
+            m.id === res.tempId
+              ? { ...m, id: res.id, createdAt: res.createdAt, _status: 'sent' }
+              : m,
+          )
+        },
+      )
+      // Server has the canonical lastMessageAt now; invalidate so
+      // any presence-ordered fields the cache might be missing
+      // refresh in the background.
+      qc.invalidateQueries({
+        queryKey: chatKeys.conversations(),
+        refetchType: 'none',
+      })
+    },
+    onError: (_err, input) => {
+      // Keep the bubble visible but mark it failed so the user can
+      // retry from the composer affordance.
+      qc.setQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+        (old) => {
+          if (!old) return old
+          return old.map((m) =>
+            m.id === input.tempId ? { ...m, _status: 'failed' } : m,
+          )
+        },
+      )
     },
   })
 }
@@ -282,6 +446,9 @@ export function useMarkConversationRead() {
           )
         },
       )
+      // Clear the unread badge on the inbox feed row immediately so
+      // the user sees the count drop the moment they open the chat.
+      applyChatConversationRead(qc, { conversationId })
     },
   })
 }
@@ -423,14 +590,56 @@ export function applyChatMessageNew(
         createdAt: evt.createdAt,
       }
       if (!old) return [incoming]
-      // Dedupe: a sender's own POST already invalidates and refetches,
-      // and that refetch may race with an event arriving from the bus
-      // (an unlikely-but-possible self-route case). Either way, never
-      // duplicate.
+      // Dedupe by both real id and optimistic temp ids: when the
+      // sender's own POST resolves, onSuccess swaps the temp id for
+      // the real one — but if a `chat.message.new` event for that
+      // same message arrives over the bus first (multi-device echo)
+      // we'd otherwise insert a duplicate.  Match on content +
+      // senderId + a 5s window to fold the echo into the existing
+      // optimistic row.
       if (old.some((m) => m.id === evt.messageId)) return old
+      const idx = old.findIndex(
+        (m) =>
+          m.id.startsWith('temp-') &&
+          m.senderId === evt.senderId &&
+          m.content === evt.content &&
+          Math.abs(
+            new Date(m.createdAt).getTime() - new Date(evt.createdAt).getTime(),
+          ) < 5_000,
+      )
+      if (idx !== -1) {
+        const next = [...old]
+        next[idx] = {
+          ...next[idx],
+          id: evt.messageId,
+          createdAt: evt.createdAt,
+          _status: 'sent',
+        }
+        return next
+      }
       return [...old, incoming]
     },
   )
+  // Also bump the unified inbox feed cache so the chat row jumps to
+  // the top with the new snippet — same code path the optimistic
+  // sender uses, just with `incrementUnread=true` since the message
+  // arrived from someone else (the bus only fires for non-self
+  // messages by design).
+  bumpFeedRow(
+    qc,
+    evt.conversationId,
+    { activityAt: evt.createdAt, snippet: previewFor(evt.content) },
+    true,
+  )
+}
+
+/// Truncate to the same shape the server uses for `snippet` on the
+/// unified feed (~120 chars, single line).  Keeps the optimistic /
+/// realtime preview visually consistent with the canonical row that
+/// arrives on the next refetch.
+function previewFor(content: string): string {
+  const single = content.replace(/\s+/g, ' ').trim()
+  return single.length > 120 ? single.slice(0, 117) + '…' : single
 }
 
 export function applyChatMessageUpdated(
@@ -479,6 +688,36 @@ export function applyChatConversationRead(
   // The seen-by avatars rely on the reads query — the simplest and
   // correct thing is to invalidate so it refetches on next render.
   qc.invalidateQueries({ queryKey: chatKeys.reads(evt.conversationId) })
+  // Also clear the unread badge on the inbox feed row so the count
+  // drops the moment the read event fires (without waiting for the
+  // next /inbox/list refetch).
+  const matches = qc.getQueriesData<InfiniteData<FeedPage>>({
+    queryKey: ['inbox', 'feed'],
+  })
+  for (const [key, data] of matches) {
+    if (!data) continue
+    let touched = false
+    const nextPages: FeedPage[] = data.pages.map((page) => ({
+      ...page,
+      data: page.data.map((it: FeedItem) => {
+        if (
+          (it.kind === 'chat-direct' || it.kind === 'chat-group') &&
+          it.id === evt.conversationId &&
+          (!it.isRead || it.unreadCount > 0)
+        ) {
+          touched = true
+          return { ...it, isRead: true, unreadCount: 0 } as FeedItem
+        }
+        return it
+      }),
+    }))
+    if (touched) {
+      qc.setQueryData<InfiniteData<FeedPage>>(key, {
+        ...data,
+        pages: nextPages,
+      })
+    }
+  }
 }
 
 export function applyChatConversationUpdated(

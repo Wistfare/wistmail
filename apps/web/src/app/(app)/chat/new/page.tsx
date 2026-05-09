@@ -532,6 +532,19 @@ function SectionHeader({
   )
 }
 
+/// Full-width user row — Pencil ContactPicker rows in `Screen/NewChatV3`.
+///
+///   avatar (40)             ← deterministic colour, initials, lime
+///                             presence dot bottom-right when active
+///   name (13/600 white)
+///     · ACTIVE (lime 9/700)  ← only on the currently highlighted match
+///   role / handle (11/normal #6e6e6e)
+///                             ← derived from email handle since the
+///                               `ContactSearchResult` shape doesn't
+///                               carry an explicit role today
+///   trailing
+///     EXTERNAL chip          ← amber, when email is outside the org
+///     check (group mode)     ← lime when selected, hairline when not
 function ContactRow({
   user,
   primary,
@@ -549,23 +562,39 @@ function ContactRow({
 }) {
   const initials = getInitials(user.name)
   const bg = stringToColor(user.name)
+  const handle = user.email.split('@')[0]
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full cursor-pointer items-center text-left transition-colors hover:bg-wm-surface-hover',
-        primary && 'bg-wm-accent/5',
+        'group/row flex w-full cursor-pointer items-center text-left transition-colors hover:bg-wm-surface-hover',
+        primary && !selected && 'bg-wm-accent/5',
         selected && 'bg-wm-accent/10',
       )}
       style={{ gap: 14, padding: '10px 24px' }}
     >
       <span
         aria-hidden
-        className="flex shrink-0 items-center justify-center rounded-full font-mono font-bold text-white"
-        style={{ width: 36, height: 36, fontSize: 13, backgroundColor: bg }}
+        className="relative flex shrink-0 items-center justify-center rounded-full font-mono font-bold text-white"
+        style={{ width: 40, height: 40, fontSize: 14, backgroundColor: bg }}
       >
         {initials || '?'}
+        {primary && (
+          <span
+            aria-hidden
+            className="absolute"
+            style={{
+              right: -1,
+              bottom: -1,
+              width: 12,
+              height: 12,
+              borderRadius: 999,
+              background: 'var(--color-wm-accent)',
+              boxShadow: '0 0 0 2px #000000',
+            }}
+          />
+        )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col" style={{ gap: 2 }}>
         <span className="flex items-center" style={{ gap: 8 }}>
@@ -592,7 +621,7 @@ function ContactRow({
           className="truncate font-mono"
           style={{ fontSize: 11, color: '#6e6e6e' }}
         >
-          {user.email}
+          @{handle} · {user.email}
         </span>
       </span>
       {external && !showCheck && (
