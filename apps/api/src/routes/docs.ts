@@ -43,8 +43,24 @@ docsRoutes.get('/', async (c) => {
   const conditions = [eq(docs.ownerId, userId)]
   if (projectId) conditions.push(eq(docs.projectId, projectId))
 
+  // The list view only needs the index-level metadata (title, icon,
+  // status, project, timestamps). `body` is a `text` column that can
+  // be tens-of-KB per doc once the user fills it in — shipping it
+  // for every row would balloon the payload and the SQL row size for
+  // no reason. The single-doc endpoint (GET /docs/:id) keeps the
+  // full select for the editor.
   const rows = await db
-    .select()
+    .select({
+      id: docs.id,
+      ownerId: docs.ownerId,
+      projectId: docs.projectId,
+      title: docs.title,
+      icon: docs.icon,
+      status: docs.status,
+      shareToken: docs.shareToken,
+      updatedAt: docs.updatedAt,
+      createdAt: docs.createdAt,
+    })
     .from(docs)
     .where(and(...conditions))
     .orderBy(desc(docs.updatedAt))
