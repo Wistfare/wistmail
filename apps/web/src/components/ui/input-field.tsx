@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 import { cn } from '@/lib/utils'
 
 export interface InputFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -12,11 +12,19 @@ export interface InputFieldProps extends React.InputHTMLAttributes<HTMLInputElem
 // bg #111111, 1px #1A1A1A border, value text 13px JetBrains Mono.
 // Stacked-label variant: label is "EMAIL" — JetBrains Mono 11px 500 #999, 6px below to field.
 export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
-  ({ className, label, error, hint, icon, ...props }, ref) => {
+  ({ className, label, error, hint, icon, id, ...props }, ref) => {
+    // Associate the visible label with the underlying input so screen
+    // readers (and `getByLabelText` in tests) can find it. Caller-supplied
+    // `id` wins; otherwise we mint a stable React useId.
+    const reactId = useId()
+    const inputId = id ?? reactId
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label className="font-mono text-[11px] font-medium uppercase tracking-wider text-wm-text-secondary">
+          <label
+            htmlFor={inputId}
+            className="font-mono text-[11px] font-medium uppercase tracking-wider text-wm-text-secondary"
+          >
             {label}
           </label>
         )}
@@ -30,6 +38,7 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
           {icon && <span className="text-wm-text-muted">{icon}</span>}
           <input
             ref={ref}
+            id={inputId}
             className={cn(
               'flex-1 bg-transparent font-mono text-[13px] text-wm-text-primary',
               'placeholder:text-wm-text-muted outline-none',
