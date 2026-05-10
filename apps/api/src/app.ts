@@ -28,6 +28,7 @@ import { docsRoutes } from './routes/docs.js'
 import { todayRoutes } from './routes/today.js'
 import { searchRoutes } from './routes/search.js'
 import { mfaRoutes } from './routes/mfa.js'
+import { billingRoutes } from './routes/billing.js'
 import { domains as domainsTable } from '@wistmail/db'
 
 export type AppEnv = {
@@ -138,6 +139,7 @@ v1.route('/docs', docsRoutes)
 v1.route('/today', todayRoutes)
 v1.route('/search', searchRoutes)
 v1.route('/mfa', mfaRoutes)
+v1.route('/billing', billingRoutes)
 // Notification action routes — Bearer-token authenticated, NOT
 // session-cookied. Live under their own prefix so the auth contract
 // is unambiguous from the URL alone.
