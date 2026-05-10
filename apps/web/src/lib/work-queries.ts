@@ -151,3 +151,23 @@ export function useToday() {
     staleTime: 60_000,
   })
 }
+
+export interface WorkCounters {
+  today: number
+  week: number
+  overdue: number
+  done: number
+}
+
+/**
+ * Aggregate task counters powering the WorkSidebar header + Overdue /
+ * Done sections. Backed by `GET /api/v1/work/counters` — one round-trip
+ * on the sidebar mount, server-side aggregated so it stays cheap.
+ */
+export function useWorkCounters() {
+  return useQuery({
+    queryKey: ['work', 'counters'],
+    queryFn: () => api.get<WorkCounters>('/api/v1/work/counters'),
+    staleTime: 30_000,
+  })
+}

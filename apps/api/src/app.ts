@@ -27,6 +27,7 @@ import { calendarRoutes } from './routes/calendar.js'
 import { projectRoutes } from './routes/projects.js'
 import { docsRoutes } from './routes/docs.js'
 import { todayRoutes } from './routes/today.js'
+import { workRoutes } from './routes/work.js'
 import { searchRoutes } from './routes/search.js'
 import { mfaRoutes } from './routes/mfa.js'
 import { billingRoutes } from './routes/billing.js'
@@ -141,6 +142,7 @@ v1.route('/calendar', calendarRoutes)
 v1.route('/projects', projectRoutes)
 v1.route('/docs', docsRoutes)
 v1.route('/today', todayRoutes)
+v1.route('/work', workRoutes)
 v1.route('/search', searchRoutes)
 v1.route('/mfa', mfaRoutes)
 v1.route('/billing', billingRoutes)
