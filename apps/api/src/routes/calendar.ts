@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { and, asc, eq, gte, isNotNull, lte, ne } from 'drizzle-orm'
+import { and, asc, eq, gte, isNotNull, lte, ne, sql } from 'drizzle-orm'
 import { ValidationError, generateId } from '@wistmail/shared'
 import { calendarEvents } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
@@ -8,6 +8,75 @@ import { getDb } from '../lib/db.js'
 
 export const calendarRoutes = new Hono<SessionEnv>()
 calendarRoutes.use('*', sessionAuth)
+
+/**
+ * Friendly names for the canonical V3 palette. Falls back to the hex
+ * when the colour isn't in the map. Mirrors the client-side derivation
+ * in `apps/web/src/lib/calendar-derived.ts` so the sidebar renders the
+ * same labels regardless of which source it pulls from.
+ */
+const COLOR_NAMES: Record<string, string> = {
+  '#BFFF00': 'Personal',
+  '#C5F135': 'Personal',
+  '#A78BFA': 'Work',
+  '#F59E0B': 'Travel',
+  '#3B82F6': 'Updates',
+  '#EC4899': 'Social',
+  '#22D3EE': 'Health',
+  '#FF4444': 'Holidays',
+}
+
+function nameForColor(hex: string): string {
+  return COLOR_NAMES[hex.toUpperCase()] ?? hex
+}
+
+/**
+ * GET /api/v1/calendar/calendars
+ *
+ * Returns the list of pseudo-calendars the user has events under. Today
+ * the calendar table doesn't have a `calendars` row of its own — events
+ * carry a `color` and we group by colour. Default response always
+ * includes a "Personal" entry so the sidebar isn't empty for new users.
+ *
+ * The shape is `{ calendars: [{ id, name, color, eventCount }] }` —
+ * `id` doubles as the colour key so the client can toggle visibility
+ * without a separate join.
+ */
+calendarRoutes.get('/calendars', async (c) => {
+  const userId = c.get('userId')
+  const db = getDb()
+
+  const rows = await db
+    .select({
+      color: calendarEvents.color,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(calendarEvents)
+    .where(eq(calendarEvents.userId, userId))
+    .groupBy(calendarEvents.color)
+
+  // Always surface a "Personal" default so a brand-new user with zero
+  // events still sees a calendar source in their sidebar.
+  const seen = new Set(rows.map((r) => r.color.toUpperCase()))
+  const out = rows
+    .sort((a, b) => b.count - a.count)
+    .map((r) => ({
+      id: r.color,
+      name: nameForColor(r.color),
+      color: r.color,
+      eventCount: r.count,
+    }))
+  if (!seen.has('#BFFF00') && !seen.has('#C5F135')) {
+    out.unshift({
+      id: '#BFFF00',
+      name: 'Personal',
+      color: '#BFFF00',
+      eventCount: 0,
+    })
+  }
+
+  return c.json({ calendars: out })
+})
 
 const eventSchema = z.object({
   title: z.string().min(1).max(255),
