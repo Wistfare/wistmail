@@ -445,6 +445,70 @@ async function ensureSchema() {
       content jsonb NOT NULL,
       generated_at timestamptz NOT NULL DEFAULT now()
     )`,
+    // ── Billing: plans + plan_features (mirrors drizzle 0008).
+    `CREATE TABLE IF NOT EXISTS plans (
+      id varchar(64) PRIMARY KEY,
+      code varchar(64) NOT NULL,
+      name varchar(128) NOT NULL,
+      description text,
+      per_seat_cents int NOT NULL,
+      included_storage_mb_per_seat int NOT NULL DEFAULT 1024,
+      trial_days int NOT NULL DEFAULT 7,
+      grace_period_days int NOT NULL DEFAULT 7,
+      currency varchar(8) NOT NULL DEFAULT 'USD',
+      active boolean NOT NULL DEFAULT true,
+      sort_order int NOT NULL DEFAULT 100,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS plans_code_uidx ON plans(code)`,
+    `CREATE TABLE IF NOT EXISTS plan_features (
+      id varchar(64) PRIMARY KEY,
+      plan_id varchar(64) NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+      key varchar(128) NOT NULL,
+      value jsonb,
+      label varchar(255),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS plan_features_plan_key_uidx ON plan_features(plan_id, key)`,
+    `CREATE INDEX IF NOT EXISTS plan_features_plan_idx ON plan_features(plan_id)`,
+    // ── RBAC: roles + role_permissions + org_role_assignments (mirrors drizzle 0008).
+    `CREATE TABLE IF NOT EXISTS roles (
+      id varchar(64) PRIMARY KEY,
+      code varchar(64) NOT NULL,
+      name varchar(128) NOT NULL,
+      description text,
+      org_id varchar(64) REFERENCES organizations(id) ON DELETE CASCADE,
+      is_system boolean NOT NULL DEFAULT false,
+      level int NOT NULL DEFAULT 10,
+      grants_admin_access boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS roles_system_code_uidx ON roles(code) WHERE org_id IS NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS roles_org_code_uidx ON roles(org_id, code) WHERE org_id IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS roles_org_idx ON roles(org_id)`,
+    `CREATE TABLE IF NOT EXISTS role_permissions (
+      id varchar(64) PRIMARY KEY,
+      role_id varchar(64) NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      permission varchar(128) NOT NULL,
+      constraints jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS role_permissions_uidx ON role_permissions(role_id, permission)`,
+    `CREATE INDEX IF NOT EXISTS role_permissions_role_idx ON role_permissions(role_id)`,
+    `CREATE TABLE IF NOT EXISTS org_role_assignments (
+      id varchar(64) PRIMARY KEY,
+      org_id varchar(64) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role_id varchar(64) NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
+      assigned_by varchar(64) REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS org_role_assignments_uidx ON org_role_assignments(org_id, user_id, role_id)`,
+    `CREATE INDEX IF NOT EXISTS org_role_assignments_org_user_idx ON org_role_assignments(org_id, user_id)`,
+    `CREATE INDEX IF NOT EXISTS org_role_assignments_role_idx ON org_role_assignments(role_id)`,
   ]
 
   for (const stmt of createStatements) {
