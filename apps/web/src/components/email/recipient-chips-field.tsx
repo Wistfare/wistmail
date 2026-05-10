@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useContactSuggestions, type ContactSuggestion } from '@/lib/contacts-search'
 import { cn, getInitials, stringToColor } from '@/lib/utils'
@@ -13,6 +13,17 @@ interface RecipientChipsFieldProps {
   /// Hide the label column when the row is one of several stacked
   /// (e.g. To above Cc above Bcc).
   className?: string
+}
+
+/// Local cache so chips committed via the suggestion dropdown can
+/// keep showing the contact's display name + avatar even though the
+/// public API stores recipients as plain `string[]`.  Chips committed
+/// from raw typing fall back to deriving a friendly name from the
+/// email handle ("john.doe@…" → "John Doe").
+interface ChipMeta {
+  email: string
+  name: string
+  avatarUrl: string | null
 }
 
 /// Recipient input with chips + autocomplete dropdown.
@@ -37,10 +48,35 @@ export function RecipientChipsField({
   const [buffer, setBuffer] = useState('')
   const [focused, setFocused] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
+  const [chipMeta, setChipMeta] = useState<Record<string, ChipMeta>>({})
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const { suggestions } = useContactSuggestions(buffer, focused)
+
+  /// Derive a friendly display name from an email handle when the
+  /// chip wasn't committed via the suggestion picker (so we have no
+  /// metadata).  "john.doe@x.com" → "John Doe", "alex@x.com" → "Alex".
+  function nameFromEmail(email: string): string {
+    const local = email.split('@')[0]
+    return local
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ') || email
+  }
+
+  /// Resolve a chip to its display data — preferring the cached
+  /// suggestion metadata, falling back to handle-derived name.
+  const chips = useMemo<ChipMeta[]>(
+    () =>
+      values.map((email) => {
+        const cached = chipMeta[email.toLowerCase()]
+        if (cached) return cached
+        return { email, name: nameFromEmail(email), avatarUrl: null }
+      }),
+    [values, chipMeta],
+  )
 
   // Keep the highlighted index in range as the suggestion list
   // changes from one keystroke to the next.
@@ -78,6 +114,17 @@ export function RecipientChipsField({
       setBuffer('')
       return
     }
+    // Remember the suggestion's display name + avatar so the chip
+    // renders as "Name" + photo, not the raw address.  Keyed by
+    // lowercase email so typos in casing still resolve.
+    setChipMeta((prev) => ({
+      ...prev,
+      [s.email.toLowerCase()]: {
+        email: s.email,
+        name: s.name || s.email,
+        avatarUrl: s.avatarUrl ?? null,
+      },
+    }))
     onChange([...values, s.email])
     setBuffer('')
   }
@@ -126,29 +173,73 @@ export function RecipientChipsField({
     <div
       ref={containerRef}
       className={cn(
-        'relative flex min-h-[40px] items-start gap-2 px-4 py-2',
+        // Centered alignment so the chip row sits on the same
+        // baseline as the sibling label column, regardless of
+        // whether chips have wrapped to a second visual line.
+        'relative flex items-center gap-2 px-4 py-1.5',
         className,
       )}
     >
-      <span className="mt-1 w-14 shrink-0 font-mono text-[11px] text-wm-text-muted">
-        {label}
-      </span>
-      <div className="flex flex-1 flex-wrap items-center gap-1">
-        {values.map((chip) => (
-          <span
-            key={chip}
-            className="flex items-center gap-1 border border-wm-border bg-wm-surface px-1.5 py-0.5 font-mono text-[10px] text-wm-text-primary"
-          >
-            {chip}
-            <X
-              className="h-2.5 w-2.5 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
-              onClick={() => remove(chip)}
-            />
-          </span>
-        ))}
+      {label && (
+        <span className="w-14 shrink-0 font-mono text-[11px] text-wm-text-muted">
+          {label}
+        </span>
+      )}
+      <div className="flex flex-1 flex-wrap items-center" style={{ gap: 6 }}>
+        {chips.map((chip) => {
+          const initials = getInitials(chip.name)
+          const bg = stringToColor(chip.name || chip.email)
+          return (
+            <span
+              key={chip.email}
+              className="inline-flex items-center font-mono"
+              style={{
+                gap: 8,
+                padding: '3px 10px 3px 3px',
+                borderRadius: 14,
+                background: '#000000',
+                border: '1px solid var(--color-wm-border)',
+                fontSize: 12,
+              }}
+              title={chip.email}
+            >
+              <span
+                aria-hidden
+                className="flex items-center justify-center rounded-full font-mono font-bold text-white"
+                style={{
+                  width: 22,
+                  height: 22,
+                  fontSize: 10,
+                  backgroundColor: bg,
+                }}
+              >
+                {initials || '?'}
+              </span>
+              <span className="text-wm-text-primary">{chip.name}</span>
+              <X
+                className="h-3 w-3 cursor-pointer text-wm-text-muted hover:text-wm-text-secondary"
+                onClick={() => remove(chip.email)}
+              />
+            </span>
+          )
+        })}
         <input
           ref={inputRef}
           type="text"
+          // Suppress every browser's contact / email autofill — the
+          // app surfaces its own deterministic suggestion dropdown
+          // and the Chrome / Safari autofill panel was overlapping
+          // it.  `autoComplete="email"` would TRIGGER autofill;
+          // `"off"` is honored by Firefox; Chrome only stops on
+          // unrecognised tokens like "new-password" or random
+          // strings, hence the belt-and-suspenders combo.
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          name={`recipient-${label || 'to'}-${Math.random().toString(36).slice(2, 7)}`}
+          data-1p-ignore
+          data-lpignore="true"
           value={buffer}
           onChange={(e) => {
             const v = e.target.value
