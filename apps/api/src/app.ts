@@ -15,6 +15,7 @@ import { analyticsRoutes } from './routes/analytics.js'
 import { authRoutes } from './routes/auth.js'
 import { setupRoutes } from './routes/setup.js'
 import { adminRoutes } from './routes/admin.js'
+import { adminAnalyticsRoutes } from './routes/admin-analytics.js'
 import { inboxRoutes } from './routes/inbox.js'
 import { notificationActionRoutes } from './routes/notification-actions.js'
 import { attachmentRoutes } from './routes/attachments.js'
@@ -127,6 +128,9 @@ v1.route('/contacts', contactRoutes)
 v1.route('/analytics', analyticsRoutes)
 v1.route('/setup', setupRoutes)
 v1.route('/admin', adminRoutes)
+// Phase F admin analytics + overview-stats + admin-scoped domain list.
+// Mounted on the same `/admin` prefix; Hono dispatches the first match.
+v1.route('/admin', adminAnalyticsRoutes)
 v1.route('/inbox', inboxRoutes)
 v1.route('/inbox/attachments', attachmentRoutes)
 v1.route('/internal', inboundRoutes)
