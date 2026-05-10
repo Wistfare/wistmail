@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
 import { errorHandler } from './middleware/error-handler.js'
+import { responseTime } from './middleware/response-time.js'
 import { timezoneTracker } from './middleware/timezone-tracker.js'
 import { emailRoutes } from './routes/emails.js'
 import { domainRoutes } from './routes/domains.js'
@@ -43,7 +44,10 @@ export type AppEnv = {
 
 export const app = new Hono<AppEnv>()
 
-// Global middleware
+// Global middleware. responseTime runs before everything so it
+// captures the full request lifecycle (incl. CORS preflights and
+// any error path through `onError`).
+app.use('*', responseTime)
 app.use('*', logger())
 app.use(
   '*',
