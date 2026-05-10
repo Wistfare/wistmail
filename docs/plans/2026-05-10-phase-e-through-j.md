@@ -227,4 +227,4 @@ Tasks:
 - [x] Phase G — MFA V3 (commits `67f4de2`..`b3a2c03`)
 - [x] Phase H — Parity punch lists (commits `1b68c79`..`2c24fb7`; H.A audit + 2 backend gaps, H.B audit + reactions end-to-end)
 - [ ] Phase I — Docker e2e
-- [ ] Phase J — Optimization
+- [x] Phase J — Optimization (commits `94869e8`..`a59538e`; bundle/N+1/response-time/image/Lighthouse audits under `docs/perf/`)
