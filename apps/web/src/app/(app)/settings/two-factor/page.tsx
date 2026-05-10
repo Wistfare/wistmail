@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ShieldCheck, Smartphone, Mail, KeyRound, Plus, RefreshCcw, Trash2, AlertTriangle } from 'lucide-react'
+import {
+  AlertTriangle,
+  KeyRound,
+  Mail,
+  Plus,
+  RefreshCcw,
+  ShieldCheck,
+  Smartphone,
+  Trash2,
+} from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { SettingsCard } from '@/components/ui/settings-card'
@@ -21,6 +30,20 @@ type MethodsResponse = {
   backupCodes: { total: number; remaining: number }
 }
 
+/**
+ * `/settings/two-factor` — Pencil reference: `Screen/SettingsV3-2FA`
+ * (`EJary` / `dL0cR`).
+ *
+ * V3 chrome:
+ *   - Page heading + lead paragraph
+ *   - Top status banner: "Enabled" pill (lime) or "Required" pill
+ *     (warning) — always visible.
+ *   - "Sign-in methods" SettingsCard, one row per factor:
+ *       icon · title · subtitle · status pill · ⋯ row CTA (remove or +)
+ *   - Add a method CTA → `/mfa/setup`.
+ *   - Danger zone (only when at least one method is verified): "Disable
+ *     two-factor" — removes every method.
+ */
 export default function TwoFactorSettingsPage() {
   const [data, setData] = useState<MethodsResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -63,7 +86,7 @@ export default function TwoFactorSettingsPage() {
     try {
       const res = await api.post<{ codes: string[] }>('/api/v1/mfa/backup-codes/regenerate')
       sessionStorage.setItem('wm_fresh_backup_codes', JSON.stringify(res.codes))
-      window.location.href = '/settings/two-factor/backup-codes'
+      window.location.href = '/mfa/backup-codes'
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not regenerate codes')
       setRegenerating(false)
@@ -78,8 +101,9 @@ export default function TwoFactorSettingsPage() {
       !confirm(
         'Disable two-factor authentication entirely? This removes every verified method on your account.',
       )
-    )
+    ) {
       return
+    }
     setDisabling(true)
     try {
       for (const m of verified) {
@@ -112,9 +136,11 @@ export default function TwoFactorSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold text-wm-text-primary">Two-factor authentication</h1>
+        <h1 className="text-2xl font-semibold text-wm-text-primary">
+          Two-factor authentication
+        </h1>
         <p className="font-mono text-xs text-wm-text-tertiary">
-          Add a second step to sign-in so a stolen password isn&apos;t enough.
+          Adds a second step at sign-in. We strongly recommend keeping at least one method.
         </p>
       </div>
 
@@ -124,29 +150,44 @@ export default function TwoFactorSettingsPage() {
         </div>
       )}
 
+      {/* V3 status banner — Pencil enabledBar (`dL0cR`):
+          full-width row, padding [12, 16], radius 10, fill `wm-accent-dim`,
+          1px lime stroke, 14×14 lime ShieldCheck + "Enabled" 12/700 white. */}
       <div
-        className={`flex items-center gap-3 border px-4 py-3 ${
-          enabled
-            ? 'border-wm-accent/30 bg-wm-accent/10'
-            : 'border-wm-warning/30 bg-wm-warning/10'
-        }`}
+        className="flex items-center gap-3"
+        style={{
+          padding: '12px 16px',
+          borderRadius: 10,
+          background: enabled
+            ? 'var(--color-wm-accent-dim)'
+            : 'rgba(245, 158, 11, 0.08)',
+          border: enabled
+            ? '1px solid var(--color-wm-accent)'
+            : '1px solid rgba(245, 158, 11, 0.4)',
+        }}
       >
         <ShieldCheck
-          className={`h-5 w-5 ${enabled ? 'text-wm-accent' : 'text-wm-warning'}`}
+          aria-hidden
+          className={enabled ? 'text-wm-accent' : 'text-wm-warning'}
+          style={{ width: 16, height: 16 }}
         />
-        <div className="flex flex-col">
-          <p className="font-mono text-xs font-semibold text-wm-text-primary">
-            {enabled ? 'Two-factor is on.' : 'Two-factor is off.'}
-          </p>
-          <p className="font-mono text-[11px] text-wm-text-tertiary">
-            {enabled
-              ? `${verifiedMethods.length} method${verifiedMethods.length === 1 ? '' : 's'} active.`
-              : 'Add a method below to require a second step on sign-in.'}
-          </p>
-        </div>
+        <span
+          className="font-mono font-bold text-wm-text-primary"
+          style={{ fontSize: 12 }}
+        >
+          {enabled ? 'Enabled' : 'Required — add a method'}
+        </span>
+        {enabled && (
+          <span
+            className="ml-auto font-mono"
+            style={{ fontSize: 11, color: '#6e6e6e' }}
+          >
+            {verifiedMethods.length} active
+          </span>
+        )}
       </div>
 
-      <SettingsCard title="Your methods" description="Methods we accept at sign-in.">
+      <SettingsCard title="Sign-in methods" description="Methods we accept at sign-in.">
         <div className="flex flex-col divide-y divide-wm-border">
           <MethodRow
             icon={<Smartphone className="h-4 w-4" />}
@@ -158,6 +199,7 @@ export default function TwoFactorSettingsPage() {
                   }`
                 : 'Not set up'
             }
+            status={totp ? 'enabled' : 'off'}
             action={
               totp ? (
                 <Button
@@ -170,7 +212,7 @@ export default function TwoFactorSettingsPage() {
                   Remove
                 </Button>
               ) : (
-                <Link href="/settings/two-factor/setup-totp">
+                <Link href="/mfa/setup/totp">
                   <Button variant="ghost" size="sm" icon={<Plus className="h-3.5 w-3.5" />}>
                     Add
                   </Button>
@@ -186,6 +228,7 @@ export default function TwoFactorSettingsPage() {
                 ? `${email.label ?? 'Email'} • Added ${formatDate(email.createdAt)}`
                 : 'Not set up'
             }
+            status={email ? 'enabled' : 'off'}
             action={
               email ? (
                 <Button
@@ -198,7 +241,7 @@ export default function TwoFactorSettingsPage() {
                   Remove
                 </Button>
               ) : (
-                <Link href="/settings/two-factor/setup-email">
+                <Link href="/mfa/setup/email">
                   <Button variant="ghost" size="sm" icon={<Plus className="h-3.5 w-3.5" />}>
                     Add
                   </Button>
@@ -214,6 +257,7 @@ export default function TwoFactorSettingsPage() {
                 ? `${backup.remaining} of ${backup.total} remaining`
                 : 'Generated automatically when you add your first method'
             }
+            status={backup.total > 0 ? 'enabled' : 'off'}
             action={
               backup.total > 0 ? (
                 <Button
@@ -231,7 +275,7 @@ export default function TwoFactorSettingsPage() {
         </div>
 
         <div className="mt-6 flex justify-end">
-          <Link href="/settings/two-factor/setup">
+          <Link href="/mfa/setup">
             <Button variant="primary" size="sm" icon={<Plus className="h-3.5 w-3.5" />}>
               Add a method
             </Button>
@@ -262,26 +306,51 @@ function MethodRow({
   icon,
   title,
   subtitle,
+  status,
   action,
 }: {
   icon: React.ReactNode
   title: string
   subtitle: string
+  status: 'enabled' | 'off'
   action: React.ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center bg-wm-accent/10 text-wm-accent">
-          {icon}
-        </div>
-        <div className="flex flex-col">
-          <p className="text-sm font-medium text-wm-text-primary">{title}</p>
-          <p className="font-mono text-[11px] text-wm-text-tertiary">{subtitle}</p>
-        </div>
+    <div className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
+      <div className="flex h-9 w-9 items-center justify-center bg-wm-accent/10 text-wm-accent">
+        {icon}
       </div>
+      <div className="flex flex-1 flex-col">
+        <p className="text-sm font-medium text-wm-text-primary">{title}</p>
+        <p className="font-mono text-[11px] text-wm-text-tertiary">{subtitle}</p>
+      </div>
+      <StatusPill status={status} />
       {action}
     </div>
+  )
+}
+
+/// Pencil status pill (`dL0cR.statusEnabled` / `.statusOff`):
+///   radius 4, padding [2, 8], 9/700 letterSpacing 1.5
+///   enabled → bg `wm-accent-dim`, text `wm-accent`, 1px lime stroke
+///   off     → bg transparent, text #6e6e6e, 1px #1a1a1a stroke
+function StatusPill({ status }: { status: 'enabled' | 'off' }) {
+  const isOn = status === 'enabled'
+  return (
+    <span
+      className="font-mono font-bold uppercase"
+      style={{
+        fontSize: 9,
+        letterSpacing: 1.5,
+        padding: '2px 8px',
+        borderRadius: 4,
+        background: isOn ? 'var(--color-wm-accent-dim)' : 'transparent',
+        color: isOn ? 'var(--color-wm-accent)' : '#6e6e6e',
+        border: `1px solid ${isOn ? 'var(--color-wm-accent)' : 'var(--color-wm-border)'}`,
+      }}
+    >
+      {isOn ? 'Enabled' : 'Off'}
+    </span>
   )
 }
 

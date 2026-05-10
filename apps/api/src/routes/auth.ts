@@ -4,13 +4,14 @@ import { z } from 'zod'
 import { hash } from 'argon2'
 import { createHash, randomBytes } from 'node:crypto'
 import { eq, and, isNull, gt } from 'drizzle-orm'
-import { ValidationError, generateId } from '@wistmail/shared'
+import { RateLimitError, ValidationError, generateId } from '@wistmail/shared'
 import { users, passwordResetTokens, sessions, mfaMethods, organizations, orgMembers, domains } from '@wistmail/db'
 import { AuthService } from '../services/auth.js'
 import { MfaService } from '../services/mfa.js'
 import { getDb } from '../lib/db.js'
 import { buildPasswordResetEmail } from '../templates/password-reset.js'
 import { resolveOrgFrom } from '../lib/org-from.js'
+import { checkMfaRateLimit, refundMfaRateLimit } from '../lib/mfa-rate-limit.js'
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -128,11 +129,20 @@ authRoutes.post('/login/verify', async (c) => {
     throw new ValidationError('This login session has expired. Please sign in again.')
   }
 
+  // Throttle brute-force code-guessing per user. 5 attempts / 60s; on
+  // the 6th the limiter throws RateLimitError before we even hit the
+  // factor checker. Successful matches refund the slot.
+  const limit = await checkMfaRateLimit(userId, 'login-verify')
+  if (!limit.allowed) {
+    throw new RateLimitError(Math.max(1, Math.ceil(limit.retryAfterMs / 1000)))
+  }
+
   const matched = await mfa.tryAnyFactor(userId, parsed.data.code)
   if (!matched) {
     throw new ValidationError('That code is incorrect.')
   }
 
+  await refundMfaRateLimit(userId, 'login-verify')
   await mfa.deletePendingLogin(parsed.data.pendingToken)
 
   const auth = new AuthService(db)

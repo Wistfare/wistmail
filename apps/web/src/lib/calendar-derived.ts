@@ -1,9 +1,36 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from './api-client'
 import type { CalendarEvent } from './event-queries'
 
 const STORAGE_KEY = 'wm:calendar-visibility:v1'
+
+interface ServerCalendar {
+  id: string
+  name: string
+  color: string
+  eventCount: number
+}
+
+/**
+ * Server-side calendars list. The current schema has no `calendars`
+ * table — the API derives the list by grouping events by colour and
+ * always surfaces a "Personal" default for brand-new users. The
+ * sidebar's `useDerivedCalendars` hook merges this when available,
+ * falling back to the in-memory derivation otherwise.
+ */
+export function useCalendars() {
+  return useQuery({
+    queryKey: ['calendar', 'calendars'],
+    queryFn: () =>
+      api
+        .get<{ calendars: ServerCalendar[] }>('/api/v1/calendar/calendars')
+        .then((r) => r.calendars),
+    staleTime: 60_000,
+  })
+}
 
 /** Friendly name for a hex color. Falls back to the hex when unknown. */
 function nameForColor(hex: string): string {
@@ -31,11 +58,17 @@ export interface DerivedCalendar {
  * Persists visibility flags in localStorage so toggle state survives
  * page reloads.
  *
- * When a real `/api/v1/calendar/calendars` table ships, swap this hook
- * for a `useCalendars()` query — `CalendarSidebar` doesn't care which.
+ * Prefers the server's `/api/v1/calendar/calendars` aggregator (which
+ * also surfaces a "Personal" default for brand-new users) when its
+ * data has loaded; otherwise falls back to grouping the in-memory
+ * event list by colour.
  */
 export function useDerivedCalendars(events: CalendarEvent[] | undefined) {
+  const server = useCalendars()
   const colors = useMemo(() => {
+    if (server.data && server.data.length > 0) {
+      return server.data.map((c) => c.color)
+    }
     const set = new Map<string, number>()
     for (const e of events ?? []) {
       set.set(e.color, (set.get(e.color) ?? 0) + 1)
@@ -43,7 +76,7 @@ export function useDerivedCalendars(events: CalendarEvent[] | undefined) {
     return Array.from(set.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([color]) => color)
-  }, [events])
+  }, [events, server.data])
 
   const [hidden, setHidden] = useState<Set<string>>(() => new Set())
 

@@ -43,6 +43,27 @@
       "when": 1777939300000,
       "tag": "0005_chat_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778409950472,
+      "tag": "0008_billing_plans_and_rbac",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778410500000,
+      "tag": "0009_billing_wallet_and_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778500000000,
+      "tag": "0010_chat_reactions",
+      "breakpoints": true
     }
   ]
 }

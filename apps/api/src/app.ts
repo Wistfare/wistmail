@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
 import { errorHandler } from './middleware/error-handler.js'
+import { responseTime } from './middleware/response-time.js'
 import { timezoneTracker } from './middleware/timezone-tracker.js'
 import { emailRoutes } from './routes/emails.js'
 import { domainRoutes } from './routes/domains.js'
@@ -15,6 +16,7 @@ import { analyticsRoutes } from './routes/analytics.js'
 import { authRoutes } from './routes/auth.js'
 import { setupRoutes } from './routes/setup.js'
 import { adminRoutes } from './routes/admin.js'
+import { adminAnalyticsRoutes } from './routes/admin-analytics.js'
 import { inboxRoutes } from './routes/inbox.js'
 import { notificationActionRoutes } from './routes/notification-actions.js'
 import { attachmentRoutes } from './routes/attachments.js'
@@ -26,8 +28,10 @@ import { calendarRoutes } from './routes/calendar.js'
 import { projectRoutes } from './routes/projects.js'
 import { docsRoutes } from './routes/docs.js'
 import { todayRoutes } from './routes/today.js'
+import { workRoutes } from './routes/work.js'
 import { searchRoutes } from './routes/search.js'
 import { mfaRoutes } from './routes/mfa.js'
+import { billingRoutes } from './routes/billing.js'
 import { domains as domainsTable } from '@wistmail/db'
 
 export type AppEnv = {
@@ -40,7 +44,10 @@ export type AppEnv = {
 
 export const app = new Hono<AppEnv>()
 
-// Global middleware
+// Global middleware. responseTime runs before everything so it
+// captures the full request lifecycle (incl. CORS preflights and
+// any error path through `onError`).
+app.use('*', responseTime)
 app.use('*', logger())
 app.use(
   '*',
@@ -126,6 +133,9 @@ v1.route('/contacts', contactRoutes)
 v1.route('/analytics', analyticsRoutes)
 v1.route('/setup', setupRoutes)
 v1.route('/admin', adminRoutes)
+// Phase F admin analytics + overview-stats + admin-scoped domain list.
+// Mounted on the same `/admin` prefix; Hono dispatches the first match.
+v1.route('/admin', adminAnalyticsRoutes)
 v1.route('/inbox', inboxRoutes)
 v1.route('/inbox/attachments', attachmentRoutes)
 v1.route('/internal', inboundRoutes)
@@ -136,8 +146,10 @@ v1.route('/calendar', calendarRoutes)
 v1.route('/projects', projectRoutes)
 v1.route('/docs', docsRoutes)
 v1.route('/today', todayRoutes)
+v1.route('/work', workRoutes)
 v1.route('/search', searchRoutes)
 v1.route('/mfa', mfaRoutes)
+v1.route('/billing', billingRoutes)
 // Notification action routes — Bearer-token authenticated, NOT
 // session-cookied. Live under their own prefix so the auth contract
 // is unambiguous from the URL alone.

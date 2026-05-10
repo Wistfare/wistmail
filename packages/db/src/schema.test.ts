@@ -17,6 +17,7 @@ import {
   sendingLogs,
   audiences,
   audienceContacts,
+  chatMessages,
 } from './schema/index'
 
 describe('Database Schema', () => {
@@ -215,6 +216,21 @@ describe('Database Schema', () => {
       expect(columns).toHaveProperty('subscribedAt')
       expect(columns).toHaveProperty('unsubscribedAt')
       expect(columns).toHaveProperty('topics')
+    })
+  })
+
+  describe('chatMessages table', () => {
+    it('has correct table name', () => {
+      expect(getTableName(chatMessages)).toBe('chat_messages')
+    })
+
+    it('has reactions JSONB column with default of empty object', () => {
+      const columns = getTableColumns(chatMessages)
+      expect(columns).toHaveProperty('reactions')
+      expect(columns.reactions.notNull).toBe(true)
+      // Drizzle stores the default as the literal value (object literal)
+      // when set via `.default({})`.
+      expect(columns.reactions.default).toEqual({})
     })
   })
 

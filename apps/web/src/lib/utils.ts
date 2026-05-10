@@ -48,6 +48,39 @@ export function getInitials(name: string): string {
 }
 
 /**
+ * Format an integer cents amount as a currency string. Money is stored
+ * in cents on the backend; this is the canonical USD `$3.00` formatter
+ * for the billing UI. The currency arg lets us swap to UGX/RWF if a
+ * region needs a different presentation.
+ */
+export function formatCents(cents: number, currency = 'USD'): string {
+  const value = (cents || 0) / 100
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)
+  } catch {
+    return `${currency} ${value.toFixed(2)}`
+  }
+}
+
+/**
+ * Format a byte count as a human-readable string.
+ * `formatBytes(1500)` → `'1.5 KB'`, `formatBytes(0)` → `'0 B'`.
+ */
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(units.length - 1, Math.floor(Math.log10(bytes) / 3))
+  const value = bytes / Math.pow(1000, i)
+  const decimals = i === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2
+  return `${value.toFixed(decimals)} ${units[i]}`
+}
+
+/**
  * Generate a deterministic color from a string (for avatars).
  */
 export function stringToColor(str: string): string {

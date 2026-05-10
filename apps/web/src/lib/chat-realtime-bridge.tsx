@@ -7,8 +7,10 @@ import {
   applyChatConversationUpdated,
   applyChatMessageDeleted,
   applyChatMessageNew,
+  applyChatMessageReactionUpdated,
   applyChatMessageUpdated,
   chatKeys,
+  type ChatReactions,
 } from './chat-queries'
 import { useTypingPush } from './typing-bus'
 
@@ -53,6 +55,13 @@ interface ChatMessageDeletedEvent {
   deletedAt: string
 }
 
+interface ChatMessageReactionUpdatedEvent {
+  type: 'chat.message.reaction.updated'
+  conversationId: string
+  messageId: string
+  reactions: ChatReactions
+}
+
 interface ChatConversationReadEvent {
   type: 'chat.conversation.read'
   conversationId: string
@@ -72,6 +81,7 @@ type RealtimeEvent =
   | ChatMessageNewEvent
   | ChatMessageUpdatedEvent
   | ChatMessageDeletedEvent
+  | ChatMessageReactionUpdatedEvent
   | ChatConversationUpdatedEvent
   | ChatConversationReadEvent
   | ChatTypingEvent
@@ -147,6 +157,11 @@ export function ChatRealtimeBridge() {
               // The conversation list might need a new preview if the
               // deleted message was the last one shown.
               qc.invalidateQueries({ queryKey: chatKeys.conversations() })
+              break
+            }
+            case 'chat.message.reaction.updated': {
+              const e2 = evt as ChatMessageReactionUpdatedEvent
+              applyChatMessageReactionUpdated(qc, e2)
               break
             }
             case 'chat.conversation.read': {

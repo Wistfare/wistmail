@@ -1,0 +1,18 @@
+# Tiny image for the billing-tick cron container.
+#
+# We deliberately keep this off the workspace build graph: it has zero
+# runtime deps (just `fetch` from Node), so we only need tsx to execute
+# the TypeScript source. Build context is the repo root so we can copy
+# scripts/billing-tick-cron.ts in directly.
+
+FROM node:22-alpine
+
+RUN npm install -g tsx@4
+
+WORKDIR /app
+
+COPY scripts/billing-tick-cron.ts /app/billing-tick-cron.ts
+
+ENV NODE_ENV=production
+
+CMD ["tsx", "/app/billing-tick-cron.ts"]

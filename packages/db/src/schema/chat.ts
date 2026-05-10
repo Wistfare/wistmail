@@ -1,5 +1,16 @@
-import { index, integer, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core'
+import { index, integer, jsonb, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core'
 import { users } from './users'
+
+/// Per-message reaction map.  Keys are the chosen emoji glyph
+/// (e.g. '🔥', '+1', '❤️'); values are the list of user ids that
+/// have reacted with that emoji.  Empty arrays are pruned at
+/// write time so the column stays compact.
+///
+/// This is JSONB so we can read the full reaction set with a single
+/// row fetch — the V3 ChatViewV3 frame renders chips inline under
+/// every bubble and a join table would force an N+1 on the message
+/// list query.
+export type ChatMessageReactions = Record<string, string[]>
 
 export const conversations = pgTable('conversations', {
   id: varchar('id', { length: 64 }).primaryKey(),
@@ -54,6 +65,9 @@ export const chatMessages = pgTable('chat_messages', {
   /// strips `content` in API responses when this is set so the body
   /// can never be re-rendered after delete.
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  /// Per-message reactions — see `ChatMessageReactions`.  Defaults to
+  /// `{}` so unreacted messages never need a NULL check downstream.
+  reactions: jsonb('reactions').notNull().$type<ChatMessageReactions>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

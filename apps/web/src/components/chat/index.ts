@@ -16,3 +16,10 @@ export {
   type MessageComposerProps,
 } from './message-composer'
 export { ChatInfoPanel, type ChatInfoPanelProps } from './chat-info-panel'
+export {
+  ReactionsPopover,
+  ReactionChip,
+  REACTION_EMOJIS,
+  type ReactionsPopoverProps,
+  type ReactionEmoji,
+} from './reactions-popover'

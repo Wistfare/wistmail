@@ -12,6 +12,8 @@ import { getDb } from '../lib/db.js'
 import { getServerIp } from '../lib/server-ip.js'
 import { createDnsProvider } from '@wistmail/dns-manager'
 import { generateDomainConnectUrl, verifyDomainConnectCallback } from '../lib/domain-connect.js'
+import { buildAdminWelcomeEmail } from '../templates/admin-welcome.js'
+import { sendTransactionalEmail } from '../lib/mailer.js'
 
 // Simple IP-based rate limiting for setup endpoints
 const setupRateLimit = new Map<string, { count: number; resetAt: number }>()
@@ -543,6 +545,26 @@ setupRoutes.post('/account', async (c) => {
     resource: 'user',
     resourceId: userId,
     details: { email: fullEmail, domain: domain.name },
+  })
+
+  // Fire-and-forget the V3 admin welcome email. Failures are logged inside
+  // sendTransactionalEmail and don't block the setup response.
+  const siteUrl = process.env.SITE_URL || `https://${domain.name}`
+  const fromAddress = `no-reply@${domain.name}`
+  const welcome = buildAdminWelcomeEmail({
+    displayName: parsed.data.displayName.trim(),
+    workspaceDomain: domain.name,
+    workspaceUrl: `${siteUrl}/admin`,
+    fromAddress,
+  })
+  void sendTransactionalEmail({
+    to: fullEmail,
+    subject: `Welcome to Wistmail — your workspace ${domain.name} is live`,
+    html: welcome.html,
+    text: welcome.text,
+    fromName: orgName,
+    fromDomain: domain.name,
+    tag: 'admin-welcome-v3',
   })
 
   return c.json({

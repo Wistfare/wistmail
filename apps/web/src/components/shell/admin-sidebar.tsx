@@ -6,8 +6,12 @@ import {
   Users,
   Globe,
   Building2,
-  ShieldCheck,
   ScrollText,
+  BarChart3,
+  Wallet,
+  Package,
+  Receipt,
+  HardDrive,
   CreditCard,
 } from 'lucide-react'
 import {
@@ -61,18 +65,49 @@ export function AdminSidebar({}: AdminSidebarProps) {
           active={is('/admin/audit-logs')}
         />
         <SidebarNavItem
-          href="/admin/security"
-          icon={<ShieldCheck className="h-[18px] w-[18px]" />}
-          label="Security"
-          active={is('/admin/security')}
+          href="/admin/analytics"
+          icon={<BarChart3 className="h-[18px] w-[18px]" />}
+          label="Analytics"
+          active={is('/admin/analytics')}
         />
+        {/*
+         * Phase F drops the Security item — there's no design or backend
+         * for an admin-level security console yet. Workspace 2FA coverage
+         * surfaces from /settings/two-factor (Phase G); a dedicated admin
+         * security screen is a Phase H+ item. Re-add when there's a spec.
+         */}
       </SidebarSection>
       <SidebarSection label="Billing">
         <SidebarNavItem
-          href="/admin/plan"
+          href="/admin/billing"
+          icon={<Wallet className="h-[18px] w-[18px]" />}
+          label="Billing"
+          // Match the section root only — child routes get their own pill below.
+          active={pathname === '/admin/billing'}
+        />
+        <SidebarNavItem
+          href="/admin/billing/plan"
+          icon={<Package className="h-[18px] w-[18px]" />}
+          label="Plan"
+          active={is('/admin/billing/plan')}
+        />
+        <SidebarNavItem
+          href="/admin/billing/invoices"
+          icon={<Receipt className="h-[18px] w-[18px]" />}
+          label="Invoices"
+          active={is('/admin/billing/invoices')}
+        />
+        <SidebarNavItem
+          href="/admin/billing/storage"
+          icon={<HardDrive className="h-[18px] w-[18px]" />}
+          label="Storage"
+          active={is('/admin/billing/storage')}
+        />
+        <SidebarNavItem
+          href="/admin/billing/payment"
           icon={<CreditCard className="h-[18px] w-[18px]" />}
-          label="Plan & usage"
-          active={is('/admin/plan')}
+          label="Payment methods"
+          active={is('/admin/billing/payment')}
         />
       </SidebarSection>
     </SidebarShell>

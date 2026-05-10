@@ -2,20 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Plus, ScrollText } from 'lucide-react'
+import { ArrowRight, ScrollText } from 'lucide-react'
 import { SettingsTopBar } from '@/components/shell'
 import { StatCard } from '@/components/ui'
+import { BarChart } from '@/components/admin/bar-chart'
 import { api } from '@/lib/api-client'
-import { formatRelativeTime } from '@/lib/utils'
-
-interface Member {
-  id: string
-  userId: string
-  name: string
-  email: string
-  role: string
-  createdAt: string
-}
+import { formatBytes, formatRelativeTime } from '@/lib/utils'
 
 interface AuditLogEntry {
   id: string
@@ -28,47 +20,78 @@ interface AuditLogEntry {
   userName?: string
 }
 
-interface Domain {
-  id: string
-  name: string
-  verified: boolean
+interface OverviewStats {
+  users: number
+  storageBytes: number
+  messagesSent: number
+  verifiedDomains: number
+  totalDomains: number
+  dailySent: { date: string; count: number }[]
+  topSenders: { userId: string | null; name: string; count: number }[]
 }
+
+type RangeId = 'daily' | 'weekly' | 'monthly'
+const RANGE_TABS: { id: RangeId; label: string; days: number }[] = [
+  { id: 'daily', label: 'Daily', days: 7 },
+  { id: 'weekly', label: 'Weekly', days: 30 },
+  { id: 'monthly', label: 'Monthly', days: 90 },
+]
 
 /**
  * `/admin` — Pencil reference: `AdminV3-Overview` (`boHfA`).
  *
- * Workspace dashboard:
- *   • 4 stat cards (members / storage / messages / domains)
- *   • Audit timeline (last 10 entries)
- *   • Quick links to Users / Domains / Audit log
+ * V3 polish:
+ *   - 4 stat cards bound to /api/v1/admin/overview-stats (no `—` placeholders)
+ *   - 7-day bar chart with Daily/Weekly/Monthly tabs (re-fetches with new range)
+ *   - Right-rail "Active senders" list (top 5 by message count)
+ *   - Audit timeline (last 10 entries) — unchanged, already on real data
  */
 export default function AdminOverviewPage() {
-  const [members, setMembers] = useState<Member[]>([])
+  const [stats, setStats] = useState<OverviewStats | null>(null)
   const [audit, setAudit] = useState<AuditLogEntry[]>([])
-  const [domains, setDomains] = useState<Domain[]>([])
-  const [loading, setLoading] = useState(true)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [auditLoading, setAuditLoading] = useState(true)
+  const [range, setRange] = useState<RangeId>('daily')
+
+  // Stats refetch when range changes; audit only loads once.
+  useEffect(() => {
+    let cancelled = false
+    const days = RANGE_TABS.find((r) => r.id === range)?.days ?? 7
+    setStatsLoading(true)
+    api
+      .get<{ data: OverviewStats }>(`/api/v1/admin/overview-stats?range=${days}d`)
+      .then((res) => {
+        if (cancelled) return
+        setStats(res.data)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setStatsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [range])
 
   useEffect(() => {
     let cancelled = false
-    Promise.allSettled([
-      api.get<{ members: Member[] }>('/api/v1/admin/members'),
-      api.get<{ logs: AuditLogEntry[] }>('/api/v1/admin/audit-logs?limit=10'),
-      api.get<{ domains: Domain[] }>('/api/v1/setup/domains').catch(() => ({ domains: [] })),
-    ]).then((results) => {
-      if (cancelled) return
-      const [m, a, d] = results
-      if (m.status === 'fulfilled') setMembers(m.value.members ?? [])
-      if (a.status === 'fulfilled') setAudit(a.value.logs ?? [])
-      if (d.status === 'fulfilled') setDomains(d.value.domains ?? [])
-      setLoading(false)
-    })
+    api
+      .get<{ data: AuditLogEntry[]; logs?: AuditLogEntry[] }>('/api/v1/admin/audit-logs?limit=10')
+      .then((res) => {
+        if (cancelled) return
+        setAudit(res.data ?? res.logs ?? [])
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setAuditLoading(false)
+      })
     return () => {
       cancelled = true
     }
   }, [])
 
-  const memberCount = members.length
-  const verifiedDomains = domains.filter((d) => d.verified).length
+  const verifiedDomains = stats?.verifiedDomains ?? 0
+  const totalDomains = stats?.totalDomains ?? 0
 
   return (
     <div className="flex h-full flex-col" style={{ background: '#000000' }}>
@@ -120,28 +143,105 @@ export default function AdminOverviewPage() {
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="USERS"
-            value={loading ? '…' : memberCount.toString()}
-            change={loading ? '' : `${memberCount} member${memberCount === 1 ? '' : 's'}`}
+            value={statsLoading ? '…' : (stats?.users ?? 0).toString()}
+            change={
+              statsLoading
+                ? ''
+                : `${stats?.users ?? 0} member${stats?.users === 1 ? '' : 's'}`
+            }
             changeType="neutral"
           />
           <StatCard
             title="STORAGE"
-            value="—"
-            change="Live in /user/storage"
+            value={statsLoading ? '…' : formatBytes(stats?.storageBytes ?? 0)}
+            change="Across all mailboxes"
             changeType="neutral"
           />
           <StatCard
             title="MESSAGES"
-            value="—"
-            change="Live in /admin/stats"
+            value={statsLoading ? '…' : (stats?.messagesSent ?? 0).toLocaleString()}
+            change={`Sent in this window`}
             changeType="neutral"
           />
           <StatCard
             title="DOMAINS"
-            value={loading ? '…' : `${verifiedDomains} / ${domains.length}`}
+            value={statsLoading ? '…' : `${verifiedDomains} / ${totalDomains}`}
             change={`${verifiedDomains} verified`}
             changeType={verifiedDomains > 0 ? 'positive' : 'neutral'}
           />
+        </section>
+
+        {/* Chart + senders rail — Pencil shows the bar chart taking 2/3 width
+            on desktop, with the active senders list pinned to the right. */}
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div className="lg:col-span-2 flex flex-col gap-4 border border-wm-border bg-wm-surface p-6">
+            <header className="flex items-center justify-between">
+              <h2 className="font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-text-secondary">
+                Sent over time
+              </h2>
+              <div role="tablist" className="inline-flex overflow-hidden rounded-full border border-wm-border bg-wm-bg">
+                {RANGE_TABS.map((opt) => {
+                  const active = opt.id === range
+                  return (
+                    <button
+                      key={opt.id}
+                      role="tab"
+                      type="button"
+                      aria-selected={active}
+                      onClick={() => setRange(opt.id)}
+                      className={
+                        'cursor-pointer px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[1px] transition-colors ' +
+                        (active
+                          ? 'bg-wm-accent text-wm-text-on-accent'
+                          : 'text-wm-text-secondary hover:text-wm-text-primary')
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </header>
+            <BarChart
+              data={stats?.dailySent ?? []}
+              ariaLabel="Daily sent count"
+              height={120}
+            />
+          </div>
+          <div className="flex flex-col gap-3 border border-wm-border bg-wm-surface p-6">
+            <header className="flex items-baseline justify-between">
+              <h2 className="font-mono text-[11px] font-bold uppercase tracking-[1.5px] text-wm-text-secondary">
+                Active senders
+              </h2>
+              <span className="font-mono text-[10px] text-wm-text-tertiary">Top 5</span>
+            </header>
+            {statsLoading ? (
+              <p className="font-mono text-[11px] text-wm-text-muted">Loading…</p>
+            ) : (stats?.topSenders ?? []).length === 0 ? (
+              <p className="font-mono text-[11px] text-wm-text-muted">
+                No outbound mail yet.
+              </p>
+            ) : (
+              <ol className="flex flex-col gap-2">
+                {stats!.topSenders.map((s, i) => (
+                  <li
+                    key={`${s.userId ?? 'addr'}-${i}`}
+                    className="flex items-center gap-3 border-b border-wm-border pb-2 last:border-b-0"
+                  >
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-wm-bg font-mono text-[10px] font-bold text-wm-text-tertiary">
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 truncate font-sans text-[13px] text-wm-text-primary">
+                      {s.name}
+                    </span>
+                    <span className="font-mono text-[12px] font-semibold text-wm-accent">
+                      {s.count.toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </section>
 
         {/* Audit timeline — Pencil bottom-left list. */}
@@ -158,7 +258,7 @@ export default function AdminOverviewPage() {
             </Link>
           </header>
           <div className="flex flex-col rounded-lg border border-wm-border bg-wm-surface">
-            {loading ? (
+            {auditLoading ? (
               <p className="px-5 py-6 text-center font-mono text-[11px] text-wm-text-muted">
                 Loading…
               </p>
@@ -243,5 +343,3 @@ function QuickLink({
     </Link>
   )
 }
-// `Plus` exported for future invite shortcut on the overview header.
-void Plus

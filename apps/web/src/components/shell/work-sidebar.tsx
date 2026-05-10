@@ -17,7 +17,12 @@ import {
   SidebarNavItem,
   SidebarComposeButton,
 } from './sidebar-shell'
-import { useProjects, useToday, type TaskStatus } from '@/lib/work-queries'
+import {
+  useProjects,
+  useToday,
+  useWorkCounters,
+  type TaskStatus,
+} from '@/lib/work-queries'
 
 export interface WorkSidebarProps {
   user: { name: string; email: string }
@@ -40,26 +45,42 @@ export function WorkSidebar({ onNewProject }: WorkSidebarProps) {
   const is = (h: string) => pathname === h || pathname.startsWith(h + '/')
   const today = useToday()
   const projects = useProjects()
+  const workCounters = useWorkCounters()
 
-  // Today's tasks back the My day / Overdue / Done counters. We
-  // categorise locally because /today doesn't bucket by status itself.
+  // The server's `/api/v1/work/counters` is the source of truth for
+  // Overdue / Done / Today / Week. We keep `useToday()` around as a
+  // fallback for the My-day count while the counters request is in
+  // flight so the sidebar doesn't briefly show all zeros on mount.
   const counters = useMemo(() => {
-    const tasks = today.data?.tasks ?? []
-    const out: Record<TaskStatus, number> & { overdue: number } = {
+    const fallback: Record<TaskStatus, number> & { overdue: number } = {
       todo: 0,
       in_progress: 0,
       done: 0,
       overdue: 0,
     }
+    const tasks = today.data?.tasks ?? []
     const now = Date.now()
     for (const t of tasks) {
-      out[t.status] += 1
+      fallback[t.status] += 1
       if (t.dueDate && t.status !== 'done' && new Date(t.dueDate).getTime() < now) {
-        out.overdue += 1
+        fallback.overdue += 1
       }
     }
-    return out
-  }, [today.data])
+    if (workCounters.data) {
+      return {
+        todo: fallback.todo,
+        in_progress: fallback.in_progress,
+        // Server values trump local derivations once they arrive.
+        done: workCounters.data.done,
+        overdue: workCounters.data.overdue,
+        myDay: workCounters.data.today || (fallback.todo + fallback.in_progress),
+      }
+    }
+    return {
+      ...fallback,
+      myDay: fallback.todo + fallback.in_progress,
+    }
+  }, [today.data, workCounters.data])
 
   return (
     <SidebarShell
@@ -71,7 +92,7 @@ export function WorkSidebar({ onNewProject }: WorkSidebarProps) {
           icon={<Sun className="h-[18px] w-[18px]" />}
           label="My day"
           active={pathname === '/work'}
-          count={counters.todo + counters.in_progress}
+          count={counters.myDay}
         />
         <SidebarNavItem
           href="/work/upcoming"

@@ -27,9 +27,44 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── MinIO (S3-compatible object storage) ────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-wistmail}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || wget -q -O - http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MeiliSearch ─────────────────────────────────────────────────────────────
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?MEILI_MASTER_KEY is required}
+      MEILI_ENV: ${MEILI_ENV:-development}
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:7700/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # ── Go Mail Engine (SMTP + IMAP + gRPC) ────────────────────────────────────
   mail-engine:
-    image: ghcr.io/wistfare/wistmail-engine:latest
+    image: ${MAIL_ENGINE_IMAGE:-ghcr.io/wistfare/wistmail-engine:latest}
+    build:
+      context: ./packages/mail-engine
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       MAIL_DOMAIN: ${MAIL_DOMAIN:?MAIL_DOMAIN is required}
@@ -50,77 +85,29 @@ services:
       API_INTERNAL_URL: http://api:3001
       INBOUND_SECRET: ${INBOUND_SECRET:?INBOUND_SECRET is required}
     ports:
-      - "25:25"
-      - "587:587"
-      - "143:143"
-      - "993:993"
+      - "${SMTP_PORT_HOST:-25}:25"
+      - "${SMTP_SUBMISSION_PORT_HOST:-587}:587"
+      - "${IMAP_PORT_HOST:-143}:143"
+      - "${IMAP_SSL_PORT_HOST:-993}:993"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       api:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "true"]
       interval: 30s
       timeout: 5s
       retries: 3
 
-  # ── MinIO (S3-compatible object storage) ────────────────────────────────────
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-wistmail}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── MeiliSearch ─────────────────────────────────────────────────────────────
-  meilisearch:
-    image: getmeili/meilisearch:latest
-    restart: unless-stopped
-    environment:
-      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?MEILI_MASTER_KEY is required}
-      MEILI_ENV: ${MEILI_ENV:-production}
-    volumes:
-      - meilisearch_data:/meili_data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # ── Caddy (reverse proxy + automatic HTTPS) ─────────────────────────────────
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:-mail.wistfare.com}
-      DOCS_DOMAIN: ${DOCS_DOMAIN:-docs.mail.wistfare.com}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - web
-      - api
-      - docs
-
   # ── API Gateway (Hono / Node.js) ───────────────────────────────────────────
   api:
-    image: ghcr.io/wistfare/wistmail-api:latest
+    image: ${API_IMAGE:-ghcr.io/wistfare/wistmail-api:latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-wistmail}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wistmail}
@@ -137,22 +124,62 @@ services:
       ALLOW_SKIP_DNS: ${ALLOW_SKIP_DNS:-false}
       INBOUND_SECRET: ${INBOUND_SECRET}
       MAIL_ENGINE_URL: http://mail-engine:8025
-      # Firebase Admin SDK reads the service account from this path.
-      # The file is written by the deploy workflow to ./.secrets/ on the host.
+      MAIL_DOMAIN: ${MAIL_DOMAIN}
+      SITE_URL: ${SITE_URL:-http://localhost:3000}
+      NODE_ENV: ${NODE_ENV:-production}
+      # Firebase Admin SDK reads the service account from this path. The
+      # file is optional in dev — push notifications are no-ops without it.
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-service-account.json
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-wistfare-1756656058858}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       # AES-256-GCM key for encrypting MFA secrets at rest. 32-byte hex
       # (64 chars). Generate once with `openssl rand -hex 32`. Rotating
       # this invalidates every stored TOTP secret — users must re-enroll.
       MFA_SECRETS_KEY: ${MFA_SECRETS_KEY:?MFA_SECRETS_KEY is required}
+      # Wistfare Collections — leave WISTFARE_API_KEY unset in dev/test
+      # so the client returns stubbed responses (see lib/wistfare-client).
+      WISTFARE_API_KEY: ${WISTFARE_API_KEY:-}
+      WISTFARE_API_URL: ${WISTFARE_API_URL:-}
+      WISTFARE_BUSINESS_ID: ${WISTFARE_BUSINESS_ID:-biz_dev}
+      WISTFARE_WALLET_ID: ${WISTFARE_WALLET_ID:-wal_dev}
+      WISTFARE_WEBHOOK_SECRET: ${WISTFARE_WEBHOOK_SECRET:-}
+    ports:
+      - "${API_PORT_HOST:-3001}:3001"
     volumes:
-      - ./.secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+      - ./.secrets:/run/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       meilisearch:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # ── Billing renewal cron ───────────────────────────────────────────────────
+  # Every 5 minutes, hits POST /api/v1/billing/internal/tick with the shared
+  # INBOUND_SECRET so the renewal/grace/suspension state machine advances
+  # without a human poking at the admin UI. The endpoint is idempotent —
+  # missed ticks self-heal on the next cycle.
+  billing-cron:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.cron
+    restart: unless-stopped
+    environment:
+      API_URL: ${API_INTERNAL_URL:-http://api:3001}
+      INBOUND_SECRET: ${INBOUND_SECRET}
+      TICK_INTERVAL_MS: ${BILLING_TICK_INTERVAL_MS:-300000}
+    depends_on:
+      api:
         condition: service_healthy
 
   # ── AI Worker (Gemma 4 E4B via host Ollama) ────────────────────────────────
@@ -161,7 +188,10 @@ services:
   # systemd-managed). The worker never opens a port — it only consumes from
   # Redis and publishes cache-bust messages back into Redis.
   ai-worker:
-    image: ghcr.io/wistfare/wistmail-ai-worker:latest
+    image: ${AI_WORKER_IMAGE:-ghcr.io/wistfare/wistmail-ai-worker:latest}
+    build:
+      context: .
+      dockerfile: apps/ai-worker/Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-wistmail}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wistmail}
@@ -173,7 +203,7 @@ services:
       # so we hard-code the wistmail_default gateway here. Pair with
       # `ufw allow from 172.18.0.0/16 to 172.18.0.1 port 11434 proto tcp`
       # on the host (UFW INPUT chain blocks bridge→host by default).
-      OLLAMA_HOST: http://172.18.0.1:11434
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://172.18.0.1:11434}
       AI_MODEL: ${AI_MODEL:-gemma4:e4b}
       AI_WORKER_CONCURRENCY: "1"
     depends_on:
@@ -184,21 +214,74 @@ services:
 
   # ── Web Client (Next.js) ───────────────────────────────────────────────────
   web:
-    image: ghcr.io/wistfare/wistmail-web:latest
+    image: ${WEB_IMAGE:-ghcr.io/wistfare/wistmail-web:latest}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
     restart: unless-stopped
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    ports:
+      - "${WEB_PORT_HOST:-3000}:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # ── Docs (Next.js) ─────────────────────────────────────────────────────────
   docs:
-    image: ghcr.io/wistfare/wistmail-docs:latest
+    image: ${DOCS_IMAGE:-ghcr.io/wistfare/wistmail-docs:latest}
+    build:
+      context: .
+      dockerfile: apps/docs/Dockerfile
     restart: unless-stopped
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3002"
+    ports:
+      - "${DOCS_PORT_HOST:-3002}:3002"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://localhost:3002').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── Caddy (reverse proxy + automatic HTTPS) ─────────────────────────────────
+  # Only started under the `proxy` profile so local dev (which talks
+  # directly to api/web on their host ports) doesn't fight Caddy for :80.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: ["proxy"]
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-mail.wistfare.com}
+      DOCS_DOMAIN: ${DOCS_DOMAIN:-docs.mail.wistfare.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+      - docs
 
 volumes:
   postgres_data:

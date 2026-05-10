@@ -39,6 +39,11 @@ export interface ConversationSummary {
   lastMessage: LastMessage | null
 }
 
+/// Per-message reactions, keyed by emoji.  Empty / missing keys are
+/// pruned server-side so the UI can iterate Object.keys without
+/// filtering out zero-count chips.
+export type ChatReactions = Record<string, string[]>
+
 export interface ChatMessage {
   id: string
   conversationId: string
@@ -48,6 +53,7 @@ export interface ChatMessage {
   editedAt?: string | null
   deletedAt?: string | null
   attachments?: ChatAttachment[]
+  reactions?: ChatReactions
   /// Client-side delivery status — populated for the user's own
   /// outgoing messages so the bubble can render the sending /
   /// sent / failed indicator.  The server never sends this field;
@@ -252,6 +258,83 @@ export function useDeleteMessage(conversationId: string) {
         },
       )
       qc.invalidateQueries({ queryKey: chatKeys.conversations() })
+    },
+  })
+}
+
+/**
+ * Toggle a reaction on/off on a single message.  The mutation does
+ * an optimistic patch of the messages cache so the chip appears /
+ * disappears the moment the user clicks the popover; the server
+ * response replaces the optimistic map with the canonical one.
+ *
+ * Pencil reference: ChatViewV3 reactions popover (`mCFcx`).
+ */
+export function useToggleReaction(conversationId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      messageId: string
+      emoji: string
+      userId: string
+    }) => {
+      const res = await api.post<{ id: string; reactions: ChatReactions }>(
+        `/api/v1/chat/conversations/${conversationId}/messages/${input.messageId}/reactions`,
+        { emoji: input.emoji },
+      )
+      return { ...res, userId: input.userId, emoji: input.emoji }
+    },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: chatKeys.messages(conversationId) })
+      const prev = qc.getQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+      )
+      qc.setQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+        (old) => {
+          if (!old) return old
+          return old.map((m) => {
+            if (m.id !== input.messageId) return m
+            const next: ChatReactions = {}
+            for (const [emoji, ids] of Object.entries(m.reactions ?? {})) {
+              next[emoji] = [...ids]
+            }
+            const list = next[input.emoji] ?? []
+            const has = list.includes(input.userId)
+            if (has) {
+              const filtered = list.filter((id) => id !== input.userId)
+              if (filtered.length === 0) {
+                delete next[input.emoji]
+              } else {
+                next[input.emoji] = filtered
+              }
+            } else {
+              next[input.emoji] = [...list, input.userId]
+            }
+            return { ...m, reactions: next }
+          })
+        },
+      )
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        qc.setQueryData<ChatMessage[]>(
+          chatKeys.messages(conversationId),
+          ctx.prev,
+        )
+      }
+    },
+    onSuccess: (res) => {
+      qc.setQueryData<ChatMessage[]>(
+        chatKeys.messages(conversationId),
+        (old) => {
+          if (!old) return old
+          return old.map((m) =>
+            m.id === res.id ? { ...m, reactions: res.reactions } : m,
+          )
+        },
+      )
     },
   })
 }
@@ -659,6 +742,25 @@ export function applyChatMessageUpdated(
         m.id === evt.messageId
           ? { ...m, content: evt.content, editedAt: evt.editedAt }
           : m,
+      )
+    },
+  )
+}
+
+export function applyChatMessageReactionUpdated(
+  qc: QueryClient,
+  evt: {
+    conversationId: string
+    messageId: string
+    reactions: ChatReactions
+  },
+) {
+  qc.setQueryData<ChatMessage[]>(
+    chatKeys.messages(evt.conversationId),
+    (old) => {
+      if (!old) return old
+      return old.map((m) =>
+        m.id === evt.messageId ? { ...m, reactions: evt.reactions } : m,
       )
     },
   )
