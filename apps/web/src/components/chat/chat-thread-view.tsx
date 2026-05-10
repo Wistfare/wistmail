@@ -31,6 +31,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { MessageStackSkeleton } from './chat-skeletons'
+import { ReactionsPopover, ReactionChip, type ReactionEmoji } from './reactions-popover'
 import {
   chatAttachmentUrl,
   chatKeys,
@@ -46,9 +47,11 @@ import {
   useParticipants,
   useRemoveParticipant,
   useSendMessage,
+  useToggleReaction,
   useUploadAttachment,
   type ChatAttachment,
   type ChatMessage,
+  type ChatReactions,
   type ContactSearchResult,
   type ConversationReadEntry,
   type ConversationSummary,
@@ -89,6 +92,7 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
   const send = useSendMessage(conversationId)
   const editMessage = useEditMessage(conversationId)
   const deleteMessage = useDeleteMessage(conversationId)
+  const toggleReaction = useToggleReaction(conversationId)
   const markRead = useMarkConversationRead()
   const notifyTyping = useNotifyTyping()
   const typers = useTypers(conversationId).filter(
@@ -400,6 +404,13 @@ export function ChatThreadView({ conversationId, onBack }: ChatThreadViewProps) 
                       }
                     }}
                     onRetry={() => void handleRetry(m)}
+                    onToggleReaction={(emoji) => {
+                      toggleReaction.mutate({
+                        messageId: m.id,
+                        emoji,
+                        userId: sessionUser.id,
+                      })
+                    }}
                   />
                 )
               })
@@ -599,6 +610,7 @@ function MessageBubble({
   onEdit,
   onDelete,
   onRetry,
+  onToggleReaction,
 }: {
   message: ChatMessage
   isMine: boolean
@@ -617,10 +629,15 @@ function MessageBubble({
   onEdit: (content: string) => Promise<void>
   onDelete: () => Promise<void>
   onRetry: () => void
+  /// Toggles a reaction on/off for the current user.  The wiring
+  /// fans the new reactions map to every participant via WS so chips
+  /// update in real time.
+  onToggleReaction: (emoji: ReactionEmoji | string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
   const [busy, setBusy] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   // Resolve sender from the conversation summary so group messages
   // render the right name + avatar without an extra lookup.
@@ -779,6 +796,36 @@ function MessageBubble({
             </div>
           )}
 
+          {!isDeleted && !editing && (
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setPickerOpen((v) => !v)}
+                aria-label="Add reaction"
+                aria-expanded={pickerOpen}
+                className={cn(
+                  'flex shrink-0 cursor-pointer items-center justify-center text-wm-text-muted transition-opacity hover:text-wm-text-primary',
+                  pickerOpen
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover:opacity-100',
+                )}
+                style={{ width: 24, height: 24, borderRadius: 12 }}
+              >
+                <Smile className="h-3.5 w-3.5" />
+              </button>
+              {pickerOpen && (
+                <ReactionsPopover
+                  align={isMine ? 'right' : 'left'}
+                  myReactions={selfReactedEmojis(message.reactions, sessionUserId)}
+                  onPick={(emoji) => {
+                    onToggleReaction(emoji)
+                    setPickerOpen(false)
+                  }}
+                  onClose={() => setPickerOpen(false)}
+                />
+              )}
+            </div>
+          )}
           {isMine && !isDeleted && !editing && (
             <BubbleMenu
               onEdit={startEdit}
@@ -788,6 +835,30 @@ function MessageBubble({
             />
           )}
         </div>
+        {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
+          <div
+            className={cn(
+              'flex flex-wrap',
+              isMine ? 'justify-end' : 'justify-start',
+            )}
+            style={{ gap: 4 }}
+          >
+            {Object.entries(message.reactions)
+              // Drop empty arrays defensively — server should already
+              // prune them, but a stale optimistic patch could leave
+              // an empty list for a flicker.
+              .filter(([, ids]) => ids && ids.length > 0)
+              .map(([emoji, ids]) => (
+                <ReactionChip
+                  key={emoji}
+                  emoji={emoji}
+                  count={ids.length}
+                  reactedByMe={ids.includes(sessionUserId)}
+                  onClick={() => onToggleReaction(emoji)}
+                />
+              ))}
+          </div>
+        )}
         <div
           className={cn(
             'flex items-center gap-1 font-mono text-[9px] text-wm-text-muted',
@@ -1099,6 +1170,21 @@ function HeaderRound({
       {children}
     </button>
   )
+}
+
+/// Build the set of emoji glyphs the current user has reacted with
+/// for a single message — used to drive the popover's pressed state
+/// so the user sees their own reactions highlighted.
+function selfReactedEmojis(
+  reactions: ChatReactions | undefined,
+  userId: string,
+): string[] {
+  if (!reactions) return []
+  const out: string[] = []
+  for (const [emoji, ids] of Object.entries(reactions)) {
+    if (ids.includes(userId)) out.push(emoji)
+  }
+  return out
 }
 
 /// "Alice is typing…" / "Alice and Bob are typing…" / "Alice and N

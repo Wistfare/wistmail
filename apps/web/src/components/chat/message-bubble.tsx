@@ -1,6 +1,9 @@
 'use client'
 
+import { useState } from 'react'
+import { Smile } from 'lucide-react'
 import { cn, getInitials, stringToColor } from '@/lib/utils'
+import { ReactionsPopover, type ReactionEmoji } from './reactions-popover'
 
 export interface MessageReaction {
   emoji: string
@@ -27,6 +30,19 @@ export interface MessageBubbleProps {
   showHeader?: boolean
   /** Optional click handler on the bubble (e.g. open reactions popover). */
   onClick?: () => void
+  /** Wire the reactions popover.  When set, the bubble surfaces a
+   *  small smile button on hover; clicking it opens the picker, and
+   *  picking an emoji invokes this callback.  Omit to render a
+   *  read-only bubble (e.g. notification previews). */
+  onReact?: (emoji: ReactionEmoji) => void
+  /** Emoji glyphs the current user has already reacted with — drives
+   *  the picker's pressed state so the user sees their own reactions
+   *  highlighted. */
+  myReactions?: string[]
+  /** Optional click handler invoked when the user clicks an existing
+   *  reaction chip — typically used to toggle off the reaction.  When
+   *  unset, chips render but are not interactive. */
+  onChipClick?: (emoji: string) => void
   className?: string
 }
 
@@ -55,6 +71,9 @@ export function MessageBubble({
   edited,
   showHeader = true,
   onClick,
+  onReact,
+  myReactions,
+  onChipClick,
   className,
 }: MessageBubbleProps) {
   const time = new Date(createdAt).toLocaleTimeString(undefined, {
@@ -63,10 +82,11 @@ export function MessageBubble({
   })
   const initials = getInitials(senderName)
   const bg = stringToColor(senderName)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   return (
     <div
-      className={cn('flex w-full', className)}
+      className={cn('group flex w-full', className)}
       style={{
         gap: 10,
         flexDirection: fromMe ? 'row-reverse' : 'row',
@@ -120,39 +140,85 @@ export function MessageBubble({
             {senderName}
           </span>
         )}
-        <button
-          type="button"
-          onClick={onClick}
-          className={cn(
-            'cursor-pointer text-left font-sans transition-colors',
-          )}
+        <div
+          className="relative flex items-center"
           style={{
-            padding: '10px 14px',
-            fontSize: 13,
-            lineHeight: 1.5,
-            background: fromMe ? 'var(--color-wm-accent)' : '#111111',
-            color: fromMe ? '#000000' : '#FFFFFF',
-            // Pencil bubble corner shapes:
-            //   incoming → [14,14,14,4]   bottom-LEFT squared
-            //   outgoing → [14,14,4,14]   bottom-RIGHT squared
-            borderRadius: fromMe
-              ? '14px 14px 4px 14px'
-              : '14px 14px 14px 4px',
+            gap: 4,
+            flexDirection: fromMe ? 'row-reverse' : 'row',
           }}
         >
-          {content}
-          {edited && (
-            <span
-              className="ml-2 align-middle font-mono"
-              style={{
-                fontSize: 9,
-                color: fromMe ? 'rgba(0,0,0,0.6)' : '#6e6e6e',
-              }}
-            >
-              edited
-            </span>
+          <button
+            type="button"
+            onClick={onClick}
+            className={cn(
+              'cursor-pointer text-left font-sans transition-colors',
+            )}
+            style={{
+              padding: '10px 14px',
+              fontSize: 13,
+              lineHeight: 1.5,
+              background: fromMe ? 'var(--color-wm-accent)' : '#111111',
+              color: fromMe ? '#000000' : '#FFFFFF',
+              // Pencil bubble corner shapes:
+              //   incoming → [14,14,14,4]   bottom-LEFT squared
+              //   outgoing → [14,14,4,14]   bottom-RIGHT squared
+              borderRadius: fromMe
+                ? '14px 14px 4px 14px'
+                : '14px 14px 14px 4px',
+            }}
+          >
+            {content}
+            {edited && (
+              <span
+                className="ml-2 align-middle font-mono"
+                style={{
+                  fontSize: 9,
+                  color: fromMe ? 'rgba(0,0,0,0.6)' : '#6e6e6e',
+                }}
+              >
+                edited
+              </span>
+            )}
+          </button>
+          {onReact && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setPickerOpen((v) => !v)}
+                aria-label="Add reaction"
+                aria-expanded={pickerOpen}
+                className={cn(
+                  'flex shrink-0 cursor-pointer items-center justify-center text-wm-text-muted transition-opacity hover:text-wm-text-primary',
+                  // Hover-revealed: keep the bubble row clean when the
+                  // user isn't interacting.  Always visible while the
+                  // picker is open so the trigger doesn't disappear
+                  // mid-click.
+                  pickerOpen
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover:opacity-100',
+                )}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                }}
+              >
+                <Smile style={{ width: 14, height: 14 }} />
+              </button>
+              {pickerOpen && (
+                <ReactionsPopover
+                  align={fromMe ? 'right' : 'left'}
+                  myReactions={myReactions}
+                  onPick={(emoji) => {
+                    onReact(emoji)
+                    setPickerOpen(false)
+                  }}
+                  onClose={() => setPickerOpen(false)}
+                />
+              )}
+            </div>
           )}
-        </button>
+        </div>
 
         {reactions && reactions.length > 0 && (
           <div
@@ -162,28 +228,37 @@ export function MessageBubble({
               justifyContent: fromMe ? 'flex-end' : 'flex-start',
             }}
           >
-            {reactions.map((r) => (
-              <span
-                key={r.emoji}
-                className={cn(
-                  'inline-flex items-center font-mono',
-                  r.reactedByMe ? 'text-wm-accent' : 'text-wm-text-secondary',
-                )}
-                style={{
-                  gap: 4,
-                  padding: '3px 8px',
-                  fontSize: 11,
-                  borderRadius: 12,
-                  background: r.reactedByMe ? 'var(--color-wm-accent-dim)' : '#111111',
-                  border: r.reactedByMe
-                    ? '1px solid var(--color-wm-accent)'
-                    : '1px solid #1A1A1A',
-                }}
-              >
-                <span>{r.emoji}</span>
-                <span style={{ fontWeight: 700 }}>{r.count}</span>
-              </span>
-            ))}
+            {reactions.map((r) => {
+              const interactive = !!onChipClick
+              return (
+                <button
+                  key={r.emoji}
+                  type="button"
+                  onClick={interactive ? () => onChipClick(r.emoji) : undefined}
+                  disabled={!interactive}
+                  className={cn(
+                    'inline-flex items-center font-mono transition-colors',
+                    r.reactedByMe ? 'text-wm-accent' : 'text-wm-text-secondary',
+                    interactive ? 'cursor-pointer' : 'cursor-default',
+                  )}
+                  aria-pressed={r.reactedByMe}
+                  aria-label={`${r.emoji} ${r.count} reaction${r.count === 1 ? '' : 's'}`}
+                  style={{
+                    gap: 4,
+                    padding: '3px 8px',
+                    fontSize: 11,
+                    borderRadius: 12,
+                    background: r.reactedByMe ? 'var(--color-wm-accent-dim)' : '#111111',
+                    border: r.reactedByMe
+                      ? '1px solid var(--color-wm-accent)'
+                      : '1px solid #1A1A1A',
+                  }}
+                >
+                  <span>{r.emoji}</span>
+                  <span style={{ fontWeight: 700 }}>{r.count}</span>
+                </button>
+              )
+            })}
           </div>
         )}
 

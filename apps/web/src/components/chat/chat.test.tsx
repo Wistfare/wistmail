@@ -6,6 +6,9 @@ import {
   ConversationListItem,
   MessageBubble,
   MessageComposer,
+  REACTION_EMOJIS,
+  ReactionChip,
+  ReactionsPopover,
 } from './index'
 
 describe('ConversationListItem', () => {
@@ -247,5 +250,71 @@ describe('ChatInfoPanel', () => {
       'href',
       'https://example.com',
     )
+  })
+})
+
+describe('ReactionsPopover', () => {
+  it('renders the full preset emoji strip', () => {
+    render(
+      <ReactionsPopover onPick={() => {}} onClose={() => {}} />,
+    )
+    for (const emoji of REACTION_EMOJIS) {
+      expect(screen.getByLabelText(`React with ${emoji}`)).toBeInTheDocument()
+    }
+  })
+
+  it('fires onPick with the chosen emoji', () => {
+    const onPick = vi.fn()
+    render(<ReactionsPopover onPick={onPick} onClose={() => {}} />)
+    fireEvent.click(screen.getByLabelText('React with 🔥'))
+    expect(onPick).toHaveBeenCalledWith('🔥')
+  })
+
+  it('marks myReactions emoji as pressed', () => {
+    render(
+      <ReactionsPopover
+        onPick={() => {}}
+        onClose={() => {}}
+        myReactions={['🎉']}
+      />,
+    )
+    expect(screen.getByLabelText('React with 🎉')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByLabelText('React with 👍')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
+  it('closes on Escape', () => {
+    const onClose = vi.fn()
+    render(<ReactionsPopover onPick={() => {}} onClose={onClose} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+})
+
+describe('ReactionChip', () => {
+  it('renders emoji + count and is interactive when onClick is set', () => {
+    const onClick = vi.fn()
+    render(<ReactionChip emoji="🔥" count={4} onClick={onClick} />)
+    const btn = screen.getByRole('button', { name: /🔥 4 reactions/ })
+    expect(btn).toBeInTheDocument()
+    fireEvent.click(btn)
+    expect(onClick).toHaveBeenCalledOnce()
+  })
+
+  it('uses singular reaction label for count of 1', () => {
+    render(<ReactionChip emoji="❤️" count={1} />)
+    expect(
+      screen.getByRole('button', { name: /❤️ 1 reaction$/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('marks reactedByMe via aria-pressed', () => {
+    render(<ReactionChip emoji="🔥" count={2} reactedByMe />)
+    expect(screen.getByRole('button')).toHaveAttribute('aria-pressed', 'true')
   })
 })
