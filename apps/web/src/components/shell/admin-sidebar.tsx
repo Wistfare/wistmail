@@ -6,8 +6,8 @@ import {
   Users,
   Globe,
   Building2,
-  ShieldCheck,
   ScrollText,
+  BarChart3,
   Wallet,
   Package,
   Receipt,
@@ -65,11 +65,17 @@ export function AdminSidebar({}: AdminSidebarProps) {
           active={is('/admin/audit-logs')}
         />
         <SidebarNavItem
-          href="/admin/security"
-          icon={<ShieldCheck className="h-[18px] w-[18px]" />}
-          label="Security"
-          active={is('/admin/security')}
+          href="/admin/analytics"
+          icon={<BarChart3 className="h-[18px] w-[18px]" />}
+          label="Analytics"
+          active={is('/admin/analytics')}
         />
+        {/*
+         * Phase F drops the Security item — there's no design or backend
+         * for an admin-level security console yet. Workspace 2FA coverage
+         * surfaces from /settings/two-factor (Phase G); a dedicated admin
+         * security screen is a Phase H+ item. Re-add when there's a spec.
+         */}
       </SidebarSection>
       <SidebarSection label="Billing">
         <SidebarNavItem
