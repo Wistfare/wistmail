@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, Pencil, UserMinus, Trash2 } from 'lucide-react'
 import { SettingsTopBar } from '@/components/shell'
-import { Avatar, Button, EmptyState } from '@/components/ui'
+import { Avatar, Button, EmptyState, useToast } from '@/components/ui'
 import { FilterPills } from '@/components/email/filter-pills'
 import { api } from '@/lib/api-client'
-import { cn, formatRelativeTime } from '@/lib/utils'
+import { cn, formatBytes, formatRelativeTime } from '@/lib/utils'
 
 interface Member {
   id: string
@@ -20,33 +20,54 @@ interface Member {
   createdAt?: string
   /** Optional, surfaced when the backend exposes it. */
   lastActiveAt?: string | null
+  /** Surfaced by the backend status column when present. */
+  status?: 'active' | 'pending' | 'suspended' | 'disabled'
 }
 
-type StatusFilter = 'all' | 'active' | 'pending' | 'suspended'
+interface StorageBreakdown {
+  totalBytes: number
+  byCategory: { mail: number; attachments: number; drafts: number; trash: number }
+  byUser: { userId: string; name: string; bytes: number }[]
+}
+
+type StatusFilter = 'all' | 'active' | 'pending' | 'suspended' | 'disabled'
 
 /**
  * `/admin/users` — Pencil reference: `AdminV3-Users` (`hxB5G`).
  *
- * V3 chrome: PageHeader + filter pill row + search input + table.
- * Reads `/api/v1/admin/members`. Suspended/pending tabs reserve room
- * for when the backend gains a status column — today they return zero.
+ * V3 polish:
+ *   - Storage column joins per-user bytes from /billing/storage-breakdown
+ *   - Tabs Active/Pending/Suspended/Disabled actually filter (when the
+ *     backend gains a status column they'll filter rows; today an
+ *     unknown status defaults to "active")
+ *   - Hover row actions (edit / suspend / remove) — wired via toast
+ *     stubs because the suspend/disable endpoints don't exist yet
  */
 export default function AdminUsersPage() {
   const [members, setMembers] = useState<Member[]>([])
+  const [storage, setStorage] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [query, setQuery] = useState('')
+  const toast = useToast()
 
   useEffect(() => {
     let cancelled = false
-    api
-      .get<{ members?: Member[]; data?: Member[] }>('/api/v1/admin/members')
-      .then((res) => {
+    Promise.allSettled([
+      api.get<{ members?: Member[]; data?: Member[] }>('/api/v1/admin/members'),
+      api.get<{ data: StorageBreakdown }>('/api/v1/billing/storage-breakdown'),
+    ])
+      .then(([memberRes, storageRes]) => {
         if (cancelled) return
-        // Backwards-compat with both response shapes.
-        setMembers(res.members ?? res.data ?? [])
+        if (memberRes.status === 'fulfilled') {
+          setMembers(memberRes.value.members ?? memberRes.value.data ?? [])
+        }
+        if (storageRes.status === 'fulfilled') {
+          const map = new Map<string, number>()
+          for (const u of storageRes.value.data.byUser) map.set(u.userId, u.bytes)
+          setStorage(map)
+        }
       })
-      .catch(() => undefined)
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
@@ -55,12 +76,21 @@ export default function AdminUsersPage() {
     }
   }, [])
 
+  const counts = useMemo(() => {
+    const c = { all: members.length, active: 0, pending: 0, suspended: 0, disabled: 0 }
+    for (const m of members) {
+      const s = m.status ?? 'active'
+      if (s === 'pending' || s === 'suspended' || s === 'disabled') c[s]++
+      else c.active++
+    }
+    return c
+  }, [members])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return members.filter((m) => {
-      // Filter pill — until the backend gains a status column, all
-      // members count as "active" and we show none in pending/suspended.
-      if (filter === 'pending' || filter === 'suspended') return false
+      const status = m.status ?? 'active'
+      if (filter !== 'all' && status !== filter) return false
       if (!q) return true
       return (
         (m.name ?? '').toLowerCase().includes(q) ||
@@ -68,6 +98,35 @@ export default function AdminUsersPage() {
       )
     })
   }, [members, filter, query])
+
+  // Suspend/remove actions. The backend gained DELETE /admin/members/:id
+  // (existing); suspend lives behind a TODO until the schema gains a
+  // status column. Optimistic UX with a toast is fine for now.
+  async function handleRemove(member: Member) {
+    if (member.role === 'owner') {
+      toast.show({ message: "Can't remove the workspace owner" })
+      return
+    }
+    if (!confirm(`Remove ${member.name || member.email}? This cannot be undone.`)) return
+    try {
+      await api.delete(`/api/v1/admin/members/${member.id}`)
+      setMembers((prev) => prev.filter((m) => m.id !== member.id))
+      toast.show({ message: 'Member removed' })
+    } catch (err) {
+      toast.show({
+        message: err instanceof Error ? err.message : 'Could not remove member',
+      })
+    }
+  }
+
+  function handleSuspend(member: Member) {
+    // TODO(phase-h): wire to a real PATCH /admin/members/:id/suspend once
+    // the users.status column ships. Today we acknowledge the click so the
+    // UI feels live.
+    toast.show({
+      message: `Suspend not yet wired — ${member.name || member.email}`,
+    })
+  }
 
   return (
     <div className="flex h-full flex-col" style={{ background: '#000000' }}>
@@ -123,10 +182,11 @@ export default function AdminUsersPage() {
         <FilterPills<StatusFilter>
           value={filter}
           options={[
-            { id: 'all', label: 'All', count: members.length },
-            { id: 'active', label: 'Active', count: members.length },
-            { id: 'pending', label: 'Pending' },
-            { id: 'suspended', label: 'Suspended' },
+            { id: 'all', label: 'All', count: counts.all },
+            { id: 'active', label: 'Active', count: counts.active },
+            { id: 'pending', label: 'Pending', count: counts.pending },
+            { id: 'suspended', label: 'Suspended', count: counts.suspended },
+            { id: 'disabled', label: 'Disabled', count: counts.disabled },
           ]}
           onChange={setFilter}
         />
@@ -160,63 +220,101 @@ export default function AdminUsersPage() {
                   <th className="px-5 py-3">Role</th>
                   <th className="px-5 py-3">Storage</th>
                   <th className="px-5 py-3">Last active</th>
-                  <th className="px-5 py-3"></th>
+                  <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((m) => (
-                  <tr
-                    key={m.id}
-                    className="border-b border-wm-border last:border-b-0 transition-colors hover:bg-wm-surface-hover"
-                  >
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar
-                          name={m.name || m.email}
-                          src={m.avatarUrl}
-                          size="sm"
-                        />
-                        <div className="flex flex-col">
-                          <span className="font-sans text-[13px] font-medium text-wm-text-primary">
-                            {m.name || '—'}
-                          </span>
-                          <span className="text-wm-text-tertiary">{m.email}</span>
+                {filtered.map((m) => {
+                  const bytes = storage.get(m.userId) ?? 0
+                  return (
+                    <tr
+                      key={m.id}
+                      className="group border-b border-wm-border last:border-b-0 transition-colors hover:bg-wm-surface-hover"
+                    >
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar
+                            name={m.name || m.email}
+                            src={m.avatarUrl}
+                            size="sm"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-sans text-[13px] font-medium text-wm-text-primary">
+                              {m.name || '—'}
+                            </span>
+                            <span className="text-wm-text-tertiary">{m.email}</span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span
-                        className={
-                          m.role === 'owner' || m.role === 'admin'
-                            ? 'font-bold uppercase tracking-[1.5px] text-wm-accent'
-                            : 'text-wm-text-secondary'
-                        }
-                      >
-                        {m.role}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-wm-text-secondary">—</td>
-                    <td className="px-5 py-3 text-wm-text-tertiary">
-                      {m.lastActiveAt
-                        ? formatRelativeTime(new Date(m.lastActiveAt))
-                        : '—'}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <Link
-                        href={`/admin/members#${m.id}`}
-                        className="font-mono text-[10px] font-bold uppercase tracking-[1.5px] text-wm-accent hover:underline"
-                      >
-                        Manage
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className={
+                            m.role === 'owner' || m.role === 'admin'
+                              ? 'font-bold uppercase tracking-[1.5px] text-wm-accent'
+                              : 'text-wm-text-secondary'
+                          }
+                        >
+                          {m.role}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-wm-text-secondary">
+                        {bytes > 0 ? formatBytes(bytes) : '—'}
+                      </td>
+                      <td className="px-5 py-3 text-wm-text-tertiary">
+                        {m.lastActiveAt
+                          ? formatRelativeTime(new Date(m.lastActiveAt))
+                          : '—'}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                          <RowAction
+                            icon={<Pencil className="h-3 w-3" />}
+                            label="Edit"
+                            onClick={() => toast.show({ message: 'Edit coming soon' })}
+                          />
+                          <RowAction
+                            icon={<UserMinus className="h-3 w-3" />}
+                            label="Suspend"
+                            onClick={() => handleSuspend(m)}
+                          />
+                          <RowAction
+                            icon={<Trash2 className="h-3 w-3 text-wm-error" />}
+                            label="Remove"
+                            onClick={() => handleRemove(m)}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+function RowAction({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-wm-border bg-wm-surface text-wm-text-secondary transition-colors hover:border-wm-accent hover:text-wm-text-primary"
+    >
+      {icon}
+    </button>
   )
 }
 
