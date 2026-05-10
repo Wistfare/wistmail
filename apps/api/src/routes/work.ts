@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import { projects, projectTasks } from '@wistmail/db'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { getDb } from '../lib/db.js'
@@ -44,56 +44,24 @@ workRoutes.get('/counters', async (c) => {
   endOfWeek.setDate(endOfWeek.getDate() + 7)
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-  const [todayRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
+  // Coalesce all four counters into a single grouped query — the
+  // four separate `count(*)` queries were issuing 4 round-trips for
+  // a sidebar mount that fires on every navigation. `count(*) FILTER
+  // (WHERE ...)` lets Postgres scan the rows once and bin them.
+  const [counters] = await db
+    .select({
+      today: sql<number>`count(*) filter (where ${projectTasks.dueDate} >= ${startOfDay} and ${projectTasks.dueDate} < ${endOfDay} and ${projectTasks.status} <> 'done')::int`,
+      week: sql<number>`count(*) filter (where ${projectTasks.dueDate} >= ${startOfDay} and ${projectTasks.dueDate} <= ${endOfWeek} and ${projectTasks.status} <> 'done')::int`,
+      overdue: sql<number>`count(*) filter (where ${projectTasks.dueDate} < ${startOfDay} and ${projectTasks.status} <> 'done')::int`,
+      done: sql<number>`count(*) filter (where ${projectTasks.status} = 'done' and ${projectTasks.updatedAt} >= ${thirtyDaysAgo})::int`,
+    })
     .from(projectTasks)
-    .where(
-      and(
-        inArray(projectTasks.projectId, projectIds),
-        gte(projectTasks.dueDate, startOfDay),
-        lt(projectTasks.dueDate, endOfDay),
-        sql`${projectTasks.status} <> 'done'`,
-      ),
-    )
-
-  const [weekRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(projectTasks)
-    .where(
-      and(
-        inArray(projectTasks.projectId, projectIds),
-        gte(projectTasks.dueDate, startOfDay),
-        lte(projectTasks.dueDate, endOfWeek),
-        sql`${projectTasks.status} <> 'done'`,
-      ),
-    )
-
-  const [overdueRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(projectTasks)
-    .where(
-      and(
-        inArray(projectTasks.projectId, projectIds),
-        lt(projectTasks.dueDate, startOfDay),
-        sql`${projectTasks.status} <> 'done'`,
-      ),
-    )
-
-  const [doneRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(projectTasks)
-    .where(
-      and(
-        inArray(projectTasks.projectId, projectIds),
-        eq(projectTasks.status, 'done'),
-        gte(projectTasks.updatedAt, thirtyDaysAgo),
-      ),
-    )
+    .where(inArray(projectTasks.projectId, projectIds))
 
   return c.json({
-    today: todayRow?.n ?? 0,
-    week: weekRow?.n ?? 0,
-    overdue: overdueRow?.n ?? 0,
-    done: doneRow?.n ?? 0,
+    today: counters?.today ?? 0,
+    week: counters?.week ?? 0,
+    overdue: counters?.overdue ?? 0,
+    done: counters?.done ?? 0,
   })
 })
