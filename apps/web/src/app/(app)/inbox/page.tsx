@@ -1004,7 +1004,7 @@ export default function InboxPage() {
                   className="font-mono font-bold text-wm-text-primary"
                   title={selectedFull.subject || '(no subject)'}
                   style={{
-                    fontSize: 24,
+                    fontSize: scaleSubjectFontSize(selectedFull.subject),
                     lineHeight: 1.2,
                     // Long unbreakable strings (e.g. "[GitHub] Your
                     // personal access token (classic)…") have no
@@ -1015,8 +1015,11 @@ export default function InboxPage() {
                     // Cap the rendered subject at 3 lines so a
                     // newsletter "Story A | Story B | Story C |
                     // Story D" headline doesn't dominate the pane.
-                    // The full subject still lives in the toolbar
-                    // breadcrumb above + the title attribute below.
+                    // Combined with the dynamic font-size scaling
+                    // (scaleSubjectFontSize) a 250-char headline
+                    // shrinks to ~16px and still fits inside 3 lines
+                    // — the full subject lives in the toolbar
+                    // breadcrumb + the title attribute regardless.
                     display: '-webkit-box',
                     WebkitLineClamp: 3,
                     WebkitBoxOrient: 'vertical',
@@ -1390,6 +1393,30 @@ function ToolbarIc({
       {children}
     </button>
   )
+}
+
+/**
+ * Dynamic subject font-size — Pencil ships a 26-px display title for
+ * short subjects, but newsletter headlines packed with " | " separators
+ * (5+ lines at full size) dominate the reading pane.  We scale by char
+ * count along a smooth curve so the rendered title stays inside ~3
+ * lines without ever shrinking below 14 px (the floor that still reads
+ * as a header rather than body copy).
+ *
+ * Buckets are tuned to common subject lengths:
+ *   ≤  60 chars  → 26 px  (short conversational subject — Pencil default)
+ *   ≤ 120 chars  → 22 px  (typical work subject)
+ *   ≤ 180 chars  → 18 px  (longer subject with a "—" qualifier)
+ *   ≤ 260 chars  → 16 px  (newsletter-grade headline)
+ *   >  260 chars → 14 px  (extreme — minimum that still feels heading-ish)
+ */
+function scaleSubjectFontSize(subject: string | null | undefined): number {
+  const len = (subject ?? '').length
+  if (len <= 60) return 26
+  if (len <= 120) return 22
+  if (len <= 180) return 18
+  if (len <= 260) return 16
+  return 14
 }
 
 /**

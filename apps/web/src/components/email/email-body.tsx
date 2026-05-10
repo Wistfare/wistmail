@@ -113,6 +113,15 @@ export function EmailBody({
         title="Email body"
         sandbox="allow-same-origin allow-popups"
         srcDoc={renderedDoc ?? ''}
+        // `scrolling="no"` is the legacy attribute that explicitly
+        // suppresses the iframe's own scrollbar; combined with the
+        // body { overflow: hidden } in the srcdoc CSS it makes wheel
+        // events on the email surface bubble up to the parent
+        // reading-pane scroll container.  The iframe is sized to
+        // contentDocument.scrollHeight (see the ResizeObserver above)
+        // so the user never loses access to body content — they just
+        // scroll the whole reading pane as one surface.
+        scrolling="no"
         style={{ width: '100%', height: iframeHeight, border: 'none' }}
       />
     </div>
@@ -216,6 +225,11 @@ function buildSandboxDoc(
 <base target="_parent">
 <style>
   :root { color-scheme: dark; }
+  /* Suppress the iframe's own scroll so mouse-wheel events on the
+     email surface bubble up to the parent reading-pane scroller —
+     the iframe is sized to scrollHeight already, so there's nothing
+     to scroll inside it anyway. */
+  html, body { overflow: hidden; }
   body {
     margin: 0;
     padding: 0;
