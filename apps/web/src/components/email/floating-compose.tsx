@@ -327,7 +327,7 @@ export function FloatingCompose({
           <div
             className="flex items-center"
             style={{
-              padding: '12px 0',
+              padding: '8px 0',
               gap: 14,
             }}
           >
@@ -397,39 +397,12 @@ export function FloatingCompose({
             />
           )}
 
-          {/* SUBJECT row */}
+          {/* FROM row — Pencil V3 places this directly under TO/Cc/
+              Bcc so the user confirms which mailbox they're replying
+              from before composing.  Subject sits below FROM. */}
           <div
             className="flex items-center"
-            style={{
-              padding: '12px 0',
-              gap: 14,
-            }}
-          >
-            <span
-              className="font-mono font-bold uppercase shrink-0"
-              style={{
-                fontSize: 10,
-                letterSpacing: 1.5,
-                color: '#6e6e6e',
-                width: 54,
-              }}
-            >
-              Subject
-            </span>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Email subject"
-              className="flex-1 bg-transparent font-mono font-semibold text-wm-text-primary outline-none placeholder:text-wm-text-muted"
-              style={{ fontSize: 13 }}
-            />
-          </div>
-
-          {/* FROM row */}
-          <div
-            className="flex items-center"
-            style={{ padding: '12px 0', gap: 14 }}
+            style={{ padding: '8px 0', gap: 14 }}
           >
             <span
               className="font-mono font-bold uppercase shrink-0"
@@ -516,6 +489,41 @@ export function FloatingCompose({
                 </>
               )}
             </div>
+          </div>
+
+          {/* SUBJECT row */}
+          <div
+            className="flex items-center"
+            style={{
+              padding: '8px 0',
+              gap: 14,
+            }}
+          >
+            <span
+              className="font-mono font-bold uppercase shrink-0"
+              style={{
+                fontSize: 10,
+                letterSpacing: 1.5,
+                color: '#6e6e6e',
+                width: 54,
+              }}
+            >
+              Subject
+            </span>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Email subject"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              data-1p-ignore
+              data-lpignore="true"
+              className="flex-1 bg-transparent font-mono font-semibold text-wm-text-primary outline-none placeholder:text-wm-text-muted"
+              style={{ fontSize: 13 }}
+            />
           </div>
         </div>
 
@@ -806,7 +814,7 @@ function CollapsibleRecipientRow({
     <div
       ref={wrapperRef}
       className="flex items-center"
-      style={{ padding: '12px 0', gap: 14 }}
+      style={{ padding: '8px 0', gap: 14 }}
     >
       <span
         className="font-mono font-bold uppercase shrink-0"
