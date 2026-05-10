@@ -225,6 +225,6 @@ Tasks:
 - [x] Phase E — Billing UI (commits `0f8583f`..`0df1ba1`)
 - [x] Phase F — Admin V3 polish + analytics + domains (commits `dbb202d`..`9e0f77d`)
 - [x] Phase G — MFA V3 (commits `67f4de2`..`b3a2c03`)
-- [ ] Phase H — Parity punch lists
+- [x] Phase H — Parity punch lists (commits `1b68c79`..`2c24fb7`; H.A audit + 2 backend gaps, H.B audit + reactions end-to-end)
 - [ ] Phase I — Docker e2e
 - [ ] Phase J — Optimization
