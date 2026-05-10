@@ -9,7 +9,8 @@ import { users, organizations, orgMembers, mailboxes, domains } from '@wistmail/
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { AuditService } from '../services/audit.js'
 import { getDb } from '../lib/db.js'
-import { buildInvitationEmail } from '../templates/invitation.js'
+import { buildUserInvitationEmail } from '../templates/user-invitation.js'
+import { sendTransactionalEmail } from '../lib/mailer.js'
 
 export const adminRoutes = new Hono<SessionEnv>()
 
@@ -364,39 +365,37 @@ adminRoutes.post('/users/create', async (c) => {
     createdAt: now,
   })
 
+  // Resolve the inviter's display name for the V3 invitation copy.
+  // Falls back to the org name if the user record has no name set.
+  const inviterRow = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.id, adminUserId))
+    .limit(1)
+  const inviterName = inviterRow[0]?.name ?? orgName
+
   // Send invitation email to external email (only if provided)
   const loginUrl = process.env.SITE_URL || 'https://mail.wistfare.com'
   if (externalEmail) {
-  const { html, text } = buildInvitationEmail({
-    displayName,
-    newEmail: fullEmail,
-    tempPassword,
-    orgName,
-    loginUrl: `${loginUrl}/login`,
-  })
-
-  const mailEngineUrl = process.env.MAIL_ENGINE_URL || 'http://mail-engine:8025'
-  const inboundSecret = process.env.INBOUND_SECRET || ''
-
-  try {
-    await fetch(`${mailEngineUrl}/api/v1/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Inbound-Secret': inboundSecret,
-      },
-      body: JSON.stringify({
-        from: `"${orgName}" <noreply@${domain.name}>`,
-        to: [externalEmail],
-        subject: `You've been invited to ${orgName} on Wistfare Mail`,
-        html,
-        text,
-      }),
+    const { html, text } = buildUserInvitationEmail({
+      displayName,
+      newEmail: fullEmail,
+      tempPassword,
+      workspaceDomain: domain.name,
+      inviterName,
+      loginUrl: `${loginUrl}/login`,
+      fromAddress: `no-reply@${domain.name}`,
     })
-    console.log(`Invitation email sent to ${externalEmail} for ${fullEmail}`)
-  } catch (err) {
-    console.error('Failed to send invitation email:', err)
-  }
+
+    await sendTransactionalEmail({
+      to: externalEmail,
+      subject: `You've been invited to ${orgName} on Wistfare Mail`,
+      html,
+      text,
+      fromName: orgName,
+      fromDomain: domain.name,
+      tag: 'user-invitation-v3',
+    })
   }
 
   const audit = new AuditService(db)
