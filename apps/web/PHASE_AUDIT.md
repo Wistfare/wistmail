@@ -208,6 +208,16 @@ This was the **most under-shipped phase**. I called it "complete" because typech
 
 ### Phase 7 — Chat
 
+**Status: punch list closed.**
+
+- ✅ AUDIT-7.1 / 7.2 — `/chat` and `/chat/[id]` were folded into the unified inbox: both routes now redirect into `/inbox?kind=chats` / `/inbox?chat=<id>`, and the right reading pane embeds `<ChatThreadView>` which renders the V3 conversation header, message bubbles, composer, and the optional members panel for groups.
+- ✅ AUDIT-7.3 — `ReactionsPopover` lives at `apps/web/src/components/chat/reactions-popover.tsx`. The popover is wired into the V3 `MessageBubble` primitive AND the inline bubble in `chat-thread-view.tsx` (the inbox-embedded thread). Backend: `chat_messages.reactions JSONB` column added (schema + ensureSchema mirror + drizzle migration `0010_chat_reactions.sql`); `POST /api/v1/chat/conversations/:cid/messages/:mid/reactions` toggles a reaction; the route fans `chat.message.reaction.updated` to every participant over WS.
+- ✅ AUDIT-7.4 — `/chat/new` already implements both `NewChat` (single user search) and `NewGroup` (multi-select chips + group name) tab variants matching Pencil `yzyel` / `buCwq`.
+
+---
+
+### Phase 7 — Original audit (kept for traceability)
+
 **Brutal honesty**: the V3 chat primitives exist but **none of them are wired into the chat pages**. The shipped /chat/, /chat/[id]/, /chat/new pages still render the pre-V3 layout (old style avatars + bullets, not V3 bubbles).
 
 **Pencil ChatViewV3 (`X1Safv`) demands:**
@@ -233,6 +243,17 @@ This was the **most under-shipped phase**. I called it "complete" because typech
 ---
 
 ### Phase 8 — Docs
+
+**Status: punch list closed.**
+
+- ✅ AUDIT-8.1 — `DocOutline` left sidebar lives at `apps/web/src/components/docs/doc-outline.tsx`; an outline extractor sits in `apps/web/src/lib/doc-outline.ts` (regex-based, ~20 lines, unit-tested in `doc-outline.test.ts`). Wired into `/docs/[id]/page.tsx`; clicking an entry smooth-scrolls to the heading.
+- ✅ AUDIT-8.2 — `DocComments` right rail + composer at `apps/web/src/components/docs/doc-comments.tsx`. Backend: `doc_comments` table (id, docId, authorId, body, createdAt, updatedAt, deletedAt) + drizzle migration; `GET/POST /api/v1/docs/:id/comments` + `DELETE /api/v1/docs/comments/:id` shipped.
+- ✅ AUDIT-8.3 — `DocStatusPill` (Draft / In review / Published) in the editor header + Share button. Backend: `docs.status` and `docs.share_token` columns + idempotent ALTERs in ensureSchema; `PUT /api/v1/docs/:id` handles status updates; share link copies `${origin}/share/docs/<token>` and is revocable.
+- ✅ AUDIT-8.4 — AI BRIEF placeholder block sits at the top of the editor body (`/docs/[id]/page.tsx`), matching the Pencil lime-pill styling. Will become a real summary once the AI service ships.
+
+---
+
+### Phase 8 — Original audit (kept for traceability)
 
 **Pencil DocsV3-Editor (`IMtz2`) demands:**
 - Left sidebar: doc tree / outline (Outline → Goals → Priorities → API v2 launch → ...)
