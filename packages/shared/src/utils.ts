@@ -1,15 +1,35 @@
-import { randomBytes } from 'node:crypto'
 import { API_KEY_LENGTH, API_KEY_PREFIX } from './constants'
 
 // ─── ID Generation ──────────────────────────────────────────────────────────
+
+/**
+ * Get cryptographically-random bytes using Web Crypto, which is the
+ * shared baseline on every runtime we target (Node ≥ 19, browsers,
+ * edge). Importing `node:crypto` at module scope used to drag the
+ * Node `stream`/`buffer`/`crypto-browserify` polyfill chain (~127 KB
+ * gzipped) into every web route via the `@wistmail/shared` barrel —
+ * even though the web bundle never calls these functions.
+ */
+function getRandomBytes(length: number): Uint8Array {
+  const buf = new Uint8Array(length)
+  globalThis.crypto.getRandomValues(buf)
+  return buf
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, '0')
+  }
+  return out
+}
 
 /**
  * Generate a prefixed unique ID.
  * Format: prefix_<random hex>
  */
 export function generateId(prefix: string, length: number = 16): string {
-  const bytes = randomBytes(length)
-  return `${prefix}_${bytes.toString('hex')}`
+  return `${prefix}_${bytesToHex(getRandomBytes(length))}`
 }
 
 /**
@@ -17,8 +37,7 @@ export function generateId(prefix: string, length: number = 16): string {
  * Format: wm_<random hex>
  */
 export function generateApiKey(): { key: string; prefix: string } {
-  const bytes = randomBytes(API_KEY_LENGTH)
-  const key = `${API_KEY_PREFIX}${bytes.toString('hex')}`
+  const key = `${API_KEY_PREFIX}${bytesToHex(getRandomBytes(API_KEY_LENGTH))}`
   const prefix = key.slice(0, 10)
   return { key, prefix }
 }
@@ -27,7 +46,7 @@ export function generateApiKey(): { key: string; prefix: string } {
  * Generate a webhook signing secret.
  */
 export function generateWebhookSecret(): string {
-  return `whsec_${randomBytes(24).toString('hex')}`
+  return `whsec_${bytesToHex(getRandomBytes(24))}`
 }
 
 // ─── Email Validation ───────────────────────────────────────────────────────
@@ -91,8 +110,7 @@ export function truncate(str: string, maxLength: number): string {
  * Format: <random@domain>
  */
 export function generateMessageId(domain: string): string {
-  const random = randomBytes(12).toString('hex')
-  return `<${random}@${domain}>`
+  return `<${bytesToHex(getRandomBytes(12))}@${domain}>`
 }
 
 // ─── Date Utilities ─────────────────────────────────────────────────────────
@@ -128,14 +146,31 @@ export function formatBytes(bytes: number): string {
 
 /**
  * Compute HMAC-SHA256 for webhook signature verification.
+ *
+ * Uses Web Crypto's SubtleCrypto so the function is portable across
+ * Node ≥ 19, edge runtimes, and the browser. The previous `node:crypto`
+ * implementation pulled the Node `crypto-browserify` polyfill chain
+ * (~127 KB gzipped) into every web bundle that touched
+ * `@wistmail/shared`, even on routes that never call this function.
  */
 export async function computeHmac(payload: string, secret: string): Promise<string> {
-  const { createHmac } = await import('node:crypto')
-  return createHmac('sha256', secret).update(payload).digest('hex')
+  const enc = new TextEncoder()
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = await globalThis.crypto.subtle.sign('HMAC', key, enc.encode(payload))
+  return bytesToHex(new Uint8Array(sig))
 }
 
 /**
  * Verify a webhook signature.
+ *
+ * Constant-time comparison via XOR-OR'd diff so we don't short-circuit
+ * on the first mismatching byte.
  */
 export async function verifyWebhookSignature(
   payload: string,
@@ -143,10 +178,12 @@ export async function verifyWebhookSignature(
   secret: string,
 ): Promise<boolean> {
   const expected = await computeHmac(payload, secret)
-  // Constant-time comparison
   if (expected.length !== signature.length) return false
-  const { timingSafeEqual } = await import('node:crypto')
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+  let diff = 0
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i)
+  }
+  return diff === 0
 }
 
 // ─── Array Utilities ────────────────────────────────────────────────────────
