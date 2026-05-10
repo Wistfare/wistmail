@@ -349,6 +349,7 @@ export function FloatingCompose({
                 onChange={setToChips}
                 placeholder="recipient@example.com"
                 className="!p-0"
+                excludedEmails={[...ccChips, ...bccChips]}
               />
             </div>
             {(!showCc || !showBcc) && (
@@ -384,6 +385,7 @@ export function FloatingCompose({
               onChange={setCcChips}
               placeholder="cc@example.com"
               onCollapse={() => setShowCc(false)}
+              excludedEmails={[...toChips, ...bccChips]}
             />
           )}
 
@@ -394,6 +396,7 @@ export function FloatingCompose({
               onChange={setBccChips}
               placeholder="bcc@example.com"
               onCollapse={() => setShowBcc(false)}
+              excludedEmails={[...toChips, ...ccChips]}
             />
           )}
 
@@ -786,12 +789,14 @@ function CollapsibleRecipientRow({
   onChange,
   placeholder,
   onCollapse,
+  excludedEmails,
 }: {
   label: string
   values: string[]
   onChange: (next: string[]) => void
   placeholder: string
   onCollapse: () => void
+  excludedEmails?: string[]
 }) {
   const wrapperRef = useRef<HTMLDivElement | null>(null)
 
@@ -834,6 +839,7 @@ function CollapsibleRecipientRow({
           onChange={onChange}
           placeholder={placeholder}
           className="!p-0"
+          excludedEmails={excludedEmails}
         />
       </div>
     </div>
