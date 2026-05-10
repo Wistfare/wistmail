@@ -1,11 +1,13 @@
 import './global.css'
 import { RootProvider } from 'fumadocs-ui/provider'
 import { DocsLayout } from 'fumadocs-ui/layouts/docs'
-import { Inter } from 'next/font/google'
 import type { ReactNode } from 'react'
 import { source } from '@/lib/source'
 
-const inter = Inter({ subsets: ['latin'] })
+// `next/font/google` was hitting Google Fonts at build time and timing
+// out inside the Docker build sandbox. Use the system font stack via
+// Tailwind's `font-sans` so the build is hermetic.
+const inter = { className: 'font-sans' }
 
 export const metadata = {
   title: {
