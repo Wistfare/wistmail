@@ -178,12 +178,20 @@ Run: `pnpm --filter @wistmail/api test billing-e2e`.
 
 ## Status
 
-- [ ] Task 1 — Wistfare client
-- [ ] Task 2 — Wallet ledger primitives
-- [ ] Task 3 — Subscription lifecycle
-- [ ] Task 4 — Billing routes (read + topup initiation)
-- [ ] Task 5 — Webhook receiver
-- [ ] Task 6 — Internal tick endpoint
-- [ ] Task 7 — ensureSchema verify
-- [ ] Task 8 — E2E smoke
-- [ ] Task 9 — Wrap
+- [x] Task 1 — Wistfare client (commit fceb7ac)
+- [x] Task 2 — Wallet ledger primitives (commit 5f709d1)
+- [x] Task 3 — Subscription lifecycle (commit 5f709d1)
+- [x] Task 4 — Billing routes (read + topup initiation) (commit 19ac541)
+- [x] Task 5 — Webhook receiver (commit 19ac541)
+- [x] Task 6 — Internal tick endpoint (commit 19ac541)
+- [x] Task 7 — ensureSchema verify (no change needed; pre-existing 10d7214)
+- [x] Task 8 — E2E smoke (covered by `billing routes > full e2e: …` in 19ac541)
+- [x] Task 9 — Wrap
+
+## Final State
+
+- 4 new commits since Phase C complete (cbb8964 → 19ac541).
+- apps/api tests: 336 passing (28 of those new)
+- packages/db tests: 40 passing (unchanged)
+- Branch: `feat/v3-email-templates`
+- All wired: `getDb()` + `ensureSchema` + `seedSystemData` + Wistfare stub mode.
