@@ -226,5 +226,7 @@ Tasks:
 - [x] Phase F — Admin V3 polish + analytics + domains (commits `dbb202d`..`9e0f77d`)
 - [x] Phase G — MFA V3 (commits `67f4de2`..`b3a2c03`)
 - [x] Phase H — Parity punch lists (commits `1b68c79`..`2c24fb7`; H.A audit + 2 backend gaps, H.B audit + reactions end-to-end)
-- [ ] Phase I — Docker e2e
+- [x] Phase I — Docker e2e (commit `0f4c241`; build directives + healthchecks + billing-cron service + `scripts/docker-smoke.sh` + `docs/runbooks/local-dev.md`)
 - [x] Phase J — Optimization (commits `94869e8`..`a59538e`; bundle/N+1/response-time/image/Lighthouse audits under `docs/perf/`)
+
+**All Phases E–J complete.** Final test totals: API 376 passing, Web 327 passing, DB 42 passing, Shared 32 passing.
