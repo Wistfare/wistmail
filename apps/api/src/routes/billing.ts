@@ -20,8 +20,17 @@
 
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
-import { plans, planFeatures, orgMembers } from '@wistmail/db'
+import { and, desc, eq, sql } from 'drizzle-orm'
+import {
+  plans,
+  planFeatures,
+  orgMembers,
+  emails,
+  attachments,
+  mailboxes,
+  users,
+  collectionAttempts,
+} from '@wistmail/db'
 import { ValidationError, NotFoundError, AuthenticationError } from '@wistmail/shared'
 import { sessionAuth, type SessionEnv } from '../middleware/session-auth.js'
 import { getDb } from '../lib/db.js'
@@ -307,4 +316,149 @@ sessionScopedAuth.get('/topup/:id', async (c) => {
   return c.json({ data: attempt })
 })
 
+/**
+ * Storage breakdown — best-effort, read-only. Aggregates byte usage across
+ * the schema we have today:
+ *   - mail        : sum(emails.size_bytes) where folder NOT IN (drafts, trash)
+ *   - attachments : sum(attachments.size_bytes)
+ *   - drafts      : sum(emails.size_bytes) where folder = 'drafts' OR is_draft
+ *   - trash       : sum(emails.size_bytes) where folder = 'trash'
+ *
+ * Per-user list joins emails → mailboxes → users so admins can see who is
+ * heaviest. We bucket sizes by mailbox.user_id rather than emails.from_address
+ * because the mailbox owner is what gets billed.
+ */
+sessionScopedAuth.get('/storage-breakdown', async (c) => {
+  const orgId = await resolveOrgId(c)
+  const db = getDb()
+
+  // Resolve org → user IDs → mailbox IDs once. This keeps every other
+  // aggregation a single GROUP-BY against indexed columns rather than
+  // join-everything-to-organizations.
+  const memberRows = await db
+    .select({ userId: orgMembers.userId })
+    .from(orgMembers)
+    .where(eq(orgMembers.orgId, orgId))
+  const userIds = memberRows.map((r) => r.userId)
+  if (userIds.length === 0) {
+    return c.json({
+      data: {
+        totalBytes: 0,
+        byCategory: { mail: 0, attachments: 0, drafts: 0, trash: 0 },
+        byUser: [],
+      },
+    })
+  }
+
+  const mailboxRows = await db
+    .select({ id: mailboxes.id, userId: mailboxes.userId })
+    .from(mailboxes)
+    .where(sql`${mailboxes.userId} IN ${userIds}`)
+  const mailboxIds = mailboxRows.map((r) => r.id)
+  const userByMailbox = new Map(mailboxRows.map((r) => [r.id, r.userId]))
+
+  // Initialise the buckets so the response shape is stable when usage is 0.
+  const byCategory = { mail: 0, attachments: 0, drafts: 0, trash: 0 }
+  const byUserBytes = new Map<string, number>()
+
+  if (mailboxIds.length > 0) {
+    // Email size + folder bucketing — single scan, group by folder/draft flag.
+    const emailRows = await db
+      .select({
+        mailboxId: emails.mailboxId,
+        folder: emails.folder,
+        isDraft: emails.isDraft,
+        bytes: sql<number>`COALESCE(SUM(${emails.sizeBytes}), 0)`.as('bytes'),
+      })
+      .from(emails)
+      .where(sql`${emails.mailboxId} IN ${mailboxIds}`)
+      .groupBy(emails.mailboxId, emails.folder, emails.isDraft)
+
+    for (const row of emailRows) {
+      const bytes = Number(row.bytes ?? 0)
+      const ownerId = userByMailbox.get(row.mailboxId)
+      if (ownerId) {
+        byUserBytes.set(ownerId, (byUserBytes.get(ownerId) ?? 0) + bytes)
+      }
+      if (row.folder === 'trash') {
+        byCategory.trash += bytes
+      } else if (row.folder === 'drafts' || row.isDraft) {
+        byCategory.drafts += bytes
+      } else {
+        byCategory.mail += bytes
+      }
+    }
+
+    // Attachment size — joins through emails for the mailbox filter; the
+    // attachments table only knows email_id directly.
+    const attachmentRows = await db
+      .select({
+        bytes: sql<number>`COALESCE(SUM(${attachments.sizeBytes}), 0)`.as('bytes'),
+      })
+      .from(attachments)
+      .innerJoin(emails, eq(attachments.emailId, emails.id))
+      .where(sql`${emails.mailboxId} IN ${mailboxIds}`)
+    byCategory.attachments = Number(attachmentRows[0]?.bytes ?? 0)
+  }
+
+  // Resolve user names for the breakdown list.
+  const userRows =
+    userIds.length > 0
+      ? await db
+          .select({ id: users.id, name: users.name, email: users.email })
+          .from(users)
+          .where(sql`${users.id} IN ${userIds}`)
+      : []
+  const userById = new Map(userRows.map((u) => [u.id, u]))
+
+  const byUser = Array.from(byUserBytes.entries())
+    .map(([userId, bytes]) => ({
+      userId,
+      name: userById.get(userId)?.name ?? userById.get(userId)?.email ?? userId,
+      bytes,
+    }))
+    .sort((a, b) => b.bytes - a.bytes)
+
+  const totalBytes =
+    byCategory.mail + byCategory.attachments + byCategory.drafts + byCategory.trash
+
+  return c.json({
+    data: { totalBytes, byCategory, byUser },
+  })
+})
+
+/**
+ * Payment methods — derive distinct (method, msisdn) pairs from the
+ * collection_attempts ledger. No new schema; "saved methods" are simply
+ * the ones the org has used at least once.
+ */
+sessionScopedAuth.get('/payment-methods', async (c) => {
+  const orgId = await resolveOrgId(c)
+  const db = getDb()
+
+  // Ordered by most-recent so the list reads "what did I use last".
+  const rows = await db
+    .select({
+      method: collectionAttempts.method,
+      msisdn: collectionAttempts.msisdn,
+      lastUsedAt: sql<Date>`MAX(${collectionAttempts.createdAt})`.as('last_used_at'),
+      attempts: sql<number>`COUNT(*)::int`.as('attempts'),
+    })
+    .from(collectionAttempts)
+    .where(eq(collectionAttempts.orgId, orgId))
+    .groupBy(collectionAttempts.method, collectionAttempts.msisdn)
+    .orderBy(desc(sql`MAX(${collectionAttempts.createdAt})`))
+
+  return c.json({
+    data: rows.map((r) => ({
+      method: r.method,
+      msisdn: r.msisdn,
+      lastUsedAt: r.lastUsedAt,
+      attempts: Number(r.attempts ?? 0),
+    })),
+  })
+})
+
 billingRoutes.route('/', sessionScopedAuth)
+// `and` is imported above for future filters; current routes only need eq/sql.
+void and
