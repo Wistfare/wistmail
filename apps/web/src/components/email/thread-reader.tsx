@@ -1,15 +1,26 @@
 'use client'
 
 import { useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { Forward, Reply, ReplyAll } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { AttachmentsStrip } from './attachments-strip'
-import { EmailBody } from './email-body'
 import {
   useEmailThread,
   type FullEmail,
   type ThreadMessage,
 } from '@/lib/email-queries'
+
+/// `EmailBody` pulls in `isomorphic-dompurify` (~30 KB gz on its own,
+/// plus its node-stream/jsdom shim that webpack/turbopack lifts into a
+/// shared chunk). We don't need it on the inbox list view — only when
+/// the user has actually opened a thread and we're rendering its
+/// messages. `ssr: false` keeps the server bundle clean too; the iframe
+/// renderer needs `window` anyway.
+const EmailBody = dynamic(
+  () => import('./email-body').then((m) => ({ default: m.EmailBody })),
+  { ssr: false },
+)
 
 /// Pencil reference: `Screen/InboxV3-Thread.Reading` (`srVZO`).
 ///

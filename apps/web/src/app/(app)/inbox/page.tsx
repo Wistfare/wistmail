@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Search,
@@ -18,23 +19,42 @@ import {
 import { Button } from '@/components/ui/button'
 import { useCompose } from '@/components/email/compose-provider'
 import { LabelAssignPopover } from '@/components/email/label-assign-popover'
-import { ThreadReader } from '@/components/email/thread-reader'
 import { EmailRowV3 } from '@/components/email/email-row-v3'
 import { InboxSectionHeader } from '@/components/email/inbox-section-header'
 import { NewDropdown } from '@/components/email/new-dropdown'
 import { ReadingEmpty } from '@/components/email/reading-empty'
-import {
-  InlineComposer,
-  type InlineComposerMode,
-  type RecipientChip,
-} from '@/components/email/inline-composer'
+import { type InlineComposerMode, type RecipientChip } from '@/components/email/inline-composer'
 import {
   FeedListSkeleton,
   EmailReadingSkeleton,
 } from '@/components/email/feed-skeletons'
-import { ChatThreadView } from '@/components/chat/chat-thread-view'
-import { ChatInfoPanel } from '@/components/chat/chat-info-panel'
 import { ChatInfoPanelSkeleton } from '@/components/chat/chat-skeletons'
+
+/// Heavy reading-pane components are only mounted once the user has
+/// actually opened a thread, a chat, or the inline composer. Loading
+/// the inbox shell shouldn't have to ship the iframe email renderer
+/// (DOMPurify), the chat history view, or the composer rich-text
+/// machinery up-front — they're all behind a click.
+///
+/// `ssr: false` because every one of these is `'use client'` and uses
+/// browser-only APIs (iframes, IntersectionObserver, etc); keeping
+/// them out of the SSR bundle also speeds up the server build.
+const ThreadReader = dynamic(
+  () => import('@/components/email/thread-reader').then((m) => ({ default: m.ThreadReader })),
+  { ssr: false, loading: () => <EmailReadingSkeleton /> },
+)
+const InlineComposer = dynamic(
+  () => import('@/components/email/inline-composer').then((m) => ({ default: m.InlineComposer })),
+  { ssr: false },
+)
+const ChatThreadView = dynamic(
+  () => import('@/components/chat/chat-thread-view').then((m) => ({ default: m.ChatThreadView })),
+  { ssr: false },
+)
+const ChatInfoPanel = dynamic(
+  () => import('@/components/chat/chat-info-panel').then((m) => ({ default: m.ChatInfoPanel })),
+  { ssr: false, loading: () => <ChatInfoPanelSkeleton /> },
+)
 import { useConversations } from '@/lib/chat-queries'
 import { TodayPanel, type TodayEvent } from '@/components/email/today-panel'
 import {
