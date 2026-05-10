@@ -57,6 +57,13 @@
       "when": 1778410500000,
       "tag": "0009_billing_wallet_and_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778500000000,
+      "tag": "0010_chat_reactions",
+      "breakpoints": true
     }
   ]
 }
