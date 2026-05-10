@@ -54,7 +54,7 @@ services:
     volumes:
       - meilisearch_data:/meili_data
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:7700/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:7700/health || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 5
