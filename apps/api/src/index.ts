@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server'
 import { sql } from 'drizzle-orm'
+import { seedSystemData } from '@wistmail/db'
 import { app } from './app.js'
 import { getDb } from './lib/db.js'
 import { attachWebSocketServer } from './ws/server.js'
@@ -593,6 +594,17 @@ async function ensureSchema() {
   }
 
   console.log('Database schema verified')
+
+  // Seed system data (idempotent: ON CONFLICT DO NOTHING). Skip with
+  // DISABLE_SEED=1 — useful when shaving cold-start time on a known-seeded DB.
+  if (!process.env.DISABLE_SEED) {
+    try {
+      await seedSystemData(db as never)
+      console.log('System seed data verified')
+    } catch (err) {
+      console.error('Seed error (non-fatal, continuing):', String(err).substring(0, 200))
+    }
+  }
 }
 
 async function start() {
