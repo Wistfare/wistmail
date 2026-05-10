@@ -13,6 +13,7 @@ export type RealtimeEvent =
   | ChatMessageNewEvent
   | ChatMessageUpdatedEvent
   | ChatMessageDeletedEvent
+  | ChatMessageReactionUpdatedEvent
   | ChatConversationUpdatedEvent
   | ChatConversationReadEvent
   | ChatTypingEvent
@@ -118,6 +119,18 @@ export interface ChatMessageDeletedEvent {
   conversationId: string
   messageId: string
   deletedAt: string
+}
+
+/// Reactions on a message changed (added or removed).  Fans out to
+/// every participant so chips appear/disappear for everyone — including
+/// the actor's other devices.  We send the full set so receivers
+/// don't need to model deltas.
+export interface ChatMessageReactionUpdatedEvent {
+  type: 'chat.message.reaction.updated'
+  userId: string
+  conversationId: string
+  messageId: string
+  reactions: Record<string, string[]>
 }
 
 /// User opened a conversation, marking everything in it as read.

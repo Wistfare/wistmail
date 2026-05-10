@@ -11,6 +11,38 @@ import {
 import { generateId } from '@wistmail/shared'
 import type { Database } from '@wistmail/db'
 
+/// JSONB shape for `chat_messages.reactions`.  Mirrors the schema-side
+/// `ChatMessageReactions` type.  Keep them in sync.
+export type MessageReactions = Record<string, string[]>
+
+export interface ListedMessage {
+  id: string
+  conversationId: string
+  senderId: string
+  content: string
+  editedAt: Date | null
+  deletedAt: Date | null
+  reactions: MessageReactions
+  createdAt: Date
+  attachments: Array<{
+    id: string
+    filename: string
+    contentType: string
+    sizeBytes: number
+  }>
+}
+
+export interface MessageRow {
+  id: string
+  conversationId: string
+  senderId: string
+  content: string
+  editedAt: Date | null
+  deletedAt: Date | null
+  reactions: MessageReactions
+  createdAt: Date
+}
+
 export interface ConversationSummary {
   id: string
   kind: 'direct' | 'group'
@@ -130,7 +162,11 @@ export class ChatService {
    * carries its (possibly empty) `attachments` list so a single fetch is enough
    * to render the thread including file chips.
    */
-  async listMessages(conversationId: string, userId: string, limit = 100) {
+  async listMessages(
+    conversationId: string,
+    userId: string,
+    limit = 100,
+  ): Promise<ListedMessage[]> {
     await this.requireParticipant(conversationId, userId)
     const rows = await this.db
       .select({
@@ -140,6 +176,7 @@ export class ChatService {
         content: chatMessages.content,
         editedAt: chatMessages.editedAt,
         deletedAt: chatMessages.deletedAt,
+        reactions: chatMessages.reactions,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -176,6 +213,10 @@ export class ChatService {
         ...m,
         // Never leak deleted content over the wire.
         content: m.deletedAt ? '' : m.content,
+        // Drop reactions on deleted messages — chips against an empty
+        // bubble would look like garbage and the server is the source
+        // of truth here.
+        reactions: m.deletedAt ? {} : (m.reactions ?? {}),
         attachments: m.deletedAt
           ? []
           : (byMessage.get(m.id) ?? []).map((a) => ({
@@ -186,6 +227,96 @@ export class ChatService {
             })),
       }))
       .reverse()
+  }
+
+  /// Toggle a reaction on a message — adds it if the user hasn't
+  /// reacted with this emoji, removes it if they have.  Mirrors what
+  /// the V3 Pencil ChatViewV3 reactions popover does on click.
+  ///
+  /// Returns the post-mutation reaction map so the route layer can
+  /// fan it out over WS without a follow-up read.
+  ///
+  /// Validation:
+  ///   - the user must be a participant of the message's conversation
+  ///   - reactions on a deleted message are rejected (the bubble shows
+  ///     "Message deleted"; reacting to it would be confusing)
+  ///   - emoji is opaque text, but capped to 16 chars so the column
+  ///     can't grow unbounded via abusive payloads (the popover only
+  ///     offers a fixed set; this is a belt-and-braces check).
+  ///
+  /// Concurrency note: we read-modify-write inside a single statement
+  /// using JSONB operators so two simultaneous toggles don't lose a
+  /// reaction.  See the SQL below.
+  async toggleReaction(input: {
+    conversationId: string
+    messageId: string
+    userId: string
+    emoji: string
+  }): Promise<{
+    conversationId: string
+    messageId: string
+    reactions: MessageReactions
+  }> {
+    const emoji = input.emoji.trim()
+    if (emoji.length === 0 || emoji.length > 16) {
+      throw new Error('Invalid emoji')
+    }
+    const msg = await this.getMessage(input.messageId)
+    if (!msg || msg.conversationId !== input.conversationId) {
+      throw new Error('Message not found')
+    }
+    if (msg.deletedAt) {
+      throw new Error('Cannot react to a deleted message')
+    }
+    await this.requireParticipant(msg.conversationId, input.userId)
+
+    // Atomic toggle inside JSONB.  Branch on whether the user is
+    // already in the emoji's user-id list:
+    //   - present  → remove that user-id; if list becomes empty, drop the key
+    //   - missing  → append the user-id (creating the list if needed)
+    //
+    // Done as a single UPDATE…SET reactions = … so concurrent
+    // toggles can't read-then-write a stale map.
+    await this.db.execute(sql`
+      UPDATE chat_messages
+      SET reactions = (
+        CASE
+          WHEN (reactions -> ${emoji}) ? ${input.userId} THEN
+            CASE
+              WHEN jsonb_array_length(reactions -> ${emoji}) <= 1
+                THEN reactions - ${emoji}
+              ELSE jsonb_set(
+                reactions,
+                ARRAY[${emoji}],
+                (
+                  SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+                  FROM jsonb_array_elements_text(reactions -> ${emoji}) AS elem
+                  WHERE elem <> ${input.userId}
+                )
+              )
+            END
+          ELSE
+            jsonb_set(
+              COALESCE(reactions, '{}'::jsonb),
+              ARRAY[${emoji}],
+              COALESCE(reactions -> ${emoji}, '[]'::jsonb) || to_jsonb(${input.userId}::text)
+            )
+        END
+      )
+      WHERE id = ${input.messageId}
+    `)
+
+    const after = await this.db
+      .select({ reactions: chatMessages.reactions })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, input.messageId))
+      .limit(1)
+    const reactions = (after[0]?.reactions ?? {}) as MessageReactions
+    return {
+      conversationId: msg.conversationId,
+      messageId: msg.id,
+      reactions,
+    }
   }
 
   /// Stage an uploaded attachment. Bytes are written to disk by the
@@ -471,13 +602,13 @@ export class ChatService {
     return { id: msg.id, conversationId: msg.conversationId, deletedAt }
   }
 
-  async getMessage(messageId: string) {
+  async getMessage(messageId: string): Promise<MessageRow | null> {
     const rows = await this.db
       .select()
       .from(chatMessages)
       .where(eq(chatMessages.id, messageId))
       .limit(1)
-    return rows[0] ?? null
+    return (rows[0] as MessageRow | undefined) ?? null
   }
 
   /// Returns the readers of a single message — joined with users so

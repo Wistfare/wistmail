@@ -301,6 +301,8 @@ async function ensureSchema() {
     // Phase 3 — message lifecycle. Idempotent column adds for legacy DBs.
     `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_at timestamptz`,
     `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
+    // Phase H.B — per-message reactions. JSONB { emoji -> [userId, …] }.
+    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reactions jsonb NOT NULL DEFAULT '{}'::jsonb`,
     `CREATE TABLE IF NOT EXISTS chat_message_reads (
       message_id varchar(64) NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
       user_id varchar(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,

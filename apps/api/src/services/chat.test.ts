@@ -882,3 +882,154 @@ describeIf('ChatService.searchUsers', () => {
     expect(matches).toEqual([])
   })
 })
+
+describeIf('ChatService.toggleReaction', () => {
+  let h: SeedHandles
+  beforeEach(async () => {
+    h = await seedChatFixture()
+  })
+
+  it('adds a fresh reaction and surfaces it on listMessages', async () => {
+    const svc = new ChatService(h.db)
+    const cid = await svc.createDirect(h.alice.id, h.bob.id)
+    const sent = await svc.sendMessage({
+      conversationId: cid,
+      senderId: h.alice.id,
+      content: 'hi',
+    })
+
+    const result = await svc.toggleReaction({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.bob.id,
+      emoji: '🔥',
+    })
+    expect(result.reactions).toEqual({ '🔥': [h.bob.id] })
+
+    const msgs = await svc.listMessages(cid, h.alice.id)
+    expect(msgs[0].reactions).toEqual({ '🔥': [h.bob.id] })
+  })
+
+  it('toggles off when the same user reacts twice with the same emoji', async () => {
+    const svc = new ChatService(h.db)
+    const cid = await svc.createDirect(h.alice.id, h.bob.id)
+    const sent = await svc.sendMessage({
+      conversationId: cid,
+      senderId: h.alice.id,
+      content: 'hi',
+    })
+
+    await svc.toggleReaction({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.bob.id,
+      emoji: '👍',
+    })
+    const second = await svc.toggleReaction({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.bob.id,
+      emoji: '👍',
+    })
+    expect(second.reactions).toEqual({})
+  })
+
+  it('keeps a multi-user reaction list intact when one user toggles off', async () => {
+    const svc = new ChatService(h.db)
+    const cid = await svc.createGroup({
+      creatorId: h.alice.id,
+      title: 'g',
+      participantIds: [h.bob.id, h.carol.id],
+    })
+    const sent = await svc.sendMessage({
+      conversationId: cid,
+      senderId: h.alice.id,
+      content: 'hi',
+    })
+
+    await svc.toggleReaction({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.bob.id,
+      emoji: '🎉',
+    })
+    await svc.toggleReaction({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.carol.id,
+      emoji: '🎉',
+    })
+    const after = await svc.toggleReaction({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.bob.id,
+      emoji: '🎉',
+    })
+    expect(after.reactions).toEqual({ '🎉': [h.carol.id] })
+  })
+
+  it('rejects reactions from non-participants', async () => {
+    const svc = new ChatService(h.db)
+    const cid = await svc.createDirect(h.alice.id, h.bob.id)
+    const sent = await svc.sendMessage({
+      conversationId: cid,
+      senderId: h.alice.id,
+      content: 'hi',
+    })
+    await expect(
+      svc.toggleReaction({
+        conversationId: cid,
+        messageId: sent.id,
+        userId: h.outsider.id,
+        emoji: '👍',
+      }),
+    ).rejects.toThrow(/Not a participant/)
+  })
+
+  it('rejects reactions on deleted messages', async () => {
+    const svc = new ChatService(h.db)
+    const cid = await svc.createDirect(h.alice.id, h.bob.id)
+    const sent = await svc.sendMessage({
+      conversationId: cid,
+      senderId: h.alice.id,
+      content: 'hi',
+    })
+    await svc.deleteMessage({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.alice.id,
+    })
+    await expect(
+      svc.toggleReaction({
+        conversationId: cid,
+        messageId: sent.id,
+        userId: h.bob.id,
+        emoji: '🔥',
+      }),
+    ).rejects.toThrow(/deleted message/)
+  })
+
+  it('returns an empty reactions map for deleted messages', async () => {
+    const svc = new ChatService(h.db)
+    const cid = await svc.createDirect(h.alice.id, h.bob.id)
+    const sent = await svc.sendMessage({
+      conversationId: cid,
+      senderId: h.alice.id,
+      content: 'hi',
+    })
+    // React BEFORE deletion so we know the prune path matters.
+    await svc.toggleReaction({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.bob.id,
+      emoji: '❤️',
+    })
+    await svc.deleteMessage({
+      conversationId: cid,
+      messageId: sent.id,
+      userId: h.alice.id,
+    })
+    const msgs = await svc.listMessages(cid, h.alice.id)
+    expect(msgs[0].reactions).toEqual({})
+  })
+})

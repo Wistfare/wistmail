@@ -318,6 +318,79 @@ chatRoutes.delete('/conversations/:cid/messages/:mid', async (c) => {
   })
 })
 
+/// Allow-list of emoji glyphs the V3 ChatViewV3 reactions popover
+/// surfaces (Pencil `mCFcx`).  Keeps the column from being abused as
+/// a free-form text field; the popover renders these five and the
+/// server rejects anything else.
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '🎉', '🔥'] as const
+
+/**
+ * POST /api/v1/chat/conversations/:cid/messages/:mid/reactions
+ * Body: { emoji: string }
+ *
+ * Toggles the reaction on/off for the requesting user.  The route
+ * layer fans the new map out to every participant over the realtime
+ * bus so chips appear/disappear without a refetch.
+ */
+chatRoutes.post('/conversations/:cid/messages/:mid/reactions', async (c) => {
+  const conversationId = c.req.param('cid')
+  const messageId = c.req.param('mid')
+  const body = await c.req.json().catch(() => ({}))
+  const schema = z.object({
+    emoji: z
+      .string()
+      .min(1)
+      .max(16)
+      .refine((e) => (REACTION_EMOJIS as readonly string[]).includes(e), {
+        message: 'Unsupported emoji',
+      }),
+  })
+  const parsed = schema.safeParse(body)
+  if (!parsed.success) throw new ValidationError('Invalid emoji')
+
+  const db = getDb()
+  const service = new ChatService(db)
+  const userId = c.get('userId')
+
+  let result
+  try {
+    result = await service.toggleReaction({
+      conversationId,
+      messageId,
+      userId,
+      emoji: parsed.data.emoji,
+    })
+  } catch (err) {
+    const msg = (err as Error).message
+    if (msg === 'Message not found') {
+      return c.json({ error: { code: 'NOT_FOUND', message: msg } }, 404)
+    }
+    if (msg === 'Not a participant in this conversation') {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Not a participant' } }, 403)
+    }
+    if (msg === 'Cannot react to a deleted message' || msg === 'Invalid emoji') {
+      return c.json({ error: { code: 'BAD_REQUEST', message: msg } }, 400)
+    }
+    throw err
+  }
+
+  const participants = await service.listParticipantsWithUnread(result.conversationId)
+  for (const p of participants) {
+    eventBus.publish({
+      type: 'chat.message.reaction.updated',
+      userId: p.userId,
+      conversationId: result.conversationId,
+      messageId: result.messageId,
+      reactions: result.reactions,
+    })
+  }
+
+  return c.json({
+    id: result.messageId,
+    reactions: result.reactions,
+  })
+})
+
 /**
  * POST /api/v1/chat/conversations/group
  * Body: { title, participantIds[] } — creates a multi-participant
