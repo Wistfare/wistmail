@@ -222,9 +222,9 @@ Tasks:
 
 ## Status
 
-- [ ] Phase E — Billing UI (worktree dispatched)
-- [ ] Phase F — Admin V3 polish + analytics + domains
-- [ ] Phase G — MFA V3 (worktree dispatched)
+- [x] Phase E — Billing UI (commits `0f8583f`..`0df1ba1`)
+- [x] Phase F — Admin V3 polish + analytics + domains (commits `dbb202d`..`9e0f77d`)
+- [x] Phase G — MFA V3 (commits `67f4de2`..`b3a2c03`)
 - [ ] Phase H — Parity punch lists
 - [ ] Phase I — Docker e2e
 - [ ] Phase J — Optimization
