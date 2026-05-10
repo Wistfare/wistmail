@@ -395,8 +395,17 @@ Final commit: `chore(plans): mark Phase C complete`
 ## Done definition
 
 Phase C is done when:
-- [ ] `wallets`, `subscriptions`, `wallet_transactions`, `collection_attempts` exist in schema, migration, and ensureSchema
-- [ ] Migration 0009 runs cleanly on greenfield AND on top of an ensureSchema'd DB
-- [ ] `seedSystemData()` is idempotent and runs on every API boot
-- [ ] All existing tests still pass; new schema/seed tests added
-- [ ] No drizzle-kit journal contamination; no unrelated changes pulled in
+- [x] `wallets`, `subscriptions`, `wallet_transactions`, `collection_attempts` exist in schema, migration, and ensureSchema
+- [x] Migration 0009 runs cleanly on greenfield AND on top of an ensureSchema'd DB
+- [x] `seedSystemData()` is idempotent and runs on every API boot
+- [x] All existing tests still pass; new schema/seed tests added (314 → 354)
+- [x] No drizzle-kit journal contamination; no unrelated changes pulled in
+
+**Status: COMPLETE on commit 30d7019** (May 10, 2026). Built across commits:
+- `74b8d02` wallets schema
+- `5732f8f` subscriptions + wallet_transactions + collection_attempts schemas
+- `7b7c569` migration 0009 + journal entry
+- `10d7214` ensureSchema mirror
+- `30d7019` seedSystemData + 9 new tests
+
+Next phase queued: D (Billing API + Wistfare Collections integration + webhooks).
