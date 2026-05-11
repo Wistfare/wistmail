@@ -46,8 +46,17 @@ services:
   # ── MeiliSearch ─────────────────────────────────────────────────────────────
   # Search index for emails. Restart on crash so a transient failure
   # doesn't leave us without search.
+  #
+  # Pinned to v1.42 — meilisearch does NOT auto-migrate across minor
+  # versions, the engine refuses to open data written by a different
+  # minor (e.g. v1.43 fails with "database version (1.42.1) is
+  # incompatible with engine version (1.43.0)"). Upgrading is a
+  # deliberate dump→import flow, not a passive image pull. Move the
+  # tag forward only after running `meilisearch dump` on the old
+  # version and importing into the new one. See docs:
+  # https://www.meilisearch.com/docs/learn/update_and_migration/updating
   meilisearch:
-    image: getmeili/meilisearch:latest
+    image: getmeili/meilisearch:v1.42
     restart: unless-stopped
     environment:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?MEILI_MASTER_KEY is required}
