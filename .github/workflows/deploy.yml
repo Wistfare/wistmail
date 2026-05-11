@@ -23,6 +23,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       engine: ${{ steps.filter.outputs.engine }}
       ai_worker: ${{ steps.filter.outputs.ai_worker }}
+      billing_cron: ${{ steps.filter.outputs.billing_cron }}
       deploy: ${{ steps.filter.outputs.deploy }}
     steps:
       - uses: actions/checkout@v6
@@ -62,6 +63,9 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'turbo.json'
               - 'tsconfig.json'
+            billing_cron:
+              - 'scripts/Dockerfile.cron'
+              - 'scripts/billing-tick-cron.ts'
             deploy:
               - 'docker-compose.yml'
               - 'Caddyfile'
@@ -193,10 +197,38 @@ jobs:
           cache-from: type=gha,scope=ai-worker
           cache-to: type=gha,mode=max,scope=ai-worker
 
+  # ── Build Billing Cron image ───────────────────────────────────────────────
+  build-billing-cron:
+    name: Build Billing Cron
+    needs: detect-changes
+    # Build when the cron source changes, OR when the compose file changes
+    # (compose may have started referencing this image for the first time —
+    # this is what bit us on commit daa00bf).
+    if: needs.detect-changes.outputs.billing_cron == 'true' || needs.detect-changes.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: scripts/Dockerfile.cron
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-billing-cron:latest
+            ${{ env.IMAGE_PREFIX }}-billing-cron:${{ github.sha }}
+          cache-from: type=gha,scope=billing-cron
+          cache-to: type=gha,mode=max,scope=billing-cron
+
   # ── Deploy to server ───────────────────────────────────────────────────────
   deploy:
     name: Deploy
-    needs: [detect-changes, build-api, build-web, build-docs, build-engine, build-ai-worker]
+    needs: [detect-changes, build-api, build-web, build-docs, build-engine, build-ai-worker, build-billing-cron]
     # Run if nothing failed/cancelled AND at least one thing changed
     if: >-
       always() && !failure() && !cancelled() && (
@@ -205,6 +237,7 @@ jobs:
         needs.detect-changes.outputs.docs == 'true' ||
         needs.detect-changes.outputs.engine == 'true' ||
         needs.detect-changes.outputs.ai_worker == 'true' ||
+        needs.detect-changes.outputs.billing_cron == 'true' ||
         needs.detect-changes.outputs.deploy == 'true'
       )
     runs-on: ubuntu-latest
@@ -218,12 +251,13 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           FIREBASE_PROJECT_ID: wistfare-1756656058858
           MFA_SECRETS_KEY: ${{ secrets.MFA_SECRETS_KEY }}
-          CHANGED_API:        ${{ needs.detect-changes.outputs.api }}
-          CHANGED_WEB:        ${{ needs.detect-changes.outputs.web }}
-          CHANGED_DOCS:       ${{ needs.detect-changes.outputs.docs }}
-          CHANGED_ENGINE:     ${{ needs.detect-changes.outputs.engine }}
-          CHANGED_AI_WORKER:  ${{ needs.detect-changes.outputs.ai_worker }}
-          CHANGED_DEPLOY:     ${{ needs.detect-changes.outputs.deploy }}
+          CHANGED_API:           ${{ needs.detect-changes.outputs.api }}
+          CHANGED_WEB:           ${{ needs.detect-changes.outputs.web }}
+          CHANGED_DOCS:          ${{ needs.detect-changes.outputs.docs }}
+          CHANGED_ENGINE:        ${{ needs.detect-changes.outputs.engine }}
+          CHANGED_AI_WORKER:     ${{ needs.detect-changes.outputs.ai_worker }}
+          CHANGED_BILLING_CRON:  ${{ needs.detect-changes.outputs.billing_cron }}
+          CHANGED_DEPLOY:        ${{ needs.detect-changes.outputs.deploy }}
         run: |
           mkdir -p ~/.ssh
           echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
@@ -232,11 +266,12 @@ jobs:
 
           # Map changed workflow outputs → docker compose service names
           SERVICES=""
-          [ "$CHANGED_API"       = "true" ] && SERVICES="$SERVICES api"
-          [ "$CHANGED_WEB"       = "true" ] && SERVICES="$SERVICES web"
-          [ "$CHANGED_DOCS"      = "true" ] && SERVICES="$SERVICES docs"
-          [ "$CHANGED_ENGINE"    = "true" ] && SERVICES="$SERVICES mail-engine"
-          [ "$CHANGED_AI_WORKER" = "true" ] && SERVICES="$SERVICES ai-worker"
+          [ "$CHANGED_API"          = "true" ] && SERVICES="$SERVICES api"
+          [ "$CHANGED_WEB"          = "true" ] && SERVICES="$SERVICES web"
+          [ "$CHANGED_DOCS"         = "true" ] && SERVICES="$SERVICES docs"
+          [ "$CHANGED_ENGINE"       = "true" ] && SERVICES="$SERVICES mail-engine"
+          [ "$CHANGED_AI_WORKER"    = "true" ] && SERVICES="$SERVICES ai-worker"
+          [ "$CHANGED_BILLING_CRON" = "true" ] && SERVICES="$SERVICES billing-cron"
           SERVICES="${SERVICES# }"  # trim leading space
 
           # Always sync compose + Caddyfile
@@ -305,8 +340,12 @@ jobs:
             cd /opt/wistmail
 
             if [ '$CHANGED_DEPLOY' = 'true' ]; then
-              # Compose file changed — pull any rebuilt images then re-apply full stack
-              [ -n '$SERVICES' ] && docker compose pull $SERVICES
+              # Compose file changed — pull every image referenced by the new
+              # compose (not just the services that changed) so any new image
+              # references resolve before the up. The previous form only
+              # pulled \$SERVICES, which missed services that gained an image:
+              # directive for the first time in the compose diff.
+              docker compose pull --ignore-pull-failures
               docker compose up -d --remove-orphans
             else
               # Only specific service images changed — targeted pull + restart

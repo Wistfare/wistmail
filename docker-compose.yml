@@ -170,6 +170,7 @@ services:
   # without a human poking at the admin UI. The endpoint is idempotent —
   # missed ticks self-heal on the next cycle.
   billing-cron:
+    image: ${BILLING_CRON_IMAGE:-ghcr.io/wistfare/wistmail-billing-cron:latest}
     build:
       context: .
       dockerfile: scripts/Dockerfile.cron
