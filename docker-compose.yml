@@ -58,6 +58,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      # Meilisearch's first boot after a fresh image pull (`:latest`) can
+      # take >5s while it touches the data dir and warms indexes. Without
+      # a start_period the first probe ticks instantly, fails, and any
+      # dependent service (api) gives up before the first real probe.
+      start_period: 30s
 
   # ── Go Mail Engine (SMTP + IMAP + gRPC) ────────────────────────────────────
   mail-engine:
