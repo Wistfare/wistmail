@@ -334,10 +334,23 @@ jobs:
             "
           fi
 
-          # Deploy only what changed
+          # Deploy only what changed. On any `up` failure we dump recent
+          # logs from every service so the CI logs are self-contained —
+          # otherwise debugging requires ssh access to the deploy host.
           ssh -i ~/.ssh/deploy_key root@"$DEPLOY_HOST" "
             set -e
             cd /opt/wistmail
+
+            dump_logs() {
+              echo '────────────── docker compose ps ──────────────'
+              docker compose ps -a || true
+              for svc in postgres redis minio meilisearch api web docs mail-engine ai-worker billing-cron; do
+                echo
+                echo \"────────────── \$svc logs (last 50 lines) ──────────────\"
+                docker compose logs --tail=50 \$svc 2>&1 || true
+              done
+            }
+            trap 'rc=\$?; if [ \$rc -ne 0 ]; then dump_logs; fi; exit \$rc' EXIT
 
             if [ '$CHANGED_DEPLOY' = 'true' ]; then
               # Compose file changed — pull every image referenced by the new
@@ -346,7 +359,7 @@ jobs:
               # pulled \$SERVICES, which missed services that gained an image:
               # directive for the first time in the compose diff.
               docker compose pull --ignore-pull-failures
-              docker compose up -d --remove-orphans
+              docker compose up -d --remove-orphans --wait-timeout 120
             else
               # Only specific service images changed — targeted pull + restart
               for svc in $SERVICES; do
